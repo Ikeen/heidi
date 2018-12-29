@@ -1,0 +1,398 @@
+body{
+    background-color: #4BBC5A;
+    overflow: hidden;
+    margin: 0px;
+}
+
+.box{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    margin-top: 45px;
+}
+
+h1{
+    color: #02261C;
+    font-size: 46px;
+    font-family:  'Sacramento', cursive;
+    text-align: center;
+    z-index: 1;
+}
+
+#logo{
+    background-color: #FBFCFF;
+    opacity: 0.7;
+
+    width: 250px;
+    height: 250px;
+    border-radius: 150px;
+}
+
+#cow{
+    display: block;
+    width: 233px;
+    margin: -60px auto 0 12px;
+}
+
+footer{
+    position: fixed;
+    bottom: -6px;
+    left: 0px;
+    width: 100%;
+}
+
+#gras{
+    width: 115%;
+}
+
+#login{
+    top: 365px;
+    margin-top: 25px;
+}
+#name, #pw {
+    font-family: 'Cutive Mono', monospace;
+    color:#02261C;
+    font-size: 20px;
+    width: 240px;
+    background-color: #FBFCFF;
+    height: 30px;
+    opacity: 0.7;
+    margin: 2px;
+    text-align: center;
+}
+ #button{
+     border: unset;
+     width: 245px;
+     height: 40px;
+     font-family: 'Cutive Mono', monospace;
+     font-size: 20px;
+     background-color: #02261C;
+     color: #FBFCFF;
+     opacity: 0.7;
+     margin: 2px;
+     text-align: center;
+ }
+::placeholder {
+    color:#02261C;
+    opacity: 0.7; /* Firefox */
+    text-transform: uppercase;
+    text-align: center;
+    letter-spacing: 2px;
+}
+
+input:focus::-webkit-input-placeholder{
+    color: #FBFCFF;
+    opacity: 0.1;
+    transition: 0.7s;
+}
+/*
+input[placeholder]:focus{
+    color: #FBFCFF;
+    transition: 0.2ms;
+}
+*/
+input:focus{
+    outline: none;
+}
+
+
+:-ms-input-placeholder { /* Internet Explorer 10-11 */
+    color: #02261C;
+    opacity: 0.7; /* Firefox */
+    text-transform: uppercase;
+    text-align: center;
+    letter-spacing: 2px;
+}
+
+::-ms-input-placeholder { /* Microsoft Edge */
+    color: #02261C;
+    opacity: 0.7; /* Firefox */
+    text-transform: uppercase;
+    text-align: center;
+    letter-spacing: 2px;
+}
+/*--------------------------------------------*/
+/* Overview-Style */
+/* anpassen für responsive design */
+.grid{
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto;
+    grid-template-columns: min-content auto;
+    grid-template-areas: "menu content";
+}
+/* Inhalt des Grids */
+.content {
+    grid-area: content;
+}
+
+/* Übersichtskarte */
+#overview{
+    margin: 20px;
+}
+
+#img{
+    width: auto;
+    height: auto;
+    border-radius: 3px;
+}
+
+/* just for testing */
+#test{
+    width: 150px;
+    position: relative;
+    left: -300px;
+    top: -187px;
+}
+
+#test_2{
+    width: 150px;
+    position: relative;
+    left: -531px;
+    top: -90px;
+}
+
+/* Neuigkeiten und Nachrichten */
+#messages{
+    background-color: #FBFCFF;
+    opacity: 0.7;
+    width: 50vw;
+    height: 100px;
+    margin: 10px;
+    margin-left: 20px;
+    border: 5px solid #FBFCFF;
+    border-radius: 3px;
+}
+
+#news{
+    background-color: #FBFCFF;
+    opacity: 0.7;
+    width: 50vw;
+    height: 100px;
+    margin: 10px;
+    margin-left: 20px;
+    border: 5px solid #FBFCFF;
+    border-radius: 3px;
+}
+
+b{
+    font-family: 'Cutive Mono', monospace;
+    font-size: 20px;
+    margin: 10px;
+    text-transform: uppercase;
+}
+
+/*--------------------------------------------*/
+/* Position-Style */
+
+#map{
+    position: fixed;
+    margin:20px;
+}
+
+iframe{
+    width: 876px;
+    height: 734px;
+}
+/*---------------------------------------------*/
+/* Menü-Style */
+
+.menu {
+    width: 350px;
+    font-family: 'Cutive Mono', monospace;
+    font-size: 30px;
+    text-align: center;
+    /*position: fixed;
+    bottom: 0px;
+    left: 0px;
+    margin: 0;
+    top: 0px;*/
+    overflow: hidden;
+    justify-content: space-around;
+    display: flex;
+    flex-direction: column;
+    grid-area: menu;
+}
+
+.menu div {
+    padding-left: 40px;
+}
+
+
+.menu a {
+    color: #02261C;
+    display: block;
+    text-decoration: none;
+    text-align: -webkit-left;
+}
+
+.active {
+    background-color: #4BBC5A;
+    color: #02261C;
+}
+
+.menu .icon {
+    display: none;
+}
+
+/* When the screen is less than 600 pixels wide, hide all links, except for the first one ("Home").
+Show the link that contains should open and close the menu (.icon) */
+@media screen and (max-width: 800px) {
+    .menu div:not(:last-child) {display: none;}
+    .menu a.icon {
+        float: left;
+        display: block;
+        border-radius: 77px;
+        font-size: 36px;
+        width: 30px;
+     /*   margin: 11px;
+        padding: 12px 15px 10px;
+        position: absolute;
+        top: 10px;
+        z-index: 1;
+        background-color: #FBFCFF;
+        opacity: 0.7;*/
+
+        margin: 20px;
+        margin-right: 264px;
+        padding: 12px 17px 10px;
+        color: #FBFCFF;
+
+    }
+
+    .menu {
+        position: absolute;
+        /*
+        top: -9px;
+        left: -8px;
+        margin: 0;
+*/
+        overflow: hidden;
+        z-index: 1;
+
+        width: 100vw;
+    }
+
+    #overview{
+        margin-top: 92px;
+    }
+
+    iframe{
+        margin: -70px;
+    }
+
+
+}
+
+/* The "responsive" class is added to the menu with JavaScript when the user clicks on the icon.
+This class makes the menu look good on small screens (display the links vertically instead of horizontally) */
+@media screen and (max-width: 800px) {
+   /* .menu.responsive {position: relative;} */
+    .menu.responsive .icon {
+        position: absolute;
+        right: 0;
+        top: 0;
+        border-radius: 77px;
+        font-size: 36px;
+        margin: 11px;
+        padding: 12px 17px 10px;
+        color: #FBFCFF;
+        background-color: #02261C;
+
+    }
+    .menu.responsive div {
+        float: none;
+        text-align: left;
+        background-color: #FBFCFF;
+        justify-content: space-around;
+        display: flex;
+        flex-direction: column;
+        padding-left: 40px;
+        height: 55px;
+    }
+
+    .dd_animal, .dd_herd{
+        margin-top: 60px;
+        margin-left: 20px;
+    }
+
+    .btn_animal, .btn_herd{
+        margin-top: 60px;
+        margin-left: 20px;
+    }
+
+}
+
+@media screen and (min-width: 800px){
+    .menu {
+        background-color: #FBFCFF;
+        opacity: 0.7;
+        z-index: 1;
+    }
+
+}
+
+
+/* Tiere und Herden Verwalten */
+
+/* Dropdown Button */
+.btn_herd {
+    background-color: #4BBC5A;
+    color: #FBFCFF;
+    padding: 16px;
+    font-size: 16px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn_animal {
+    background-color: #4BBC5A;
+    color: #FBFCFF;
+    padding: 16px;
+    font-size: 16px;
+    border: none;
+    cursor: pointer;
+}
+
+/* Dropdown button on hover & focus */
+.btn_herd:hover, .btn_herd:focus {
+    background-color: #4BBC5A;
+}
+
+.btn_animal:hover, .btn_animal:focus {
+    background-color: #4BBC5A;
+}
+
+/* The container <div> - needed to position the dropdown content */
+.dd_herd {
+    position: relative;
+    display: inline-block;
+}
+
+.dd_animal {
+    position: relative;
+    display: inline-block;
+    margin-left: 20px;
+}
+
+/* Dropdown Content (Hidden by Default) */
+.dropdown-content, .dropdown-content_2 {
+    display: none;
+    position: absolute;
+    background-color: #02261C;
+    min-width: 160px;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1;
+}
+
+/* Links inside the dropdown */
+.dropdown-content a, .dropdown-content_2 a {
+    color: #4BBC5A;
+    padding: 12px 16px;
+    text-decoration: none;
+    display: block;
+}
+
+/* Show the dropdown menu (use JS to add this class to the .dropdown-content container when the user clicks on the dropdown button) */
+.show {display:block;}
