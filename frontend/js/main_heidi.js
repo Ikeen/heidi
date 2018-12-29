@@ -1,6 +1,6 @@
 function newPage()
 {
-    window.location.replace('home.php');
+    window.location.replace('home_heidi.php');
 }
 
 function greeting(){

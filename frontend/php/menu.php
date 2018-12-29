@@ -14,7 +14,7 @@
 
 <div class="menu" id="respmenu">
     <div>
-    <a href="home.php">z'Haus</a>
+    <a href="home_heidi.php">z'Haus</a>
     </div>
     <div>
     <a href="position.php">Standorte</a>
@@ -29,7 +29,7 @@
     <a href="settings.php">Einstellungen</a>
     </div>
     <div>
-    <a href="main.php">Pfiat di</a>
+    <a href="main_heidi.php">Pfiat di</a>
     </div>
 
     <a href="javascript:void(0);" class="icon" onclick="myFunction()">
