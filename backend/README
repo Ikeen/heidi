@@ -1,1 +1,37 @@
 Hello World :-)
+
+eclipse install new Software Arduino
+
+Datei package_esp32_index.json in ~./arduinocdt kopieren
+Arduino package esp32 (Espressif Systems) installieren
+Arduino lib LoRa installieren
+Arduino lib Display installieren
+
+https://exploreembedded.com/wiki/Setting_up_Eclipse_for_ESP-IDF
+
+/.arduinocdt/packages/esp32/hardware/esp32/1.0.0/platform.txt:
+runtime.tools.xtensa-esp32-elf-gcc.path = ~/.arduinocdt/packages/esp32/tools/xtensa-esp32-elf
+runtime.tools.esptool.path = ~/.arduinocdt/packages/esp32/tools/esptool
+
+#runtime.tools.xtensa-esp32-elf-gcc.path = "{runtime.platform.path}/../../../tools/xtensa-esp32-elf"
+#runtime.tools.esptool.path = "{runtime.platform.path}/../../../tools/esptool"
+
+tools.esptool.path=~/.arduinocdt/packages/esp32/tools/esptool
+
+#tools.esptool.path={runtime.tools.esptool.path}
+
+Toolchain
+https://dl.espressif.com/dl/xtensa-esp32-elf-linux64-1.22.0-80-g6c4433a-5.2.0.tar.gz
+nach ~/.arduinocdt/packages/esp32/tools
+
+sudo apt-get install python-serial
+
+sudo adduser user dialout (enable tty for user)
+
+#----------------------------------------------------------------------------------------------------
+
+Webserver
+
+https://www.nginx.com/
+
+
