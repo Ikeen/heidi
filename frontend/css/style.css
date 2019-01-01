@@ -188,12 +188,11 @@ b{
 
 #map{
     position: fixed;
-    margin:20px;
 }
 
 iframe{
-    width: 876px;
-    height: 734px;
+    width: 73vw;
+    height: 100vh;
 }
 /*---------------------------------------------*/
 /* Menü-Style */
@@ -340,7 +339,7 @@ This class makes the menu look good on small screens (display the links vertical
 .btn_herd {
     background-color: #4BBC5A;
     color: #FBFCFF;
-    padding: 16px;
+    padding: 5px;
     font-size: 16px;
     border: none;
     cursor: pointer;
@@ -349,7 +348,7 @@ This class makes the menu look good on small screens (display the links vertical
 .btn_animal {
     background-color: #4BBC5A;
     color: #FBFCFF;
-    padding: 16px;
+    padding: 5px;
     font-size: 16px;
     border: none;
     cursor: pointer;
@@ -366,33 +365,27 @@ This class makes the menu look good on small screens (display the links vertical
 
 /* The container <div> - needed to position the dropdown content */
 .dd_herd {
-    position: relative;
+    position: fixed;
     display: inline-block;
+    float: left;
+    margin-top: 10px;
+    margin-left: 10px;
+    font-size: 1.5em;
 }
 
 .dd_animal {
-    position: relative;
+    position: fixed;
     display: inline-block;
-    margin-left: 20px;
-}
-
-/* Dropdown Content (Hidden by Default) */
-.dropdown-content, .dropdown-content_2 {
-    display: none;
-    position: absolute;
-    background-color: #02261C;
-    min-width: 160px;
-    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-    z-index: 1;
-}
-
-/* Links inside the dropdown */
-.dropdown-content a, .dropdown-content_2 a {
-    color: #4BBC5A;
-    padding: 12px 16px;
-    text-decoration: none;
-    display: block;
+    float: left;
+    margin-left: 173px;
+    margin-top: 10px;
+    font-size: 1.5em;
 }
 
 /* Show the dropdown menu (use JS to add this class to the .dropdown-content container when the user clicks on the dropdown button) */
 .show {display:block;}
+
+select{
+    width: 120px;
+    border-style: unset;
+}

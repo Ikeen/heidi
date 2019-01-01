@@ -22,39 +22,30 @@ function myFunction() {
     }
 }
 
-function open_dd_herd() {
-    document.getElementById("herd"). classList.toggle("show");
-}
 
-window.onclick = function(event) {
-    if (!event.target.matches('.btn_herd')) {
+//function to log the selected value of herd and animal
+function selected() {
 
-        var dropdowns = document.getElementsByClassName("dropdown-content");
-        var i;
-        for (i = 0; i < dropdowns.length; i++) {
-            var openDropdown = dropdowns[i];
-            if (openDropdown.classList.contains('show')) {
-                openDropdown.classList.remove('show');
-            }
-        }
-    }
-}
+   var value_cow = document.getElementById("select_animal").value;
+   var value_herd = document.getElementById("select_herd").value;
+   console.log(value_cow, value_herd);
 
+   switch(value_herd){
+       case "h1":
+           console.log("Herde 1 und " + value_cow + " wurde gewählt");
+           break;
 
-function open_dd_animal() {
-    document.getElementById("animal"). classList.toggle("show");
-}
+       case "h2":
+           console.log("Herde 2 und " + value_cow + " wurde gewählt");
+           break;
 
-window.onclick = function(event) {
-    if (!event.target.matches('.btn_animal')) {
+       case "h3":
+           console.log("Herde 3 und " + value_cow + " wurde gewählt");
+           break;
 
-        var dropdowns = document.getElementsByClassName("dropdown-content_2");
-        var i;
-        for (i = 0; i < dropdowns.length; i++) {
-            var openDropdown = dropdowns[i];
-            if (openDropdown.classList.contains('show')) {
-                openDropdown.classList.remove('show');
-            }
-        }
-    }
+       case "h4":
+           console.log("Herde 4 und " + value_cow + " wurde gewählt");
+           break;
+   }
+
 }
