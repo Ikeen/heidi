@@ -1,0 +1,49 @@
+https://stackoverflow.com/questions/29051576/how-do-i-add-arduino-libraries-to-eclipse-project
+
+1
+
+This is an update as of 8/12/2018.
+The process has changed since 2014. It may change again.
+
+This is my configuration:
+Ubuntu (18.04)
+Eclipse: Photon (4.9)
+C++ Oxygen 2 (9.3)
+Arduino CDT   (3.0)
+
+There is on official way to add a library member.
+
+And there is a hacked way. I do not support the hacked way I will only tell you what I have found that works for today. No guarantees, warranties, or other legal liabilities. No money, you get what you paid. If it works use it. If it does not, don't bring up any problems with the official support. There is no support for the hacked way.
+
+The official way is to download the library members from the website: //arduino.cc. This is made possible by installing the Arduino CDT package from the market place. After the install, an additional menu item is added to the "Help" menu. It is labeled "Arduino Download Manager". Follow the panels to the libraries tab and select "Add" option. Receive a list of groups. Expand a group to see the members under each group that identifies libraries that can be added to your installation.
+
+The non-official way is to create a folder with the name of your library. In this folder place 3 files: the library's ".h" and ".cpp" files, and an additional "library.properties". An arduino library is essentially a C++ class definition.
+
+Here is a sample of the library.propertiels contents:
+
+library.properties:
+
+ name=<your library name>
+ version=1.0.0
+ author=<your name>
+ maintainer=<your name>
+ sentence=<brief description>
+ paragraph=<more detailed description>
+ category=Private 
+ url=local
+ architectures=* 
+
+Notice: I named the category "Private". This will keep all of my libraries out of the listing of standard libraries.
+
+Copy this directory with the three files into the "/home/user/.arduinocdt/libaries/" folder.
+
+Restart your Eclipse session (so it rebuilds the library definitions).
+
+This installs the library but it does not mean you can use it in your project. To have access in your project you have to make it apart of your project.
+
+To make it useful to your project, access the "Project" view (acces this view by: /window/show view/Project Explorer). Select the project you wish to modify, and right-click on that project. You should receive a pop-up menu which contains an entry labeled "Properties" (at the very bottom). This will cause an properties panel to be displayed. In that panel select the "libraries" options. You should receive a list of all the possible categories. Expand the "Private" category, and place a checkmark next to your library and click "apply" or "apply and close".
+
+You should now be able to add a "#include <.....h>" statement in a member of your project (.i.e. sketch). If you make changes to your library member, make them outside of the ".arduinocdt" directory. shutdown eclipse; copy the new contents into the library, and restart your eclipse session.
+
+This is NON-OFFICIAL "hack" and I do not support this. It is just what I found works for me. becareful it may cause problems, now or in the future with updates or releases. Be prepared to abandon it is there is a problem. (If you go into "Help/Arduino Download Manager/ under the "libraries" tab you should see a list of groups which should include the "Private" group under that group you should see your library listed. By selecting it and clicking "uninstall", It will remove your library folder from the ".arduinocdt/libraries" directory. Maintaining your libraries is your responsibility. Deleting a library will impact your projects. Buyer be ware.
+
