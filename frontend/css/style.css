@@ -113,7 +113,7 @@ input:focus{
     letter-spacing: 2px;
 }
 /*--------------------------------------------*/
-/* Overview-Style */
+
 /* anpassen für responsive design */
 .grid{
     height: 100vh;
@@ -126,62 +126,31 @@ input:focus{
 .content {
     grid-area: content;
 }
+/* Overview */
 
-/* Übersichtskarte */
-#overview{
+#overview_h1 {
+    color: #FBFCFF;
+    text-transform: uppercase;
+    font-family: 'Cutive Mono', monospace;
+}
+
+#div_1{
+    height: 40px;
+    width: 40px;
+    float:left;
+    background-color: #02261C;
     margin: 20px;
 }
 
-#img{
-    width: auto;
-    height: auto;
-    border-radius: 3px;
+#div_2{
+    height: 40px;
+    width: 40px;
+    float:left;
+    background-color: #02261C;
+    margin: 20px;
 }
 
-/* just for testing */
-#test{
-    width: 150px;
-    position: relative;
-    left: -300px;
-    top: -187px;
-}
 
-#test_2{
-    width: 150px;
-    position: relative;
-    left: -531px;
-    top: -90px;
-}
-
-/* Neuigkeiten und Nachrichten */
-#messages{
-    background-color: #FBFCFF;
-    opacity: 0.7;
-    width: 50vw;
-    height: 100px;
-    margin: 10px;
-    margin-left: 20px;
-    border: 5px solid #FBFCFF;
-    border-radius: 3px;
-}
-
-#news{
-    background-color: #FBFCFF;
-    opacity: 0.7;
-    width: 50vw;
-    height: 100px;
-    margin: 10px;
-    margin-left: 20px;
-    border: 5px solid #FBFCFF;
-    border-radius: 3px;
-}
-
-b{
-    font-family: 'Cutive Mono', monospace;
-    font-size: 20px;
-    margin: 10px;
-    text-transform: uppercase;
-}
 
 /*--------------------------------------------*/
 /* Position-Style */
@@ -218,12 +187,15 @@ iframe{
     padding-left: 40px;
 }
 
-
 .menu a {
     color: #02261C;
     display: block;
     text-decoration: none;
     text-align: -webkit-left;
+}
+
+.menu a:hover{
+    color: #4BBC5A;
 }
 
 .active {
@@ -373,7 +345,7 @@ This class makes the menu look good on small screens (display the links vertical
     font-size: 1.5em;
 }
 
-.dd_animal {
+.dd_animal, .dd_transmitter {
     position: fixed;
     display: inline-block;
     float: left;
