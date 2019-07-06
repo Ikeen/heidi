@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<!-- 
+<meta http-equiv="refresh" content="5"> 
+-->
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"> 
+</head>
+<body bgcolor="#FFFFFF" text="#000000">
+<style>
+#c4ytable {
+    font-family: Arial, Helvetica, sans-serif;
+    border-collapse: collapse;
+    width: 100%;
+}
+
+#c4ytable td, #c4ytable th {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+#c4ytable tr:nth-child(even){background-color: #f2f2f2;}
+
+#c4ytable tr:hover {background-color: #ddd;}
+
+#c4ytable th {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    text-align: left;
+    background-color: #00A8A9;
+    color: white;
+}
+div.a {
+    text-align: left;
+    font-family: monospace;
+}
+</style>
+
+<?php
+
+    header("Access-Control-Allow-Origin: *");
+    header("Access-Control-Allow-Methods: GET");
+
+    $servername = "localhost";
+    $username   = "HeidiTracker";
+    $password   = "12wanderfalke34!";
+    $dbname     = "Heidi";
+    // Create connection
+    $conn = new mysqli($servername, $username, $password, $dbname);
+    // Check connection
+    if ($conn->connect_error) {
+        echo "Database Connection failed: " . $conn->connect_error;
+        die("Database Connection failed: " . $conn->connect_error);
+    }
+?>
+
+<div id="cards" class="cards"> 
+
+<?php
+
+    $TrackerID = $_GET['TrackerID'];
+    $StartDate = $_GET['StartDate'];
+    $EndDate   = $_GET['EndDate'];
+    $Table     = "TrackerData";
+    $Action    = $_GET['ShowData'];
+    
+    $sql  = "SELECT TrackerID, Longitude, Latitude, Altitude, TimeStamp, Battery FROM {$Table} ";
+    $sql .= "WHERE TrackerID = '{$TrackerID}' AND TimeStamp >= '{$StartDate }' AND TimeStamp <= '{$EndDate}' ";
+    $sql .= "ORDER BY TimeStamp DESC";
+
+    if ($result=mysqli_query($conn,$sql))
+      {
+      if ($Action == "GPX") {
+        echo "<div class=\"a\">";
+        echo "&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;<br>";
+        echo "&lt;gpx version=&quot;1.0&quot;&gt;<br>";
+        echo "&emsp;&lt;name&gt;Heidi track&lt;/name&gt;<br>";
+        echo "&emsp;&lt;trk&gt;&lt;name&gt;{$TrackerID}&lt;/name&gt;&lt;trkseg&gt;<br>";
+      } else {
+        echo "<table id='c4ytable'>";
+        echo "<tr><th>TrackerID</th><th>Longitude</th><th>Latitude</th><th>Altitude</th><th>TimeStamp</th><th>Battery</th></tr>";
+      }
+      // Fetch one and one row
+      while ($row=mysqli_fetch_row($result))
+      {
+        if ($Action == "GPX") {
+          $d = date_create_from_format("Y-m-d H:i:s", $row[4]);
+          echo "&emsp;&emsp;&lt;trkpt lat=&quot;" . $row[2] . "&quot; lon=&quot;" . $row[1]."&quot;&gt;";
+          echo "&lt;time&gt;" . date_format($d,"y-m-d") . "T" . date_format($d,"H:i:s") . "Z&lt;/time&gt;&lt;/trkpt&gt;";
+          echo "<br>";
+        } else {
+          echo "<tr><td>".$row[0]."</td><td>".$row[1]."</td><td>".$row[2]."</td><td>".$row[3]."</td><td>".$row[4]."</td><td>".$row[5]."</td></tr>";
+        }
+      }
+
+      if ($Action == "GPX") {
+        echo "&emsp;&lt;/trkseg&gt;&lt;/trk&gt;<br>";
+        echo "&lt;/gpx&gt;<br>";
+        echo "</div";
+      } else {
+        echo "</table>";
+      }
+      // Free result set
+      mysqli_free_result($result);
+    } else {
+      echo "empty result";
+    }
+
+    mysqli_close($conn);
+?>
+
+</body>
+</html>
