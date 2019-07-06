@@ -9,22 +9,17 @@
 
     <div class="content">
             <div id="overview">
-                    <img id="img" src="../img/overview.png">
-                <!-- IMG müssen ersetzt werden, je nach zustand und an passender position -->
-                    <img id="test" src="../img/kuh_green.png">
-                    <img id="test_2" src="../img/schaf_yellow.png">
+                <h1 id="overview_h1">Übersicht</h1>
+
+                <div id="div_1">
+
+                </div>
+
+                <div id="div_2">
+
+                </div>
 
             </div>
-
-
-        <!--
-            <div id="news">
-                <b>Neuigkeiten:</b>
-            </div>
-            <div id="messages">
-                <b>Nachrichten:</b>
-            </div>
-            -->
     </div>
 
 
