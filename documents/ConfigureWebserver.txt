@@ -1,0 +1,23 @@
+
+edit /etc/apache2/ports.conf:
+    Listen 1080
+    Listen 1083 https
+
+    <IfModule ssl_module>
+            Listen 1083
+    </IfModule>
+
+    <IfModule mod_gnutls.c>
+            Listen 1083
+    </IfModule>
+
+edit /etc/apache2/sites-available/*.conf
+ on     "<VirtualHost *.[PORT]>" set [PORT]
+ set    "DocumentRoot" 
+ insert "DirectoryIndex home.html index.html start.php"
+
+#apply
+$> sudo a2enmod ssl
+$> sudo systemctl restart apache2
+
+
