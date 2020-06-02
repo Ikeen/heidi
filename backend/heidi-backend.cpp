@@ -1,14 +1,33 @@
+/*
+ * nächste Aufgaben:
+ *   - 2 Verbindungsversuche = doppelte Werte-Übertragung, wenn es beim 2. mal klappt?
+ *   - Energiesparmodi
+ *   - Nacht - weniger Werte / Übertragungen
+ *   - Providermanagement
+ *   - Hook beim Reset oder Power-Cut
+ *   - einstellbarer Vorzugsprovider
+ *   - Neue Provider
+ *   - Neue Karten-Daten
+ *   - Provider - Scans
+ *   -
+ * - Erweitertes Powermanagement (kein Durchbooten bei < 3.6V)
+ * - Dichtere Übertragungsversuche (RTC-Memory? 4*32*50 = 6400 Bytes)
+ *
+ */
 
+
+#include <rom/rtc.h>
 #include <SPI.h>
 #include <LoRa.h>
 #include <Wire.h>
 #include <esp_deep_sleep.h>
+#include <esp_timer.h>
 #include <driver/adc.h>
 #include <HardwareSerial.h>
 #include "heidi-backend.h"
 #include "TinyGPS++.h"
 #include "images.h"
-#ifdef SIM_MODULE
+#ifdef GSM_MODULE
 #define TINY_GSM_MODEM_SIM800 // define modem (SIM800L)
 #include <TinyGsmClient.h>
 #endif
@@ -30,7 +49,6 @@
 #ifdef SENDER
 #define USE_LORA
 #endif
-int analog_value = 0;
 
 #ifdef OLED_DISPLAY
 SSD1306 display(0x3c, 4, 15);
@@ -46,25 +64,29 @@ String packet ;
 //int bufcount = 0;
 //bool GPSfirstLockDone;
 
-RTC_DATA_ATTR t_SendData sendData1;
-RTC_DATA_ATTR t_SendData sendData2;
+RTC_DATA_ATTR uint8_t SendData_Space[DATA_SET_MEM_SPACE]; //bis 32 Byte (derzeit 25) können wir hier 32 Datensätze = 1K verballern
+/*
+RTC_DATA_ATTR t_SendData sendData1; //
+RTC_DATA_ATTR t_SendData sendData2; //8k haben wir insgesamt
 RTC_DATA_ATTR t_SendData sendData3;
 RTC_DATA_ATTR t_SendData sendData4;
 RTC_DATA_ATTR t_SendData sendData5;
 RTC_DATA_ATTR t_SendData sendData6;
 RTC_DATA_ATTR t_SendData sendData7;
 RTC_DATA_ATTR t_SendData sendData8;
-RTC_DATA_ATTR int8_t     bootCount       = START_FROM_RESET;
-RTC_DATA_ATTR int32_t    lastTimeDiffMs  = 0;
-RTC_DATA_ATTR uint32_t   errorCode       = 0;
+*/
+RTC_DATA_ATTR int8_t     bootCount            = START_FROM_RESET;
+RTC_DATA_ATTR int8_t     lastWrongResetReason = 0;
+RTC_DATA_ATTR int32_t    lastTimeDiffMs       = 0;
+RTC_DATA_ATTR uint32_t   errorCode            = 0;
 
 t_SendData* currentDataSet;
-t_SendData* availableDataSet[8];
+t_SendData* availableDataSet[MAX_DATA_SETS];
 
 // The TinyGPS++ object
 HardwareSerial SerialGPS(GPS_UART_NO);
 TinyGPSPlus gps;
-#ifdef SIM_MODULE
+#ifdef GSM_MODULE
 HardwareSerial SerialGSM(GSM_UART_NO);
 TinyGsm modemGSM(SerialGSM);
 #endif
@@ -76,6 +98,8 @@ DallasTemperature tempSensor(&oneWire);
 
 tm bootTime;
 tm expBootTime;
+esp_timer_handle_t watchd; //the watchdog
+double volt;
 int bootTimeStampMs    = INVALID_TIME_VALUE;
 int expectedBootTimeMs = INVALID_TIME_VALUE;
 int currentTimeDiffMs  = 0;
@@ -83,64 +107,79 @@ int msStartTime = 0;
 
 void setup()
 {
+  tm timeinfo;
   msStartTime = millis();
   uint16_t init_cycle  = (herdeID() % 10) * 6;
-
-  Serial.begin(19200); //9600);
-#ifdef GPS_MODULE
-  GPS_off();
-#endif
-#ifdef SIM_MODULE
+  Serial.begin(115200); //9600);
+#ifdef GSM_MODULE
   GSM_off();
 #endif
 #ifdef USE_LORA
   SetupLoRa();
 #endif
-  //testMeasure();
-
   pinMode(LED,OUTPUT);
   digitalWrite(LED, LED_OFF);
   DebugPrintln("Boot number: " + String(bootCount), DEBUG_LEVEL_1);
   checkWakeUpReason();
-
+  setupWatchDog();
 #ifdef OLED_DISPLAY
   void SetupDisplay();
 #endif
 
+  Measures_On();
+  delay(10);
+  volt = GetVoltage();
+  DebugPrintln("Battery: " + String(volt, 2), DEBUG_LEVEL_1);
+  if (volt <= 3.5){
+    DebugPrintln("Battery too low.", DEBUG_LEVEL_1);
+	delay(100);
+    goto_sleep(SLEEP_DURATION_MSEC - millis());
+  }
+
   initGlobalVar();
-  
 #ifdef GPS_MODULE
-  GPS_on();
-  //find boot time
-  struct tm timeinfo;
-  if((!getLocalTime(&timeinfo)) || (bootCount <= REFETCH_SYS_TIME)){
+  if((!GetSysTime(&timeinfo)) || (bootCount <= REFETCH_SYS_TIME)){
     lastTimeDiffMs = 0; //not useful anymore
-	delay(5000);
+	delay(3000);
     DebugPrintln("Boot: Get time from GPS", DEBUG_LEVEL_1);
     if (!SetSysToGPSTime()){ //sets boot time if succeed
-      GPS_off();
-      goto_sleep(SLEEP_DURATION_MSEC);
+      Measures_Off();
+      goto_sleep(SLEEP_DUR_NOTIME);
     }
-    getLocalTime(&timeinfo);
+    GetSysTime(&timeinfo);
   } else {
     int bootMs = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
     bootMs *= 1000;
     bootMs -= millis();
     SetBootTimeFromMs(bootMs);
   }
+  bootTime.tm_wday = timeinfo.tm_wday;
+  bootTime.tm_mday = timeinfo.tm_mday;
+  bootTime.tm_yday = timeinfo.tm_yday;
+  bootTime.tm_mon  = timeinfo.tm_mon;
+  bootTime.tm_year = timeinfo.tm_year;
   #if DEBUG_LEVEL > 0
-  Serial.println(&timeinfo, "Current sys time: %B %d %Y %H:%M:%S");
-  Serial.println(&bootTime, "sys. boot time: %H:%M:%S");
+  Serial.println("Current sys time: " + DateString(timeinfo) + " " + TimeString(timeinfo));
+  Serial.println("sys. boot time:   " + DateString(bootTime) + " " + TimeString(bootTime));
+  Serial.print("Battery: ");
+  Serial.println(volt, 2);
   #endif
-  
   //find expected boot time
   if(!isInCycle(init_cycle)){ //calculates expected boot time
+    Measures_Off();
+    #if DEBUG_LEVEL >= DEBUG_LEVEL_0
     DebugPrintln("Boot: not in cycle.", DEBUG_LEVEL_1);
-    #if DEBUG_LEVEL >= DEBUG_LEVEL_2
+    #ifdef GSM_MODULE
+    GSMCheckSignalStrength();
+    #endif
+    #ifdef TEMP_SENSOR
+    tempSensor.begin();
+    tempSensor.requestTemperaturesByIndex(0);
+    DebugPrintln("Temperature: " + String(tempSensor.getTempCByIndex(0)), DEBUG_LEVEL_1);;
+    #endif
     DebugPrintln("Sleep for : " + String(currentTimeDiffMs - millis()), DEBUG_LEVEL_2);
     delay(100);
     #endif
-    GPS_off();
 	lastTimeDiffMs = 0; //not useful since time was not correct
 	if (currentTimeDiffMs <= 0) { goto_sleep(SLEEP_DURATION_MSEC); } //something went wrong
 	if ((currentTimeDiffMs - millis()) < 1000) { goto_sleep(1000); } //just to be sure
@@ -148,28 +187,37 @@ void setup()
   }
   currentDataSet = availableDataSet[bootCount];
   initDataSet(currentDataSet);
-  if (GPSGetPosition(currentDataSet, 10, 40000) == 0){
+  if (GPSGetPosition(currentDataSet, 10, 90000) == 0){
     DebugPrintln("GPS: Unable to fetch position.", DEBUG_LEVEL_1);
   }
-  DebugPrintln("GPS done: " + String(millis() - msStartTime), DEBUG_LEVEL_2);
-  GPS_off();
-
   #if DEBUG_LEVEL > 0
-  Serial.println(&bootTime,    "cor. boot time: %H:%M:%S");
-  Serial.println(&expBootTime, "exp. boot time: %H:%M:%S");
+  Serial.println("cor. boot time: " + TimeString(bootTime));
+  Serial.println("exp. boot time: " + TimeString(expBootTime));
   #endif
-
+#else
+  GetSysTime(&timeinfo);
+  bootTime.tm_sec = timeinfo.tm_sec;
+  bootTime.tm_min = timeinfo.tm_min;
+  bootTime.tm_hour = timeinfo.tm_hour;
+  bootTime.tm_wday = timeinfo.tm_wday;
+  bootTime.tm_mday = timeinfo.tm_mday;
+  bootTime.tm_yday = timeinfo.tm_yday;
+  bootTime.tm_mon  = timeinfo.tm_mon;
+  bootTime.tm_year = timeinfo.tm_year;
 #endif
 #ifdef TEMP_SENSOR
   tempSensor.begin();
   tempSensor.requestTemperaturesByIndex(0);
   currentDataSet->temperature = (int16_t)round(tempSensor.getTempCByIndex(0) * 100);
+  #if DEBUG_LEVEL > 0
   DebugPrint("Temperature: ", DEBUG_LEVEL_1);
   DebugPrint(currentDataSet->temperature / 100, DEBUG_LEVEL_1);
   DebugPrintln(" C", DEBUG_LEVEL_1);
+  #endif
 #endif
+  Measures_Off();
   currentDataSet->errCode = errorCode;
-#ifdef SIM_MODULE
+#ifdef GSM_MODULE
   int  HTTPrc = 0;
   if (bootCount == BOOT_CYCLES - 1){
     #if DEBUG_LEVEL >= DEBUG_LEVEL_1
@@ -182,36 +230,65 @@ void setup()
     #endif
 	bool GSMfailure = true;
     String sendLine = generateMultiSendLine(0, BOOT_CYCLES - 1, DATA_SET_BACKUPS);
-    DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3);
-    if (sendLine.length() > 0){
+    if ((sendLine.length() > 0) && (volt >= 3.5)){
+      DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3);
       /*for (int i=0; i<2; i++)*/{
         GSM_on();
         if (GSMsetup()){
           DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_1);
           int HTTPtimeOut = sendLine.length() * 20;
+          if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
           HTTPrc = GSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data.php",
                              "application/x-www-form-urlencoded",
                               sendLine,
-							  HTTPtimeOut,
-							  HTTPtimeOut);
+                              HTTPtimeOut,
+					          HTTPtimeOut);
           if (HTTPrc == 200){
             GSMfailure = false;
+            if ((errorCode & WRONG_BOOT_REASON) == 0) { lastWrongResetReason = 0; }
             //i = 2;
           }
-          GSMshutDown();
+        }else{
+          DebugPrintln("GPRS check OK.", DEBUG_LEVEL_1);
         }
+        GSMshutDown();
         GSM_off();
         //if (i<1) { delay(1000); }
       }
     }
+    #if DEBUG_LEVEL >= DEBUG_LEVEL_0
     if (GSMfailure){
-      DebugPrintln("GSM transmission failed: " + String(HTTPrc), DEBUG_LEVEL_1);
+	  if(volt < 3.5){
+	    DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1);
+	  } else {
+        DebugPrintln("GSM transmission failed: " + String(HTTPrc), DEBUG_LEVEL_1);
+	  }
     }
-    for(int i=0; i<(BOOT_CYCLES * DATA_SET_BACKUPS); i++){
-      if ((GSMfailure)  && (i < BOOT_CYCLES)) { availableDataSet[i]->errCode |= GSM_CONNECTION_FAILED; }
-      if (!GSMfailure)  { availableDataSet[i]->errCode &= ~GSM_CONNECTION_FAILED; }
-      copyDataSet(availableDataSet[i], availableDataSet[i + BOOT_CYCLES]);
-      initDataSet(availableDataSet[i]);
+    #endif
+    //mark transmission result
+    for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
+      if ((GSMfailure)  && (i < BOOT_CYCLES)) { availableDataSet[i]->errCode |= GSM_TRANSMISSION_FAILED; }
+      if (!GSMfailure) { availableDataSet[i]->errCode &= ~GSM_TRANSMISSION_FAILED; }
+    }
+    //delete all transmitted data
+    for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
+      if(availableDataSet[i]->errCode & GSM_TRANSMISSION_FAILED == 0){
+    	initDataSet(availableDataSet[i]);
+      }
+    }
+    //concentrate
+    int k = 0;
+    for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+      if(!emptyDataSet(availableDataSet[i])){
+        copyDataSet(availableDataSet[i], availableDataSet[k]);
+        initDataSet(availableDataSet[i]);
+        k++;
+      }
+    }
+    //free space for next measures
+    for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
+      if (i < BOOT_CYCLES) { initDataSet(availableDataSet[i]); }
+      else { copyDataSet(availableDataSet[i-BOOT_CYCLES], availableDataSet[i]); }
     }
   }
 #endif
@@ -227,27 +304,25 @@ void setup()
   if (bootCount >= BOOT_CYCLES) { bootCount = 0; }
 
   int diffTimeFinalMs = lastTimeDiffMs + currentTimeDiffMs;
-  if ((SLEEP_DURATION_MSEC - millis() + diffTimeFinalMs) < 1000){
+  int sleeptime = SLEEP_DURATION_MSEC + diffTimeFinalMs - millis();
+  if (sleeptime <= 0) { goto_sleep(SLEEP_DURATION_MSEC); } //something went wrong
+  if (sleeptime < 10000){
     #if DEBUG_LEVEL >= DEBUG_LEVEL_2
     DebugPrintln("Sleep for : 1000", DEBUG_LEVEL_2);
     delay(100);
+	goto_sleep(9900);
+    #else
+	goto_sleep(10000);
     #endif
-	goto_sleep(1000);
-  } 
-  if (diffTimeFinalMs < SLEEP_DURATION_MSEC) { 
+  } else {
     #if DEBUG_LEVEL >= DEBUG_LEVEL_2
-    DebugPrintln("Sleep for : " + String(SLEEP_DURATION_MSEC + diffTimeFinalMs - millis()), DEBUG_LEVEL_2);
+    DebugPrintln("Sleep for : " + String(sleeptime), DEBUG_LEVEL_2);
     delay(100);
+	goto_sleep(sleeptime-100);
+    #else
+    goto_sleep(sleeptime);
     #endif
-    goto_sleep(SLEEP_DURATION_MSEC + diffTimeFinalMs - millis());
   }
-  // just to be sure to ware up
-  #if DEBUG_LEVEL >= DEBUG_LEVEL_2
-  DebugPrintln("Sleep for : " + String(SLEEP_DURATION_MSEC), DEBUG_LEVEL_2);
-  delay(100);
-  #endif
-  lastTimeDiffMs   = 0;
-  goto_sleep(SLEEP_DURATION_MSEC);
 }
 
 void loop()
@@ -270,8 +345,6 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
   double a_alt = 0.0;
   int  gps_sat   = 0;
   int  gps_day   = 0;
-  int  gps_month = 0;
-  int  gps_year  = 0;
   bool timestamp = false;
   uint32_t startMs = millis();
 
@@ -279,16 +352,16 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
   errorCode |= (WRONG_GPS_VALUES_1 << bootCount);
   errorCode |= COULD_NOT_FETCH_GPS_TIME;
 
-  pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
-  digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
+  //pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
+  //digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
   DebugPrintln("GPS: Acquire position", DEBUG_LEVEL_1);
-  while(((measures < averages) || (gps_year == 0)) && ((millis() - startMs) < timeoutms)){
+  while(((measures < averages) || (gps_day == 0)) && ((millis() - startMs) < timeoutms)){
     while ((SerialGPS.available() == 0) && ((millis() - startMs) < timeoutms)) {
       analog_value += analogRead(BATTERY_ANALOG_PIN);
       a_measures++;
       delay(1);
     }
-    while ((SerialGPS.available() > 0) && ((measures < averages) || (gps_year == 0))) {
+    while ((SerialGPS.available() > 0) && ((measures < averages) || (gps_day == 0))) {
       analog_value += analogRead(BATTERY_ANALOG_PIN);
       a_measures++;
       gps.encode(SerialGPS.read());
@@ -304,8 +377,6 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
           } else { restartCycling(); }
         }
         if ((gps_day == 0) and (gps.date.day() > 0)){ gps_day = gps.date.day(); }
-        if ((gps_month == 0) and (gps.date.month() > 0)){ gps_month = gps.date.month(); }
-        if ((gps_year == 0) and (gps.date.year() > 2000)){ gps_year = gps.date.year(); }
         if (gps_sat < gps.satellites.value()) { gps_sat = gps.satellites.value(); }
         #if DEBUG_LEVEL >= DEBUG_LEVEL_1
         DebugPrint("Latitude= ", DEBUG_LEVEL_3);
@@ -339,33 +410,38 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
   if(a_measures > 0){
     analog_value = analog_value / a_measures;
   }
-  #if DEBUG_LEVEL >= DEBUG_LEVEL_1
-  DebugPrint("Latitude= ", DEBUG_LEVEL_2);
-  DebugPrint(a_lat, 6, DEBUG_LEVEL_2);
-  DebugPrint(" Longitude= ", DEBUG_LEVEL_2);
-  DebugPrint(a_lng, 6, DEBUG_LEVEL_2);
-  DebugPrint(" Altitude= ", DEBUG_LEVEL_2);
-  DebugPrint(a_alt, 6, DEBUG_LEVEL_2);
-  DebugPrint(" Battery= ", DEBUG_LEVEL_2);
-  DebugPrint((double(analog_value + 166) / 605), 2, DEBUG_LEVEL_2);
-  DebugPrint(" BatteryAverages= ", DEBUG_LEVEL_2);
-  DebugPrintln(a_measures, DEBUG_LEVEL_2);
-  #endif
   DataSet->latitude = (int32_t)(a_lat * 1000000);
   DataSet->longitude = (int32_t)(a_lng * 1000000);
   DataSet->altitude = (uint16_t)a_alt;
-  DataSet->date = dosDate(gps_year, gps_month, gps_day);
+  DataSet->date = dosDate(bootTime.tm_year, bootTime.tm_mon, bootTime.tm_mday);
   DataSet->time = dosTime(bootTime.tm_hour, bootTime.tm_min, bootTime.tm_sec);
   DataSet->battery = (uint16_t)analog_value;
-  DataSet->secdiff = (int8_t)(currentTimeDiffMs / 1000);
+  DataSet->secGPS = (int8_t)((millis() - startMs)/1000);
   if (!((measures > 0) && (DataSet->latitude == 0) && (DataSet->longitude == 0))){ //0.0, 0.0 must be wrong (or a fish)
     errorCode &= ~(WRONG_GPS_VALUES_1 << bootCount);
   }
   if (gps_day != 0){
     errorCode &= ~COULD_NOT_FETCH_GPS_TIME;
   }
-  //DataSet->satellites = gps_sat;
-  pinMode(BATTERY_ANALOG_ENABLE,INPUT);
+  DataSet->satellites = gps_sat;
+
+  #if DEBUG_LEVEL >= DEBUG_LEVEL_1
+  DebugPrint("DataSet Latitude= ", DEBUG_LEVEL_2);
+  DebugPrint(DataSet->latitude, DEBUG_LEVEL_2);
+  DebugPrint(" Longitude= ", DEBUG_LEVEL_2);
+  DebugPrint(DataSet->longitude, DEBUG_LEVEL_2);
+  DebugPrint(" Altitude= ", DEBUG_LEVEL_2);
+  DebugPrint(DataSet->altitude, DEBUG_LEVEL_2);
+  DebugPrint(" TimeStamp= ", DEBUG_LEVEL_2);
+  DebugPrint(String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))), DEBUG_LEVEL_2);
+  DebugPrint(" " + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), DEBUG_LEVEL_2);
+  DebugPrint(" Battery= ", DEBUG_LEVEL_2);
+  DebugPrint((double(DataSet->battery + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2, DEBUG_LEVEL_2);
+  DebugPrint(" Satellites= ", DEBUG_LEVEL_2);
+  DebugPrintln(DataSet->satellites, DEBUG_LEVEL_2);
+  DebugPrintln("GPS done: " + String(DataSet->secGPS), DEBUG_LEVEL_2);
+  #endif
+  //pinMode(BATTERY_ANALOG_ENABLE,INPUT);
   return measures;
 }
 
@@ -406,7 +482,7 @@ bool SetSysToGPS(){
   tm time;
   int startms = millis();
   time.tm_year = gps.date.year()-1900;
-  time.tm_mon  = gps.date.month();
+  time.tm_mon  = gps.date.month()-1;
   time.tm_mday = gps.date.day();
   time.tm_hour = gps.time.hour();
   time.tm_min  = gps.time.minute();
@@ -424,66 +500,52 @@ bool SetSysToGPS(){
   }
   return false;
 }
-void GPS_on(){
+void Measures_On(){
   pinMode(GPS,OUTPUT);
   digitalWrite(GPS, GPS_ON);
+  DebugPrintln("Measures on", DEBUG_LEVEL_1);
   SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX, false);
   while(!SerialGPS) { Serial.print("."); }
   DebugPrintln("GPS on", DEBUG_LEVEL_1);
 }
-void GPS_off(){
+void Measures_Off(){
   SerialGPS.end();
   pinMode(GPS,OUTPUT);
   digitalWrite(GPS, GPS_OFF);
+  #if DEBUG_LEVEL >= DEBUG_LEVEL_1
   DebugPrintln("GPS off", DEBUG_LEVEL_1);
+  delay(100);
+  #endif
 }
 #endif //GPS_MODULE
 
-#ifdef SIM_MODULE
+#ifdef GSM_MODULE
 void GSM_on(){
+  DebugPrint("GSM on...", DEBUG_LEVEL_1);
+  delay(300);
   pinMode(GSM,OUTPUT);
   pinMode(GSM_RST,OUTPUT);
   digitalWrite(GSM_RST, LOW);
-  for(int i=0; i<1000; i++){
+  for(int i=0; i<2000; i++){
     digitalWrite(GSM, GSM_OFF);
-    delayMicroseconds(470);
+    delayMicroseconds(2010-i);
     digitalWrite(GSM, GSM_ON);
-    delayMicroseconds(10);
+    delayMicroseconds(10+i);
   }
-  #if DEBUG_LEVEL >= DEBUG_LEVEL_2
-	//digitalWrite(GSM, GSM_OFF);
-    //DebugPrintln("Step 1 survived", DEBUG_LEVEL_2);
-  #endif
-  for(int i=0; i<1000; i++){
-    digitalWrite(GSM, GSM_OFF);
-    delayMicroseconds(100);
-	digitalWrite(GSM, GSM_ON);
-    delayMicroseconds(50);
-  }
-  #if DEBUG_LEVEL >= DEBUG_LEVEL_2
-	//digitalWrite(GSM, GSM_OFF);
-    //DebugPrintln("Step 2 survived", DEBUG_LEVEL_2);
-  #endif
-  for(int i=0; i<1000; i++){
-    digitalWrite(GSM, GSM_OFF);
-    delayMicroseconds(50);
-    digitalWrite(GSM, GSM_ON);
-    delayMicroseconds(50);
-  }
-  #if DEBUG_LEVEL >= DEBUG_LEVEL_2
-    //DebugPrintln("Step 3 survived", DEBUG_LEVEL_2);
-  #endif
-  delay(200);
+  delay(500);
   digitalWrite(GSM_RST, HIGH);
-  delay(300);
-  DebugPrintln("GSM on", DEBUG_LEVEL_1);
+  delay(1500);
+  DebugPrintln("done", DEBUG_LEVEL_1);
 }
 
 void GSM_off(){
   SerialGSM.end();
   pinMode(GSM,OUTPUT);
   digitalWrite(GSM, GPS_OFF);
+  #if DEBUG_LEVEL >= DEBUG_LEVEL_1
   DebugPrintln("GSM off", DEBUG_LEVEL_1);
+  delay(100);
+  #endif
 }
 
 bool GSMsetup()
@@ -494,12 +556,13 @@ bool GSMsetup()
   DebugPrintln("Setup GSM", DEBUG_LEVEL_1);
   // init serial SIM800L
   SerialGSM.begin(38400, SERIAL_8N1, GSM_RXD, GSM_TXD, false);
+
+#if 0
   /*
   AT
   >> AT // This should come back. SIM900 default is to echo back commands you enter
   >> OK // This string should tell you all is well
   */
-#if 0
   int i=0;
   while (i<100){
 	response = GSMsendCommand("AT");
@@ -540,7 +603,6 @@ bool GSMsetup()
     return false;
   }
   DebugPrintln("SIM800L : SIM ready", DEBUG_LEVEL_1);
-
   /*
   AT+CREG? // This checks if SIM is registered or not
   >> +CREG: 0,1 // This string in the response indicates SIM is registered (2=registering, 5=roaming)
@@ -685,65 +747,84 @@ bool GSMsetup()
   int x = response.indexOf((char)0x0A)+1;
   DebugPrintln("SIM800L : IP: " + response.substring(x, response.indexOf((char)0x0C, x)), DEBUG_LEVEL_1);
   #endif
-#endif
+#endif //if 0
 
-  // get info
-  if (DEBUG_LEVEL > 0){
-    Serial.println(modemGSM.getModemInfo());
-  }
-  // init modem
-  if (!modemGSM.restart())
-  {
-    DebugPrintln("Restarting GSM\nModem failed", DEBUG_LEVEL_1);
-    delay(1000);
-    return false;
-  }
-  DebugPrintln("Modem restart OK", DEBUG_LEVEL_3);
-  //unlock SIM
-  if (!modemGSM.simUnlock("0354"))
-  {
-      DebugPrintln("Failed to SIM unlock", DEBUG_LEVEL_1);
+  for(int z=0; z<2; z++){
+	if (z>0){
+	  resp = GSMsendCommand("AT+CPOWD=0");
+	  delay(500);
+	}
+    // get info
+    if (DEBUG_LEVEL > 0){
+      Serial.println(modemGSM.getModemInfo());
+    }
+    // init modem
+    if (!modemGSM.restart())
+    {
+      DebugPrintln("Restarting GSM\nModem failed", DEBUG_LEVEL_1);
+      continue;
+    }
+    DebugPrintln("Modem restart OK", DEBUG_LEVEL_3);
+    //unlock SIM
+    response = GSMsendCommand("AT+CPIN?");
+    DebugPrintln(response, DEBUG_LEVEL_3);
+    if(response.indexOf("+CPIN: SIM PIN") != -1) {
+      if (!modemGSM.simUnlock("0354"))
+      //if (!modemGSM.simUnlock("0041"))
+      {
+        DebugPrintln("Failed to SIM unlock", DEBUG_LEVEL_1);
+        continue;
+      }
+      response = GSMsendCommand("AT+CPIN?");
+    }
+    if(response.indexOf("+CPIN: READY") == -1) {
+      DebugPrintln("SIM800L : Cannot unlock SIM.", DEBUG_LEVEL_1);
+      delay(200);
+      continue;
+    }
+    DebugPrintln("SIM800L : SIM ready", DEBUG_LEVEL_1);
+    DebugPrintln("SIM unlock OK", DEBUG_LEVEL_3);
+    // connect to network
+    if (!modemGSM.waitForNetwork())
+    {
+      DebugPrintln("Failed to connect to network", DEBUG_LEVEL_1);
       delay(1000);
-      return false;
-  }
-  DebugPrintln("SIM unlock OK", DEBUG_LEVEL_3);
-  // connect to network
-  if (!modemGSM.waitForNetwork())
-  {
-    DebugPrintln("Failed to connect to network", DEBUG_LEVEL_1);
-    delay(1000);
-    return false;
-  }
-  DebugPrintln("Modem network OK", DEBUG_LEVEL_3);
+      continue;
+    }
+    DebugPrintln("Modem network OK", DEBUG_LEVEL_3);
 
-  //if (!modemGSM.sendSMS("01522xxxxxxx", "Heidi-Tracker hat soeben das erste mal erfolgreich Daten in die Datenbank gebracht. War gar nicht so einfach. :-)"))
-  //{
-  //  Serial.println("Failed to send SMS");
-  //  delay(1000);
-  //  return;
-  //}
-  //Serial.println("SMS sent!");
+    //if (!modemGSM.sendSMS("01522xxxxxxx", "Heidi-Tracker hat soeben das erste mal erfolgreich Daten in die Datenbank gebracht. War gar nicht so einfach. :-)"))
+    //{
+    //  Serial.println("Failed to send SMS");
+    //  delay(1000);
+    //  return;
+    //}
+    //Serial.println("SMS sent!");
 
-  // connect GPRS
-  //  modemGSM.gprsConnect(APN,USER,PASSWORD))
-  if(!modemGSM.gprsConnect("web.vodafone.de","",""))
-  {
-    DebugPrintln("GPRS Connection\nFailed", DEBUG_LEVEL_1);
-    delay(1000);
-    return false;
-  }
-  DebugPrintln("GPRS Connect OK", DEBUG_LEVEL_3);
+    // connect GPRS
+    //  modemGSM.gprsConnect(APN,USER,PASSWORD))
+    if(!modemGSM.gprsConnect("web.vodafone.de","",""))
+    {
+      DebugPrintln("GPRS Connection\nFailed", DEBUG_LEVEL_1);
+      delay(1000);
+      continue;
+    }
+    DebugPrintln("GPRS Connect OK", DEBUG_LEVEL_3);
 
   
-  //reset DNS to vodafone DNS
-  response = GSMsendCommand("AT+CDNSCFG=\"139.007.030.125\",\"139.007.030.126\"");
-  DebugPrintln(response, DEBUG_LEVEL_3);
-  if(response.indexOf("OK") == -1) {
-    DebugPrintln("SIM800L : doPost() - Unable to define vodafone DNS", DEBUG_LEVEL_1);
-  }
-  DebugPrintln("GPRS Setup done: " + String(millis() - msStartTime), DEBUG_LEVEL_2);
-  //delay(500);
-  return true;
+    //reset DNS to vodafone DNS
+    response = GSMsendCommand("AT+CDNSCFG=\"139.007.030.125\",\"139.007.030.126\"");
+    DebugPrintln(response, DEBUG_LEVEL_3);
+    if(response.indexOf("OK") == -1) {
+      DebugPrintln("SIM800L : doPost() - Unable to define vodafone DNS", DEBUG_LEVEL_1);
+    }else {
+      DebugPrintln("GPRS Setup done: " + String(millis() - msStartTime), DEBUG_LEVEL_2);
+      response = GSMsendCommand("AT+CSQ");
+	  DebugPrintln("SIM800L : response to \"AT+CSQ\": " + response, DEBUG_LEVEL_1);
+      return true;
+    }
+  } //for z
+  return false;
 }
 
 bool GSMshutDown()
@@ -766,6 +847,8 @@ bool GSMshutDown()
   	delay(200);
   	return false;
   }
+  resp = GSMsendCommand("AT+CPOWD=1");
+  delay(100);
   SerialGSM.end();
   return true;
 }
@@ -774,6 +857,10 @@ bool GSMshutDown()
  */
 int GSMdoPost(String url, String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs) {
   String response ="";
+  response = GSMsendCommand("AT+CCLK?");
+  if(response.indexOf("OK") != -1){
+	DebugPrint("GSM time : " + response.substring(7, response.indexOf((char)0x0C)) , DEBUG_LEVEL_1);
+  }
   // Initiate HTTP/S session with the module
   int initRC = GSMinitiateHTTP(url);
   if(initRC > 0) { return initRC; }
@@ -818,53 +905,50 @@ int GSMdoPost(String url, String contentType, String payload, unsigned int clien
     DebugPrintln("SIM800L : doPost() - Unable to initiate POST action", DEBUG_LEVEL_1);
     return 703;
   }
-
   // Wait answer from the server
-  int i=0;
-  while(i < serverReadTimeoutMs){
+  unsigned int t=millis();
+  while(millis() - t < serverReadTimeoutMs){
     delay(1);
-    i++;
     response = SerialGSM.readString();
     if (response.length() > 0) { DebugPrintln(response, DEBUG_LEVEL_3); }
     if(response.indexOf("+HTTPACTION: 1,") > -1){
-      i = serverReadTimeoutMs;
+      t = serverReadTimeoutMs + millis();
     }
   }
   if(response == ""){
     DebugPrintln("SIM800L : doPost() - Server timeout", DEBUG_LEVEL_1);
     return 408;
   }
-  i = response.indexOf("+HTTPACTION: 1,");
+  int i = response.indexOf("+HTTPACTION: 1,");
   if(i < 0) {
     DebugPrintln("SIM800L : doPost() - Invalid answer on HTTP POST", DEBUG_LEVEL_1);
     return 703;
   }
-
   // Get the HTTP return code
   httpRC = response.substring(i+15,i+18).toInt();
   int dataSize = response.substring(i+19,response.length()-i).toInt();
 
   DebugPrintln("SIM800L : doPost() - HTTP status " + String(httpRC) + ", " + String(dataSize) + " bytes to read ", DEBUG_LEVEL_3);
-  if(httpRC == 200) {
+  if(dataSize >= 2) { //need to find "OK" inside, so at least 2 Bytes
 
     // Ask for reading and detect the start of the reading...
     response = GSMsendCommand("AT+HTTPREAD");
     DebugPrintln("SIM800L : doPost() - response to \"AT+HTTPREAD\": " + response, DEBUG_LEVEL_1);
     i = response.indexOf("+HTTPREAD: ");
     if(i == -1){
-       //DebugPrintln("SIM800L : doPost() - Invalid response to \"AT+HTTPREAD\": " + response, DEBUG_LEVEL_1);
+       DebugPrintln("SIM800L : doPost() - Invalid response to \"AT+HTTPREAD\": " + response, DEBUG_LEVEL_1);
        return 705;
     }
     int startPayload = i + 11 + 2 + String(dataSize).length();
     // extract number of bytes defined in the dataSize
     String httpData = response.substring(startPayload, startPayload + dataSize);
-    // We are expecting a final OK
-    if(response.substring(startPayload + dataSize, response.length()).indexOf("OK") == -1){
+    // We are expecting a final OK (maybe "OK - no valid data")
+    if(response.substring(startPayload + dataSize, response.length()).indexOf("OK") == -1){ //now look for everything behind AT - "OK"
       DebugPrintln("SIM800L : doPost() - Invalid end of data while reading HTTP result from the module", DEBUG_LEVEL_1);
       return 705;
     }
     DebugPrintln("SIM800L : doPost() - Received from HTTP GET : \n"  + httpData, DEBUG_LEVEL_3);
-	if(httpData.indexOf("OK") == -1){
+	if(httpData.indexOf("OK") == -1){ // is there another "OK" (from server)?
         DebugPrintln("SIM800L : doPost() - server does not accept data", DEBUG_LEVEL_1);
 		httpRC = 406;
 	}
@@ -899,21 +983,20 @@ int GSMdoGet(const char* url, unsigned int serverReadTimeoutMs) {
   }
 
   // Wait answer from the server
-  int i=0;
-  while(i<serverReadTimeoutMs){
+  unsigned int t=millis();
+  while(millis() - t < serverReadTimeoutMs){
     delay(1);
-    i++;
     response = SerialGSM.readString();
     Serial.println(response);
     if(response.indexOf("+HTTPACTION: 0,") > -1){
-      i = serverReadTimeoutMs;
+      t = serverReadTimeoutMs + millis();
     }
   }
   if(response == ""){
     Serial.println("SIM800L : doPost() - Server timeout");
     return 408;
   }
-  i = response.indexOf("+HTTPACTION: 0,");
+  int i = response.indexOf("+HTTPACTION: 0,");
   if(i < 0) {
     Serial.println("SIM800L : doPost() - Invalid answer on HTTP POST");
     return 703;
@@ -1022,7 +1105,30 @@ String GSMsendCommand(const String command, int timeoutMs /* = 5000 */)
   if ((millis() - msStart) >= timeoutMs) { return ""; }
   return SerialGSM.readString();
 }
-#endif //SIM_MODULE
+void GSMCheckSignalStrength(){
+  if ((errorCode & WRONG_BOOT_REASON) == WRONG_BOOT_REASON){
+    if (volt >= 3.6){
+      GSM_on();
+      if (GSMsetup()){
+        String response = "";
+	    response = GSMsendCommand("AT+CCLK?");
+	    if(response.indexOf("OK") != -1){
+	      DebugPrint("GSM time : " + response.substring(7, response.indexOf((char)0x0C)) , DEBUG_LEVEL_1);
+        }
+	    for(int i=0; i<20; i++){
+	      response = GSMsendCommand("AT+CSQ");
+	  	  DebugPrint("SIM800L : response to \"AT+CSQ\": " + response, DEBUG_LEVEL_1);
+	  	  delay(500);
+	    }
+	    GSMshutDown();
+	  }
+	  GSM_off();
+    }
+  }
+}
+#endif //GSM_MODULE
+
+
 
 #ifdef USE_LORA
 void SetupLoRa(){
@@ -1088,10 +1194,11 @@ String generateSendLine(t_SendData* DataSet){
     result += "&Altitude=" + String(DataSet->altitude);
     result += "&Date=" + String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date)));
     result += "&Time=" + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time)));
-    result += "&Battery=" + String((double(DataSet->battery + 166) / 605), 2);
-    result += "&FreeValue1=" + String((int)DataSet->secdiff);
+    result += "&Battery=" + String((double(DataSet->battery + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2);
+    result += "&FreeValue1=" + String((int)DataSet->satellites);
     result += "&FreeValue2="  + String((float)DataSet->temperature / 100, 2);
     result += "&FreeValue3="  + String(DataSet->errCode, HEX);
+    result += "&FreeValue4="  + String((int)DataSet->secGPS);
   }
   return result;
 }
@@ -1110,7 +1217,7 @@ String generateMultiSendLine(int first, int last, int backups){
       i = a + b * BOOT_CYCLES;
       DataSet = availableDataSet[i];
       if (emptyDataSet(DataSet)) { continue; }
-      if ((i < BOOT_CYCLES) || ((DataSet->errCode & GSM_CONNECTION_FAILED) == GSM_CONNECTION_FAILED)) {
+      if ((i < BOOT_CYCLES) || ((DataSet->errCode & GSM_TRANSMISSION_FAILED) == GSM_TRANSMISSION_FAILED)) {
         k++;
 	    if (k > 1) { result += "&"; }
 	    result += "ID" + String(k) + "=";
@@ -1126,17 +1233,18 @@ String generateMultiSendLine(int first, int last, int backups){
         result += "&Al" + String(k) + "=" + String(DataSet->altitude);
         result += "&Da" + String(k) + "=" + String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date)));
         result += "&Ti" + String(k) + "=" + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time)));
-        result += "&Ba" + String(k) + "=" + String((double(DataSet->battery + 166) / 605), 2);
-        result += "&F1" + String(k) + "=" + String((int)DataSet->secdiff);
+        result += "&Ba" + String(k) + "=" + String((double(DataSet->battery + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2);
+        result += "&F1" + String(k) + "=" + String((int)DataSet->satellites);
         result += "&F2" + String(k) + "=" + String((float)DataSet->temperature / 100, 2);
         result += "&F3" + String(k) + "=" + String(DataSet->errCode, HEX);
+        result += "&F4" + String(k) + "=" + String((int)DataSet->secGPS);
       }
     }
   }
   return result;
 }
 uint16_t herdeID(){
-  return 1;
+  return 2;
 }
 uint16_t animalID(){
   return 1;
@@ -1236,7 +1344,24 @@ void SetBootTimeFromMs(int timeStampMs){
   bootTime.tm_sec = bootms / 1000;
 }
 
+double GetVoltage(){
+  int analog_value;
+  //pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
+  //digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
+  analog_value = 0;
+  for(int i=0; i<1000; i++){ analog_value += analogRead(BATTERY_ANALOG_PIN); }
+  analog_value /= 1000;
+  return((double)(analog_value + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER);
+}
+
 int8_t  GetLocalTimeHourShift(){
+  /*
+  tm cur, summer, winter;
+  if (!GetSysTime(&cur)){ return 0; }
+  summer.tm_year = cur.tm_year;
+  summer.tm_mon  = 3;
+  summer.tm_mday = 31;
+  */
   return 2;
 }
 uint16_t measurePin(const uint8_t pin){
@@ -1281,6 +1406,18 @@ uint8_t dosMinute(const uint16_t time){
 uint8_t dosSecond(const uint16_t time){
   return (time & 0x1F) << 1;
 }
+bool GetSysTime(tm *info){
+  uint32_t count = 500;
+  time_t now;
+  do{
+    time(&now);
+    localtime_r(&now, info);
+    if(info->tm_year > (2016 - 1900)){ info->tm_year += 1900; info->tm_mon++; return true; }
+    delay(10);
+  }while(count--);
+  return false;
+}
+
 void initDataSet(t_SendData* DataSet){
   DataSet->longitude   = 0;
   DataSet->latitude    = 0;
@@ -1288,7 +1425,7 @@ void initDataSet(t_SendData* DataSet){
   DataSet->date        = 0;
   DataSet->time        = 0;
   DataSet->battery     = 0;
-  DataSet->secdiff     = 0;
+  DataSet->secGPS      = 0;
   DataSet->temperature = NO_TEMPERATURE; //-127;
   DataSet->errCode     = 0;
   DataSet->satellites  = 0;
@@ -1305,13 +1442,21 @@ void copyDataSet(t_SendData* _from, t_SendData* _to){
   _to->battery    = _from->battery   ;
   _to->temperature= _from->temperature;
   _to->satellites = _from->satellites;
-  _to->secdiff    = _from->secdiff   ;
+  _to->secGPS     = _from->secGPS    ;
   _to->errCode    = _from->errCode   ;
  }
 String LenTwo(const String No){
   if (No.length() == 1) { return "0" + No; }
   return No;
 }
+
+String DateString(tm timestamp){
+  return String(timestamp.tm_year) + "-" + LenTwo(String(timestamp.tm_mon)) + "-" + LenTwo(String(timestamp.tm_mday));
+}
+String TimeString(tm timestamp){
+  return LenTwo(String(timestamp.tm_hour)) + ":" + LenTwo(String(timestamp.tm_min)) + ":"+ LenTwo(String(timestamp.tm_sec));
+}
+
 void initGlobalVar(){
   bootTime.tm_hour    = INVALID_TIME_VALUE;
   bootTime.tm_min     = INVALID_TIME_VALUE;
@@ -1319,6 +1464,7 @@ void initGlobalVar(){
   expBootTime.tm_hour = INVALID_TIME_VALUE;
   expBootTime.tm_min  = INVALID_TIME_VALUE;
   expBootTime.tm_sec  = INVALID_TIME_VALUE;
+  /*
   sendData1.id = 0;
   sendData2.id = 1;
   sendData3.id = 2;
@@ -1327,15 +1473,12 @@ void initGlobalVar(){
   sendData6.id = 5;
   sendData7.id = 6;
   sendData8.id = (DATA_SET_BACKUPS + 1) * BOOT_CYCLES - 1;
-
-  availableDataSet[0] = &sendData1;
-  availableDataSet[1] = &sendData2;
-  availableDataSet[2] = &sendData3;
-  availableDataSet[3] = &sendData4;
-  availableDataSet[4] = &sendData5;
-  availableDataSet[5] = &sendData6;
-  availableDataSet[6] = &sendData7;
-  availableDataSet[7] = &sendData8;
+  */
+  uint8_t* curSet = SendData_Space;
+  for (int i=0; i<MAX_DATA_SETS; i++){
+    availableDataSet[i] = (t_SendData*)curSet;
+    curSet += DATA_SET_LEN;
+  }
   DebugPrintln("Boot number: " + String(bootCount), DEBUG_LEVEL_1);
   if (bootCount == START_FROM_RESET){
 	DebugPrintln("Clear all data sets", DEBUG_LEVEL_1);
@@ -1360,7 +1503,7 @@ void DebugPrint(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ Seri
 void DebugPrintln(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ Serial.println(number); }}
 
 void goto_sleep(int mseconds){
-  int ms = millis();
+  esp_timer_delete(watchd);
   pinMode(5,INPUT);
   pinMode(14,INPUT);
   pinMode(15,INPUT);
@@ -1372,8 +1515,7 @@ void goto_sleep(int mseconds){
   pinMode(27,INPUT);
   pinMode(GSM,INPUT);
   pinMode(GPS,INPUT);
-  delay(100);
-  esp_sleep_enable_timer_wakeup((mseconds - (millis() - ms)) * uS_TO_mS_FACTOR);
+  esp_sleep_enable_timer_wakeup(mseconds * uS_TO_mS_FACTOR);
   //esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
   esp_deep_sleep_start();
 }
@@ -1391,15 +1533,23 @@ void checkWakeUpReason(){
     case ESP_SLEEP_WAKEUP_TOUCHPAD : DebugPrintln("Wakeup caused by touchpad", DEBUG_LEVEL_1); break;
     case ESP_SLEEP_WAKEUP_ULP : DebugPrintln("Wakeup caused by ULP program", DEBUG_LEVEL_1); break;
     default : DebugPrint("Wakeup was not caused by deep sleep: ", DEBUG_LEVEL_1); DebugPrintln(String(wakeup_reason), DEBUG_LEVEL_1); break;
+
   }
   #endif
-  ebuffer = errorCode & WRONG_BOOT_REASON_MASK;
-  ebuffer = ebuffer << 1;
+  ebuffer =  errorCode & WRONG_BOOT_REASON_MASK;
+  ebuffer =  ebuffer << 1;
+  ebuffer &= WRONG_BOOT_REASON_MASK;
   if(wakeup_reason != ESP_SLEEP_WAKEUP_TIMER){
 	  ebuffer |= WRONG_BOOT_REASON;
+	  lastWrongResetReason = (int8_t)rtc_get_reset_reason(0);
   }
   errorCode &= ~WRONG_BOOT_REASON_MASK;
   errorCode |= ebuffer;
+  errorCode &= ~WRONG_RESET_REASON_MASK;
+  errorCode |= (lastWrongResetReason << 24) & WRONG_RESET_REASON_MASK;
+  #if DEBUG_LEVEL >= DEBUG_LEVEL_1
+  DebugPrintln("Error Code: " +  String(errorCode, HEX), DEBUG_LEVEL_1);
+  #endif
 }
 
 
@@ -1419,8 +1569,9 @@ void displayLocationData(int cnt, double latt, double lngg, int volt)
 void testMeasure(){
   uint32_t a_measures   = 0;
   int32_t  measures     = 0;
-  pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
-  digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
+  int analog_value      = 0;
+  //pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
+  //digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
   while(true){
 	for(int i=1; i<1000;i++){
 	  analog_value += analogRead(BATTERY_ANALOG_PIN);
@@ -1428,12 +1579,31 @@ void testMeasure(){
 	  delay(1);
 	}
 	if(a_measures > 0){
-	  analog_value = analog_value / a_measures;
+	  analog_value /= a_measures;
 	}
 	Serial.print("Measured Value: ");
 	Serial.println(analog_value);
 	a_measures   = 0;
 	measures     = 0;
   }
-  pinMode(BATTERY_ANALOG_ENABLE,INPUT);
+  //pinMode(BATTERY_ANALOG_ENABLE,INPUT);
 }
+
+
+static void watchDog(void* arg)
+{
+	DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1);
+	delay(10);
+	bootCount = REFETCH_SYS_TIME;
+    goto_sleep(10000);
+}
+
+void setupWatchDog(void){
+    const esp_timer_create_args_t timargs = {
+            .callback = &watchDog
+    //        .name = "takecare"
+    };
+    esp_timer_create(&timargs, &watchd);
+    esp_timer_start_once(watchd, 300000000); //cut all after 5 minutes
+}
+
