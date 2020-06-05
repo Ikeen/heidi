@@ -12,7 +12,7 @@ You may freely use or copy this project under the following conditions:
 * no warranties
 	
 ## Project
-The project goal is:
+The project goal:
 * creating a animal tracker system from scratch
 * using free available cheap standard electronic components
 * 3D printable housings
