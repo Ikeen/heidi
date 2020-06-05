@@ -13,7 +13,7 @@ You may freely use or copy this project under the following conditions:
 	
 ## Project
 The project goal:
-* creating a animal tracker system from scratch
+* creating a tracker system from scratch
 * using free available cheap standard electronic components
 * 3D printable housings
 * with in situ solar power generation for continuous operation
