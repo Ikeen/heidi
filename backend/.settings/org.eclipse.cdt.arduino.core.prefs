@@ -1,2 +1,2 @@
 eclipse.preferences.version=1
-libraries=["ESP8266 and ESP32 Oled Driver for SSD1306 display",{"package"\:"esp32","platform"\:"esp32","library"\:"SPI"},{"package"\:"esp32","platform"\:"esp32","library"\:"Wire"},"LoRa"]
+libraries=["SoftwareSerialEsp32","TinyGSM","TinyGPS++","ESP8266 and ESP32 Oled Driver for SSD1306 display","DallasTemperature","OneWire",{"package"\:"esp32","platform"\:"esp32","library"\:"SPI"},{"package"\:"esp32","platform"\:"esp32","library"\:"Wire"},"LoRa"]

@@ -246,12 +246,17 @@ void setup()
         //concentrate
         int k = 0;
         for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+          if(!emptyDataSet(availableDataSet[i]) && (k < i) && emptyDataSet(availableDataSet[k])){
+            copyDataSet(availableDataSet[i], availableDataSet[k]);
+            initDataSet(availableDataSet[i]);
+          }
+          if(!emptyDataSet(availableDataSet[i])){ k++; }
+        }
+        //prepare next cycle
+        for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
           if(!emptyDataSet(availableDataSet[i])){
-            if (k != i){
-        	  copyDataSet(availableDataSet[i], availableDataSet[k]);
-              initDataSet(availableDataSet[i]);
-            }
-            k++;
+            copyDataSet(availableDataSet[i], availableDataSet[i+BOOT_CYCLES]);
+            initDataSet(availableDataSet[i]);
           }
         }
         //if (i<1) { delay(1000); }
