@@ -24,6 +24,7 @@ void GSM_on();
 void GSM_off();
 bool GSMsetup();
 bool GSMshutDown();
+bool GSMsetupGPRS(const String apn, const String user, const String pwd);
 int GSMinitiateHTTP(String url);
 int GSMdoPost(String url, String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs);
 int GSMdoGet(const char* url, unsigned int serverReadTimeoutMs);

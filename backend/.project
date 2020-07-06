@@ -17,4 +17,33 @@
 		<nature>org.eclipse.cdt.core.ccnature</nature>
 		<nature>org.eclipse.cdt.arduino.core.arduinoNature</nature>
 	</natures>
+	<filteredResources>
+		<filter>
+			<id>1594064560081</id>
+			<name></name>
+			<type>10</type>
+			<matcher>
+				<id>org.eclipse.ui.ide.multiFilter</id>
+				<arguments>1.0-name-matches-true-false-bak</arguments>
+			</matcher>
+		</filter>
+		<filter>
+			<id>1594064560086</id>
+			<name></name>
+			<type>10</type>
+			<matcher>
+				<id>org.eclipse.ui.ide.multiFilter</id>
+				<arguments>1.0-name-matches-true-false-Doku</arguments>
+			</matcher>
+		</filter>
+		<filter>
+			<id>1594064560090</id>
+			<name></name>
+			<type>6</type>
+			<matcher>
+				<id>org.eclipse.ui.ide.multiFilter</id>
+				<arguments>1.0-name-matches-false-false-.sc*.cpp</arguments>
+			</matcher>
+		</filter>
+	</filteredResources>
 </projectDescription>

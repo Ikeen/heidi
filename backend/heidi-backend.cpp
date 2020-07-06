@@ -230,37 +230,37 @@ void setup()
         }
         GSMshutDown();
         GSM_off();
-        //mark transmission result
-        for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
-          if (!emptyDataSet(availableDataSet[i])){
-            if (GSMfailure)  { availableDataSet[i]->errCode |= GSM_TRANSMISSION_FAILED; }
-            else { availableDataSet[i]->errCode &= ~GSM_TRANSMISSION_FAILED; }
-          }
+      } ///*for (int i=0; i<2; i++)*/
+      //mark transmission result
+      for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+        if (!emptyDataSet(availableDataSet[i])){
+          if (GSMfailure)  { availableDataSet[i]->errCode |= GSM_TRANSMISSION_FAILED; }
+          else { availableDataSet[i]->errCode &= ~GSM_TRANSMISSION_FAILED; }
         }
-        //delete all transmitted data
-        for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
-          if(availableDataSet[i]->errCode & GSM_TRANSMISSION_FAILED == 0){
-        	initDataSet(availableDataSet[i]);
-          }
-        }
-        //concentrate
-        int k = 0;
-        for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
-          if(!emptyDataSet(availableDataSet[i]) && (k < i) && emptyDataSet(availableDataSet[k])){
-            copyDataSet(availableDataSet[i], availableDataSet[k]);
-            initDataSet(availableDataSet[i]);
-          }
-          if(!emptyDataSet(availableDataSet[i])){ k++; }
-        }
-        //prepare next cycle
-        for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
-          if(!emptyDataSet(availableDataSet[i])){
-            copyDataSet(availableDataSet[i], availableDataSet[i+BOOT_CYCLES]);
-            initDataSet(availableDataSet[i]);
-          }
-        }
-        //if (i<1) { delay(1000); }
       }
+      //delete all transmitted data
+      for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+        if((availableDataSet[i]->errCode & GSM_TRANSMISSION_FAILED) == 0){
+      	initDataSet(availableDataSet[i]);
+        }
+      }
+      //concentrate
+      int k = 0;
+      for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+        if(!emptyDataSet(availableDataSet[i]) && (k < i) && emptyDataSet(availableDataSet[k])){
+          copyDataSet(availableDataSet[i], availableDataSet[k]);
+          initDataSet(availableDataSet[i]);
+        }
+        if(!emptyDataSet(availableDataSet[k])){ k++; }
+      }
+      //prepare next cycle
+      for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
+        if(!emptyDataSet(availableDataSet[i])){
+          copyDataSet(availableDataSet[i], availableDataSet[i+BOOT_CYCLES]);
+          initDataSet(availableDataSet[i]);
+        }
+      }
+      //if (i<1) { delay(1000); }
     }
     #if DEBUG_LEVEL >= DEBUG_LEVEL_0
     if (GSMfailure){

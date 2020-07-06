@@ -104,18 +104,19 @@ bool GSMsetup()
       continue;
     }
     _D(DebugPrintln("Modem network OK", DEBUG_LEVEL_3));
-
-    //if (!modemGSM.sendSMS("01522xxxxxxx", "Heidi-Tracker hat soeben das erste mal erfolgreich Daten in die Datenbank gebracht. War gar nicht so einfach. :-)"))
-    //{
-    //  Serial.println("Failed to send SMS");
-    //  delay(1000);
-    //  return;
-    //}
-    //Serial.println("SMS sent!");
-
+    /*
+    if (!modemGSM.sendSMS("01522xxxxxxx", "Heidi-Tracker hat soeben das erste mal erfolgreich Daten in die Datenbank gebracht. War gar nicht so einfach. :-)"))
+    {
+      Serial.println("Failed to send SMS");
+      delay(1000);
+      return;
+    }
+    Serial.println("SMS sent!");
+    */
     // connect GPRS
     //  modemGSM.gprsConnect(APN,USER,PASSWORD))
-    if(!modemGSM.gprsConnect("web.vodafone.de","",""))
+
+    if(!GSMsetupGPRS("web.vodafone.de", "", ""))
     {
       _D(DebugPrintln("GPRS Connection\nFailed", DEBUG_LEVEL_1));
       delay(1000);
@@ -124,7 +125,7 @@ bool GSMsetup()
     _D(DebugPrintln("GPRS Connect OK", DEBUG_LEVEL_3));
 
 
-    //reset DNS to vodafone DNS
+    //configure DNS to vodafone DNS
     response = GSMsendCommand("AT+CDNSCFG=\"139.007.030.125\",\"139.007.030.126\"");
     _D(DebugPrintln(response, DEBUG_LEVEL_3));
     if(response.indexOf("OK") == -1) {
@@ -135,10 +136,139 @@ bool GSMsetup()
 	  _D(DebugPrintln("SIM800L : response to \"AT+CSQ\": " + response, DEBUG_LEVEL_1));
       return true;
     }
+
+
   } //for z
   return false;
 }
 
+bool GSMsetupGPRS(const String apn, const String user, const String pwd)
+{
+	String response, answer;
+    int8_t code;
+
+    _D(DebugPrintln("SIM800L : shut IP sessions.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+CIPSHUT"); // Reset the IP session if any
+    if(response.indexOf("SHUT OK") == -1){ // This string in the response represents all IP sessions shutdown.
+  	  _D(DebugPrintln("SIM800L : Cannot shut IP sessions.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  return false;
+    }
+
+    // Set the Bearer for the IP
+    _D(DebugPrintln("SIM800L : set the connection type to GPRS.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+SAPBR=3,1,\"Contype\",\"GPRS\"");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot set the connection type to GPRS.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  return false;
+    }
+
+    _D(DebugPrintln("SIM800L : set APN.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+SAPBR=3,1,\"APN\",\"" + apn + "\"");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot set APN.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  return false;
+    }
+
+    _D(DebugPrintln("SIM800L : set USER.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+SAPBR=3,1,\"USER\",\"" + user + "\"");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot set USER.", DEBUG_LEVEL_1));
+  	  delay(200);
+    }
+
+    _D(DebugPrintln("SIM800L : set PWD.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+SAPBR=3,1,\"PWD\",\"" + pwd + "\"");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot set PWD.", DEBUG_LEVEL_1));
+  	  delay(200);
+    }
+
+    // Open the defined GPRS bearer context
+    _D(DebugPrintln("SIM800L : open the defined GPRS bearer context.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+SAPBR=1,1");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot open the defined GPRS bearer context.", DEBUG_LEVEL_1));
+  	  delay(200);
+    }
+
+    // Open the defined GPRS bearer context
+    _D(DebugPrintln("SIM800L : query the GPRS bearer context status.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+SAPBR=2,1");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot query the GPRS bearer context status.", DEBUG_LEVEL_1));
+  	  delay(200);
+    }
+    //Set to multi-IP
+    /*
+    response = GSMsendCommand("+CIPMUX=1");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot set to multi-IP.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  //return false;
+    }
+    */
+    // Put in "quick send" mode (thus no extra "Send OK")
+    _D(DebugPrintln("SIM800L : enable quick send mode.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+CIPQSEND=1");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot enable quick send mode.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  //return false;
+    }
+
+    // Set to get data manually
+    _D(DebugPrintln("SIM800L : set to get data manually.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+CIPRXGET=1");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot set to get data manually.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  //return false;
+    }
+
+    // Start Task and Set APN, USER NAME, PASSWORD
+    _D(DebugPrintln("SIM800L : start Task and Set APN, USER NAME, PASSWORD.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+CSTT=\"" + apn + "\",\"" + user + "\",\"" + pwd + "\"");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot start Task and Set APN, USER NAME, PASSWORD.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  return false;
+    }
+
+    // Bring Up Wireless Connection with GPRS or CSD
+    _D(DebugPrintln("SIM800L : bring Up Wireless Connection with GPRS.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+CIICR");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot bring Up Wireless Connection with GPRS.", DEBUG_LEVEL_1));
+  	  delay(200);
+    }
+
+    // Get Local IP Address, only assigned after connection
+    _D(DebugPrintln("SIM800L : get Local IP Address.", DEBUG_LEVEL_3));
+    response = GSMsendCommand("AT+CIFSR;E0");
+    _D(DebugPrintln(response, DEBUG_LEVEL_3));
+    if(response.indexOf("OK") == -1){
+  	  _D(DebugPrintln("SIM800L : Cannot get Local IP Address.", DEBUG_LEVEL_1));
+  	  delay(200);
+  	  return false;
+   }
+
+   return true;
+
+}
 bool GSMshutDown()
 {
   String resp = GSMsendCommand("AT+CIPSHUT"); // Reset the IP session if any
@@ -147,12 +277,14 @@ bool GSMshutDown()
 	delay(200);
 	return false;
   }
+/*
   resp = GSMsendCommand("AT+CGATT=0"); // detach GPRS
   if(resp.indexOf("OK") == -1){
   	_D(DebugPrintln("SIM800L : Cannot detach GPRS.", DEBUG_LEVEL_1));
   	delay(200);
   	return false;
   }
+*/
   resp = GSMsendCommand("AT+CREG=0");
   if(resp.indexOf("OK") == -1){
   	_D(DebugPrintln("SIM800L : Cannot unregister SIM.", DEBUG_LEVEL_1));
