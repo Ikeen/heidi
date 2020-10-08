@@ -7,12 +7,12 @@
 #ifndef HEIDI_BACKEND_H_
 #define HEIDI_BACKEND_H_
 #include <stdint.h>
-#include <time.h>
+//#include <time.h>
 #include <assert.h>
 #include <esp_attr.h>
+#include <Wire.h>
 #include <SPI.h>
 #include <LoRa.h>
-#include <Wire.h>
 #include <esp_deep_sleep.h>
 #include <esp_timer.h>
 #include <HardwareSerial.h>
@@ -22,6 +22,7 @@
 #include "heidi-data.h"
 #include "heidi-debug.h"
 #include "heidi-gsm.h"
+#include "heidi-gps.h"
 #include "heidi-error.h"
 
 
@@ -51,37 +52,6 @@
 #define preambleLength  8
 #define codingRateDenominator 8 //5;8 -> 4/5; 4/8
 
-#define LED      2     // GPIO2   -- LED
-#define LED_ON   HIGH
-#define LED_OFF  LOW
-
-/*
- * GPS
- */
-#define GPS      25    // GPIO25  -- GPS (all measures)
-#define GPS_RX   16    //GPIO16
-#define GPS_TX   17    //GPIO17
-#define GPS_UART_NO 2
-#define GPS_ON   LOW
-#define GPS_OFF  HIGH
-#define WAIT_FOR_GPS_TIME   120000
-
-/*
- * Voltage measuring
- */
-#define BATTERY_ANALOG_PIN     36
-//#define BATTERY_ANALOG_ENABLE  15
-#define ANALOG_MEASURE_OFFSET  166
-#define ANALOG_MEASURE_DIVIDER 605
-
-/*
- * Temperature measuring
- */
-#define TEMP_SENSOR_PIN        22
-#define NO_TEMPERATURE      -127
-
-void Measures_On();
-void Measures_Off();
 #ifdef GPS_MODULE
 int  GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms);
 bool SetSysToGPSTime();
@@ -99,35 +69,25 @@ void SetupLoRa(){
   void SetupDisplay();
 #endif
 
-uint16_t herdeID();
-uint16_t animalID();
-uint16_t measurePin(const uint8_t pin);
+uint8_t herdeID();
+uint8_t animalID();
 bool     GetSysTime(tm* info);
 int8_t   GetLocalTimeHourShift();
 double   GetVoltage();
 
-bool isInTime(const int target_m, const int current_m, const int current_s);
 void initGlobalVar();
-bool isInCycle(int firstCycleInHour);
-void SetBootTimeFromMs(int timeStampMs);
-bool calcCurrentTimeDiff();
-
 void restartCycling();
-void goto_sleep(int mseconds);
+void goto_sleep(uint32_t mseconds);
 void checkWakeUpReason();
 
 static void watchDog(void* arg);
 void setupWatchDog(void);
 
-
-void DebugPrint(String text, int level);
-void DebugPrintln(String text, int level);
-void DebugPrint(double number, int digits, int level);
-void DebugPrintln(double number, int digits, int level);
-void DebugPrint(int number, int level);
-void DebugPrintln(int number, int level);
-void DebugPrint(unsigned int number, int level);
-void DebugPrintln(unsigned int number, int level);
+#if DEBUG_LEVEL >= DEBUG_LEVEL_1
+void doResetTests();
+void _PrintDataSet(t_SendData*);
+void _PrintShortSummary();
 void testMeasure();
+#endif
 
 #endif /* HEIDI_BACKEND_H_ */

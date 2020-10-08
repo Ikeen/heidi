@@ -1,7 +1,8 @@
 /*
  * nächste Aufgaben:
  *   - 2 Verbindungsversuche = doppelte Werte-Übertragung, wenn es beim 2. mal klappt?
- *   - Energiesparmodi
+ *   - Energiesparmodi - Tiefschlaf bei U < 3,4 - Diode von Stützakku durch Draht ersetzen?
+ *   - Datenmenge begrenzen - base64 Übertragung
  *   - Nacht - weniger Werte / Übertragungen
  *   - Providermanagement
  *   - Hook beim Reset oder Power-Cut
@@ -16,16 +17,13 @@
  */
 
 #include "heidi-backend.h"
-#include "TinyGPS++.h"
 #include "images.h"
-#ifdef TEMP_SENSOR
-#include "OneWire.h"
-#include "DallasTemperature.h"
-#endif
 #ifdef OLED_DISPLAY
 #include "SSD1306.h"
 #endif
 #include <sys/time.h>
+#include "heidi-measures.h"
+#include "heidi-sys.h"
 
 //#define RECEIVER
 //#define SENDER
@@ -44,90 +42,80 @@ String packSize = "--";
 String packet ;
 #endif
 
-//String voltage = "0.0 V";
-//int counter;
-//int GpsCnt;
-//int loopCnt;
-//int bufcount = 0;
-//bool GPSfirstLockDone;
-
-/*
-RTC_DATA_ATTR t_SendData sendData1; //
-RTC_DATA_ATTR t_SendData sendData2; //8k haben wir insgesamt
-RTC_DATA_ATTR t_SendData sendData3;
-RTC_DATA_ATTR t_SendData sendData4;
-RTC_DATA_ATTR t_SendData sendData5;
-RTC_DATA_ATTR t_SendData sendData6;
-RTC_DATA_ATTR t_SendData sendData7;
-RTC_DATA_ATTR t_SendData sendData8;
-*/
 RTC_DATA_ATTR int8_t     bootCount            = START_FROM_RESET;
 RTC_DATA_ATTR int8_t     lastWrongResetReason = 0;
 RTC_DATA_ATTR int32_t    lastTimeDiffMs       = 0;
-RTC_DATA_ATTR uint32_t   errorCode            = 0;
 
 t_SendData* currentDataSet;
-
-// The TinyGPS++ object
-HardwareSerial SerialGPS(GPS_UART_NO);
-TinyGPSPlus gps;
-
-#ifdef TEMP_SENSOR
-OneWire oneWire(TEMP_SENSOR_PIN);
-DallasTemperature tempSensor(&oneWire);
-#endif
 
 tm bootTime;
 tm expBootTime;
 esp_timer_handle_t watchd; //the watchdog
-int bootTimeStampMs    = INVALID_TIME_VALUE;
-int expectedBootTimeMs = INVALID_TIME_VALUE;
+
 int currentTimeDiffMs  = 0;
 
-int msStartTime = 0;
-double volt;
+static int msStartTime        = 0;
+static uint16_t init_cycle    = (herdeID() % 10) * 6;
+static double volt;
+
 
 void setup()
 {
   tm timeinfo;
   msStartTime = millis();
-  uint16_t init_cycle  = (herdeID() % 10) * 6;
+  #ifdef GSM_MODULE
+    GSM_off();
+  #endif
+  LED_off();
+  setupWatchDog();
   Serial.begin(115200); //9600);
-#ifdef GSM_MODULE
-  GSM_off();
+  /**** check voltage ****/
+  MeasuresOn();  //enable all measures - switch off in goto_sleep
+  volt = MeasureVoltage();
+  _D(DebugPrintln("Battery: " + String(volt, 2), DEBUG_LEVEL_1));
+  if (volt <= 3.0){ // low Battery?
+    _D(DebugPrintln("Battery much too low.", DEBUG_LEVEL_1));
+    _D(delay(100));
+    goto_sleep(3600000);
+  }
+  if (volt <= 3.3){ // low Battery?
+    _D(DebugPrintln("Battery too low.", DEBUG_LEVEL_1));
+    _D(delay(100));
+    goto_sleep(SLEEP_DURATION_MSEC - millis());
+  }
+  _D(DebugPrintln("Boot number: " + String(bootCount), DEBUG_LEVEL_1));
+  /**** setup ****/
+#ifdef OLED_DISPLAY
+  void SetupDisplay();
 #endif
 #ifdef USE_LORA
   SetupLoRa();
 #endif
-  pinMode(LED,OUTPUT);
-  digitalWrite(LED, LED_OFF);
-  _D(DebugPrintln("Boot number: " + String(bootCount), DEBUG_LEVEL_1));
-  checkWakeUpReason();
-  setupWatchDog();
-#ifdef OLED_DISPLAY
-  void SetupDisplay();
-#endif
-
-  Measures_On();
-  delay(10);
-  volt = GetVoltage();
-  _D(DebugPrintln("Battery: " + String(volt, 2), DEBUG_LEVEL_1));
-  if (volt <= 3.5){
-    _D(DebugPrintln("Battery too low.", DEBUG_LEVEL_1));
-	delay(100);
-    goto_sleep(SLEEP_DURATION_MSEC - millis());
-  }
-
   initGlobalVar();
+  initError();
+
+  checkWakeUpReason();
+  if (lastWrongResetReason != 0){
+    setError(WRONG_BOOT_REASON);
+  }
 #ifdef GPS_MODULE
+  /**** check sys-time and cycle ****/
+  openGPS();
   if((!GetSysTime(&timeinfo)) || (bootCount <= REFETCH_SYS_TIME)){
     lastTimeDiffMs = 0; //not useful anymore
-	delay(3000);
+	  delay(3000);
     _D(DebugPrintln("Boot: Get time from GPS", DEBUG_LEVEL_1));
     if (!SetSysToGPSTime()){ //sets boot time if succeed
-      Measures_Off();
+      closeGPS();
       goto_sleep(SLEEP_DUR_NOTIME);
+    } else {
+      if (!calcCurrentTimeDiff()){
+        closeGPS();
+        bootCount = REFETCH_SYS_TIME;
+        goto_sleep(SLEEP_DURATION_MSEC);
+      }
     }
+    _D(DebugPrintln("GPS time vs. internal timer: " + String(currentTimeDiffMs), DEBUG_LEVEL_1));
     GetSysTime(&timeinfo);
   } else {
     int bootMs = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
@@ -135,77 +123,102 @@ void setup()
     bootMs -= millis();
     SetBootTimeFromMs(bootMs);
   }
-  bootTime.tm_wday = timeinfo.tm_wday;
-  bootTime.tm_mday = timeinfo.tm_mday;
-  bootTime.tm_yday = timeinfo.tm_yday;
-  bootTime.tm_mon  = timeinfo.tm_mon;
-  bootTime.tm_year = timeinfo.tm_year;
+  _copyDate(&timeinfo, &bootTime);
   _D(DebugPrintln("Current sys time: " + DateString(timeinfo) + " " + TimeString(timeinfo), DEBUG_LEVEL_1));
   _D(DebugPrintln("sys. boot time:   " + DateString(bootTime) + " " + TimeString(bootTime), DEBUG_LEVEL_1));
   _D(DebugPrint("Battery: ", DEBUG_LEVEL_1));
   _D(DebugPrintln(volt, 2, DEBUG_LEVEL_1));
   //find expected boot time
-  if(!isInCycle(init_cycle)){ //calculates expected boot time
-    Measures_Off();
-    #if DEBUG_LEVEL >= DEBUG_LEVEL_0
-    _D(DebugPrintln("Boot: not in cycle.", DEBUG_LEVEL_1));
-    #ifdef GSM_MODULE
-    GSMCheckSignalStrength();
-    #endif
-    #ifdef TEMP_SENSOR
-    tempSensor.begin();
-    tempSensor.requestTemperaturesByIndex(0);
-    _D(DebugPrintln("Temperature: " + String(tempSensor.getTempCByIndex(0)), DEBUG_LEVEL_1));;
-    #endif
-    _D(DebugPrintln("Sleep for : " + String(currentTimeDiffMs - millis()), DEBUG_LEVEL_2));
-    delay(100);
-    #endif
-	lastTimeDiffMs = 0; //not useful since time was not correct
-	if (currentTimeDiffMs <= 0) { goto_sleep(SLEEP_DURATION_MSEC); } //something went wrong
+  if(!isInCycle(init_cycle, &bootCount)){ //calculates expected boot time
+	lastTimeDiffMs = 0;       //not useful out of regular cycles
+    _D(doResetTests());
+    if (currentTimeDiffMs <= 0) { goto_sleep(SLEEP_DURATION_MSEC); } //something went wrong
 	if ((currentTimeDiffMs - millis()) < 1000) { goto_sleep(1000); } //just to be sure
+    closeGPS();
     goto_sleep(currentTimeDiffMs - millis());
   }
+  lastWrongResetReason = 0;
   currentDataSet = availableDataSet[bootCount];
+
+  /**** measure ****/
   initDataSet(currentDataSet);
+  currentDataSet->errCode = getErrorCode(); //errors until now
   if (GPSGetPosition(currentDataSet, 10, 90000) == 0){
     _D(DebugPrintln("GPS: Unable to fetch position.", DEBUG_LEVEL_1));
   }
+  closeGPS();
   _D(DebugPrintln("cor. boot time: " + TimeString(bootTime), DEBUG_LEVEL_1));
   _D(DebugPrintln("exp. boot time: " + TimeString(expBootTime), DEBUG_LEVEL_1));
 #else
   GetSysTime(&timeinfo);
-  bootTime.tm_sec = timeinfo.tm_sec;
-  bootTime.tm_min = timeinfo.tm_min;
-  bootTime.tm_hour = timeinfo.tm_hour;
-  bootTime.tm_wday = timeinfo.tm_wday;
-  bootTime.tm_mday = timeinfo.tm_mday;
-  bootTime.tm_yday = timeinfo.tm_yday;
-  bootTime.tm_mon  = timeinfo.tm_mon;
-  bootTime.tm_year = timeinfo.tm_year;
+  _copyTime(&timeinfo, &bootTime);
+  _copyDate(&timeinfo, &bootTime);
 #endif
 #ifdef TEMP_SENSOR
-  tempSensor.begin();
-  tempSensor.requestTemperaturesByIndex(0);
-  currentDataSet->temperature = (int16_t)round(tempSensor.getTempCByIndex(0) * 100);
+  currentDataSet->temperature = (int16_t)round(MeasureTemperature() * 100);
   _D(DebugPrint("Temperature: ", DEBUG_LEVEL_1));
   _D(DebugPrint(currentDataSet->temperature / 100, DEBUG_LEVEL_1));
   _D(DebugPrintln(" C", DEBUG_LEVEL_1));
 #endif
-  Measures_Off();
-  currentDataSet->errCode = errorCode;
-#ifdef GSM_MODULE
-  int  HTTPrc = 0;
-  bool GSMfailure = false;
-  if (bootCount == BOOT_CYCLES - 1){
-    #if DEBUG_LEVEL >= DEBUG_LEVEL_1
-    for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
-      t_SendData* DataSet = availableDataSet[i];
-      Serial.print("Dataset " + String(i) + ": ");
-      Serial.print(LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))));
-      Serial.println("; " + String(DataSet->errCode, HEX));
+  currentDataSet->date    = dosDate(bootTime.tm_year, bootTime.tm_mon, bootTime.tm_mday);
+  currentDataSet->time    = dosTime(bootTime.tm_hour, bootTime.tm_min, bootTime.tm_sec);
+  currentDataSet->battery = (uint16_t)(round(volt * 1000));
+  _D(_PrintDataSet(currentDataSet));
+#if DEBUG_LEVEL >= DEBUG_LEVEL_2
+  {
+    // why that complicated and not just memcopy?
+    //push_data.phtml expects 8 bit count of values, 16 bit ID, 2x32bit coordinates
+    // and than count-3 16 bit values - always 16 bit
+    byte hexbuffer[64];
+    String b64u = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";   // base64url dictionary
+    hexbuffer[0] = 11; //count of data values
+    hexbuffer[1] = herdeID();
+    hexbuffer[2] = animalID();
+    #define HEX_BUFFER_OFFSET 3
+    _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET +  0, currentDataSet->latitude);
+    _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET +  4, currentDataSet->longitude);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET +  8, currentDataSet->altitude);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 10, currentDataSet->date);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 12, currentDataSet->time);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 14, currentDataSet->battery);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 16, currentDataSet->temperature);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 18, currentDataSet->errCode);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, currentDataSet->secGPS);
+    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, currentDataSet->satellites);
+    #define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 24)
+    String HexStr = "";
+    for(int i=0; i<HEX_BUFFER_LEN; i++){
+      String _hex = String(hexbuffer[i], HEX);
+      if (_hex.length() < 2) {_hex = "0" + _hex;}
+      HexStr = HexStr + _hex;
     }
-    #endif
-	GSMfailure = true;
+    _D(DebugPrintln("bin: " + HexStr, DEBUG_LEVEL_2));
+    String Base64Str = "";
+    for (int i=0; i<=(HEX_BUFFER_LEN-3); i+=3){
+      Base64Str += b64u.charAt(hexbuffer[i] >> 2);
+      Base64Str += b64u.charAt(((hexbuffer[i]   & 3)  << 4) | (hexbuffer[i+1] >> 4));
+      Base64Str += b64u.charAt(((hexbuffer[i+1] & 15) << 2) | (hexbuffer[i+2] >> 6));
+      Base64Str += b64u.charAt(hexbuffer[i+2]   & 63);
+    }
+    if (HEX_BUFFER_LEN % 3 == 2){
+      Base64Str += b64u.charAt(hexbuffer[HEX_BUFFER_LEN-2] >> 2);
+      Base64Str += b64u.charAt(((hexbuffer[HEX_BUFFER_LEN-2] & 3)<< 4) | (hexbuffer[HEX_BUFFER_LEN-1] >> 4));
+      Base64Str += b64u.charAt((hexbuffer[HEX_BUFFER_LEN-1] & 15) << 2);
+    }
+    else if (HEX_BUFFER_LEN % 3 == 1){
+      Base64Str += b64u.charAt(hexbuffer[HEX_BUFFER_LEN-1] >> 2);
+      Base64Str += b64u.charAt((hexbuffer[HEX_BUFFER_LEN-1] & 3)<< 4);
+    }
+    _D(DebugPrintln("bas: " + Base64Str, DEBUG_LEVEL_2));
+  }
+#endif
+  MeasuresOff();
+
+#ifdef GSM_MODULE
+  if (doDataTransmission(bootCount)){
+	  int HTTPrc = 0;
+	  bool GSMfailure = true;
+	  _D(_PrintShortSummary());
     String sendLine = generateMultiSendLine(0, BOOT_CYCLES - 1, DATA_SET_BACKUPS);
     if ((sendLine.length() > 0) && (volt >= 3.5)){
       _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3));
@@ -213,62 +226,32 @@ void setup()
         GSM_on();
         if (GSMsetup()){
           _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_1));
-          int HTTPtimeOut = sendLine.length() * 20;
+          int HTTPtimeOut = sendLine.length() * 20 + 1000;
           if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-          HTTPrc = GSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data.php",
+          HTTPrc = GSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data2.php",
                              "application/x-www-form-urlencoded",
                               sendLine,
                               HTTPtimeOut,
-					          HTTPtimeOut);
+                              HTTPtimeOut);
           if (HTTPrc == 200){
             GSMfailure = false;
-            if ((errorCode & WRONG_BOOT_REASON) == 0) { lastWrongResetReason = 0; }
-            //i = 2;
           }
         }else{
           _D(DebugPrintln("GPRS check OK.", DEBUG_LEVEL_1));
         }
         GSMshutDown();
         GSM_off();
-      } ///*for (int i=0; i<2; i++)*/
-      //mark transmission result
-      for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
-        if (!emptyDataSet(availableDataSet[i])){
-          if (GSMfailure)  { availableDataSet[i]->errCode |= GSM_TRANSMISSION_FAILED; }
-          else { availableDataSet[i]->errCode &= ~GSM_TRANSMISSION_FAILED; }
-        }
-      }
-      //delete all transmitted data
-      for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
-        if((availableDataSet[i]->errCode & GSM_TRANSMISSION_FAILED) == 0){
-      	initDataSet(availableDataSet[i]);
-        }
-      }
-      //concentrate
-      int k = 0;
-      for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
-        if(!emptyDataSet(availableDataSet[i]) && (k < i) && emptyDataSet(availableDataSet[k])){
-          copyDataSet(availableDataSet[i], availableDataSet[k]);
-          initDataSet(availableDataSet[i]);
-        }
-        if(!emptyDataSet(availableDataSet[k])){ k++; }
-      }
-      //prepare next cycle
-      for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
-        if(!emptyDataSet(availableDataSet[i])){
-          copyDataSet(availableDataSet[i], availableDataSet[i+BOOT_CYCLES]);
-          initDataSet(availableDataSet[i]);
-        }
-      }
-      //if (i<1) { delay(1000); }
+      }//*for (int i=0; i<2; i++)*/
+      cleanUpDataSets(GSMfailure);
     }
+    _D(DebugPrintln("GPRS send done: " + String(millis() - msStartTime), DEBUG_LEVEL_2));
     #if DEBUG_LEVEL >= DEBUG_LEVEL_0
     if (GSMfailure){
-	  if(volt < 3.5){
-	    _D(DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1));
-	  } else {
+	    if(volt < 3.5){
+	      _D(DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1));
+	    } else {
         _D(DebugPrintln("GSM transmission failed: " + String(HTTPrc), DEBUG_LEVEL_1));
-	  }
+	    }
     }
     #endif
   }
@@ -315,185 +298,6 @@ void loop()
   delay(1000);
   #endif
 }
-
-#ifdef GPS_MODULE
-int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
-  uint32_t analog_value = 0;
-  uint32_t a_measures   = 0;
-  int32_t  measures     = 0;
-  double a_lng = 0.0;
-  double a_lat = 0.0;
-  double a_alt = 0.0;
-  int  gps_sat   = 0;
-  int  gps_day   = 0;
-  bool timestamp = false;
-  uint32_t startMs = millis();
-
-  errorCode |= (COULD_NOT_FETCH_GPS_1 << bootCount);
-  errorCode |= (WRONG_GPS_VALUES_1 << bootCount);
-  errorCode |= COULD_NOT_FETCH_GPS_TIME;
-
-  //pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
-  //digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
-  _D(DebugPrintln("GPS: Acquire position", DEBUG_LEVEL_1));
-  while(((measures < averages) || (gps_day == 0)) && ((millis() - startMs) < timeoutms)){
-    while ((SerialGPS.available() == 0) && ((millis() - startMs) < timeoutms)) {
-      analog_value += analogRead(BATTERY_ANALOG_PIN);
-      a_measures++;
-      delay(1);
-    }
-    while ((SerialGPS.available() > 0) && ((measures < averages) || (gps_day == 0))) {
-      analog_value += analogRead(BATTERY_ANALOG_PIN);
-      a_measures++;
-      gps.encode(SerialGPS.read());
-      if (   gps.location.isUpdated() && gps.location.isValid() && gps.altitude.isUpdated()
-    	  && gps.date.isUpdated() && gps.date.isValid() && gps.time.isUpdated() && gps.time.isValid()){
-        measures++;
-        if ((!timestamp) && ((gps.location.age() <= 1) || ((millis() - startMs - timeoutms) < 1500))){
-          if (SetSysToGPS()){ //resets boot time corrected by GPS time
-            if (calcCurrentTimeDiff()){
-              _D(DebugPrintln("GPS time vs. internal timer: " + String(currentTimeDiffMs), DEBUG_LEVEL_1));
-              timestamp = true;
-            } else { restartCycling(); }
-          } else { restartCycling(); }
-        }
-        if ((gps_day == 0) and (gps.date.day() > 0)){ gps_day = gps.date.day(); }
-        if (gps_sat < gps.satellites.value()) { gps_sat = gps.satellites.value(); }
-        #if DEBUG_LEVEL >= DEBUG_LEVEL_1
-        _D(DebugPrint("Latitude= ", DEBUG_LEVEL_3));
-        _D(DebugPrint(gps.location.lat(), 6, DEBUG_LEVEL_3));
-        _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_3));
-        _D(DebugPrint(gps.location.lng(), 6, DEBUG_LEVEL_3));
-        _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_3));
-        _D(DebugPrint(gps.altitude.meters(), 6, DEBUG_LEVEL_3));
-        _D(DebugPrint(" Date= ", DEBUG_LEVEL_3));
-        _D(DebugPrint(String(gps.date.year()) + "-" + String(gps.date.month()) + "-" + String(gps.date.day()), DEBUG_LEVEL_3));
-        _D(DebugPrint(" Time= ", DEBUG_LEVEL_3));
-        _D(DebugPrint(String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()), DEBUG_LEVEL_3));
-        _D(DebugPrint(" Age= ", DEBUG_LEVEL_3));
-        _D(DebugPrint(gps.location.age(), DEBUG_LEVEL_3));
-        _D(DebugPrint("ms", DEBUG_LEVEL_3));
-        _D(DebugPrint(" Sat= ", DEBUG_LEVEL_3));
-        _D(DebugPrintln(gps.satellites.value(), DEBUG_LEVEL_3));
-        #endif
-        a_lng += gps.location.lng();
-        a_lat += gps.location.lat();
-        a_alt += gps.altitude.meters();
-      }
-    }
-  }
-  if(measures > 0){
-    a_lng = a_lng / measures;
-    a_lat = a_lat / measures;
-    a_alt = a_alt / measures;
-	errorCode &= ~(COULD_NOT_FETCH_GPS_1 << bootCount);
-  }
-  if(a_measures > 0){
-    analog_value = analog_value / a_measures;
-  }
-  DataSet->latitude = (int32_t)(a_lat * 1000000);
-  DataSet->longitude = (int32_t)(a_lng * 1000000);
-  DataSet->altitude = (uint16_t)a_alt;
-  DataSet->date = dosDate(bootTime.tm_year, bootTime.tm_mon, bootTime.tm_mday);
-  DataSet->time = dosTime(bootTime.tm_hour, bootTime.tm_min, bootTime.tm_sec);
-  DataSet->battery = (uint16_t)analog_value;
-  DataSet->secGPS = (int8_t)((millis() - startMs)/1000);
-  if (!((measures > 0) && (DataSet->latitude == 0) && (DataSet->longitude == 0))){ //0.0, 0.0 must be wrong (or a fish)
-    errorCode &= ~(WRONG_GPS_VALUES_1 << bootCount);
-  }
-  if (gps_day != 0){
-    errorCode &= ~COULD_NOT_FETCH_GPS_TIME;
-  }
-  DataSet->satellites = gps_sat;
-  _D(DebugPrint("DataSet Latitude= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(DataSet->latitude, DEBUG_LEVEL_2));
-  _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(DataSet->longitude, DEBUG_LEVEL_2));
-  _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(DataSet->altitude, DEBUG_LEVEL_2));
-  _D(DebugPrint(" TimeStamp= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))), DEBUG_LEVEL_2));
-  _D(DebugPrint(" " + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), DEBUG_LEVEL_2));
-  _D(DebugPrint(" Battery= ", DEBUG_LEVEL_2));
-  _D(DebugPrint((double(DataSet->battery + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2, DEBUG_LEVEL_2));
-  _D(DebugPrint(" Satellites= ", DEBUG_LEVEL_2));
-  _D(DebugPrintln(DataSet->satellites, DEBUG_LEVEL_2));
-  _D(DebugPrintln("GPS done: " + String(DataSet->secGPS), DEBUG_LEVEL_2));
-  return measures;
-}
-
-bool SetSysToGPSTime()
-{
-  int startMs = millis();
-  uint16_t year = 0;
-  uint8_t  mon  = 0;
-  uint8_t  day  = 0;
-  uint32_t timeoutms = WAIT_FOR_GPS_TIME;
-  errorCode |= COULD_NOT_FETCH_GPS_TIME;
-  while(((year <= 2000) || (mon == 0) || (day == 0)) && ((millis() - startMs) < timeoutms)){
-    while ((SerialGPS.available() == 0) && ((millis() - startMs) < timeoutms)) {
-      delay(10);
-    }
-    while (SerialGPS.available() > 0) {
-     gps.encode(SerialGPS.read());
-     if (gps.date.isUpdated() && gps.date.isValid() && gps.time.isUpdated() && gps.time.isValid()){
-        year = gps.date.year();
-        mon  = gps.date.month();
-        day  = gps.date.day();
-        if ((year > 2000) && (mon > 0) && (day > 0)){
-          bool result = SetSysToGPS();
-          _D(DebugPrint("Set sys-time to GPS time Date= ", DEBUG_LEVEL_3));
-          _D(DebugPrint(String(year) + "-" + String(mon) + "-" + String(day), DEBUG_LEVEL_3));
-          _D(DebugPrint(" Time= ", DEBUG_LEVEL_3));
-          _D(DebugPrintln(String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()), DEBUG_LEVEL_3));
-		  return result;
-        }
-	  }
-    }
-  }
-  return false;
-}
-bool SetSysToGPS(){
-  tm time;
-  int startms = millis();
-  time.tm_year = gps.date.year()-1900;
-  time.tm_mon  = gps.date.month()-1;
-  time.tm_mday = gps.date.day();
-  time.tm_hour = gps.time.hour();
-  time.tm_min  = gps.time.minute();
-  time.tm_sec  = gps.time.second();
-  if (gps.time.centisecond() > 50) { time.tm_sec++; }
-  time_t t = mktime(&time);
-  struct timeval now = { .tv_sec = t };
-  if (settimeofday(&now, NULL) == 0){
-	int stampms = gps.time.second() + gps.time.minute() * 60 + gps.time.hour() * 3600;
-	stampms *= 1000;
-	stampms += gps.time.centisecond() * 10;
-	SetBootTimeFromMs(stampms - startms);
-	errorCode &= ~COULD_NOT_FETCH_GPS_TIME;
-	return true;
-  }
-  return false;
-}
-void Measures_On(){
-  pinMode(GPS,OUTPUT);
-  digitalWrite(GPS, GPS_ON);
-  _D(DebugPrintln("Measures on", DEBUG_LEVEL_1));
-  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX, false);
-  while(!SerialGPS) { Serial.print("."); }
-  _D(DebugPrintln("GPS on", DEBUG_LEVEL_1));
-}
-void Measures_Off(){
-  SerialGPS.end();
-  pinMode(GPS,OUTPUT);
-  digitalWrite(GPS, GPS_OFF);
-  _D(DebugPrintln("GPS off", DEBUG_LEVEL_1));
-  delay(100);
-}
-#endif //GPS_MODULE
-
-
-
 
 #ifdef USE_LORA
 void SetupLoRa(){
@@ -543,150 +347,6 @@ void SetupDisplay(){
 #endif
 
 
-uint16_t herdeID(){
-  return 1;
-}
-uint16_t animalID(){
-  return 1;
-}
-bool isInCycle(int firstCycleInHour){
-  if (bootTimeStampMs == INVALID_TIME_VALUE) { return false; } // should never happen
-  bool inCycle = false;
-  int i = 0;
-  int t = firstCycleInHour; //minute of 1st cycle within a new hour
-  while (t < (60 + firstCycleInHour)){ 
-    if (isInTime(t, bootTime.tm_min, bootTime.tm_sec)){
-      inCycle = true;
-   	  if (bootCount == i) {
-        _D(DebugPrintln("Boot: regular cycle " + String(i) + " boot", DEBUG_LEVEL_1));
-      } else {
-        _D(DebugPrintln("Boot: need to set boot count to " + String(i), DEBUG_LEVEL_1));
-		lastTimeDiffMs = 0; //not useful out of regular cycles
-        bootCount = i;
-      }
-      break;
-    } else {
-      if (bootTime.tm_min >= firstCycleInHour) {
-		if(t > bootTime.tm_min) { break; } 
-	  } else {
-		if(t > (bootTime.tm_min + 60)) { break; } 
-	  }
-    }
-    t += CYCLE_DURATION_MIN;
-    i++;
-    if (i == BOOT_CYCLES) { i = 0; }
-  }
-  if (t >=60 ) { t -= 60; }
-  //now we have the current (if in cycle) or the next (if out of cycle) boot minute -> t
-  //time for calculations - 1st: expected boot time
-  int x = (bootTime.tm_hour * 3600 + t * 60) * 1000; //ms time stamp for the next / current cycle so far
-  if((x - bootTimeStampMs) < -SLEEP_DURATION_MSEC){
-	//woken up early (maybe woken up yesterday, but exp. today) 
-	if ((bootTime.tm_hour + 1) > 23) { expBootTime.tm_hour = 0; } else { expBootTime.tm_hour = bootTime.tm_hour + 1; } 
-  } else if ((x - bootTimeStampMs) > SLEEP_DURATION_MSEC){
-	//woken up late (maybe woken up today, but exp. yesterday) 
-	if ((bootTime.tm_hour - 1) < 0) { expBootTime.tm_hour = 23; } else { expBootTime.tm_hour = bootTime.tm_hour - 1; } 
-  } else {
-    expBootTime.tm_hour = bootTime.tm_hour;
-  }
-  expBootTime.tm_min = t;
-  expBootTime.tm_sec = 0;
-  expectedBootTimeMs = expBootTime.tm_hour * 3600 + t * 60;
-  expectedBootTimeMs *= 1000;
-  //2nd time diff 
-  if (!calcCurrentTimeDiff()) { return false; };
-  return inCycle;
-}
-
-bool calcCurrentTimeDiff(){
-  if ((expectedBootTimeMs == INVALID_TIME_VALUE) || (bootTimeStampMs == INVALID_TIME_VALUE)) { 
-    currentTimeDiffMs = 0; 
-	return false; 
-  }
-  int y = expectedBootTimeMs - bootTimeStampMs;
-  if(y < (SLEEP_DURATION_MSEC - MS_PER_DAY)){
-    currentTimeDiffMs = y + MS_PER_DAY;
-  } else if (y > (MS_PER_DAY - SLEEP_DURATION_MSEC)){
-	currentTimeDiffMs = y - MS_PER_DAY;
-  } else {
-    currentTimeDiffMs = y;
-  }
-  return true;
-}
-
-bool isInTime(const int target_m, const int current_m, const int current_s){
-  int current = current_m;
-  int target  = target_m;
-  int wrap_border = 3600 - (SLEEP_DURATION_MSEC / 1000);
-
-  if (target > 60)  { target -= 60; }
-  current *= 60;
-  current += current_s;
-  target  *= 60;
-  int diffToRegularS = target - current;
-  if (diffToRegularS > wrap_border) { diffToRegularS -= 3600; }
-  else if (diffToRegularS < (wrap_border * -1)) { diffToRegularS += 3600; }
-  #if DEBUG_LEVEL > 0
-  if ((diffToRegularS >= -SLEEP_MAX_SHIFT_S) && (diffToRegularS <= SLEEP_MAX_SHIFT_S)) {
-    _D(DebugPrintln("InTime: target: " + String(target) + "; current: " + String(current) + "diff: " + String(diffToRegularS) + "max_diff: " + String(SLEEP_MAX_SHIFT_S), DEBUG_LEVEL_1));
-  }
-  #endif
-  return ((diffToRegularS >= -SLEEP_MAX_SHIFT_S) && (diffToRegularS <= SLEEP_MAX_SHIFT_S));
-}
-
-void SetBootTimeFromMs(int timeStampMs){
-  int bootms = timeStampMs;
-  if (bootms < 0) { bootms += MS_PER_DAY; }
-  bootTimeStampMs = bootms;
-  bootTime.tm_hour = (int)(bootms / 3600000);
-  bootms -= bootTime.tm_hour * 3600000;
-  bootTime.tm_min = (int)(bootms / 60000);
-  bootms -= bootTime.tm_min * 60000;
-  bootTime.tm_sec = bootms / 1000;
-}
-
-double GetVoltage(){
-  int analog_value;
-  //pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
-  //digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
-  analog_value = 0;
-  for(int i=0; i<1000; i++){ analog_value += analogRead(BATTERY_ANALOG_PIN); }
-  analog_value /= 1000;
-  return((double)(analog_value + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER);
-}
-
-int8_t  GetLocalTimeHourShift(){
-  /*
-  tm cur, summer, winter;
-  if (!GetSysTime(&cur)){ return 0; }
-  summer.tm_year = cur.tm_year;
-  summer.tm_mon  = 3;
-  summer.tm_mday = 31;
-  */
-  return 2;
-}
-uint16_t measurePin(const uint8_t pin){
-  unsigned long analog_value = 0;
-
-  for(int i=0; i<2000; i++){
-    analog_value += analogRead(pin);
-    delay(1);
-  }
-  analog_value = analog_value / 2000;
-  return (uint16_t)analog_value;
-}
-bool GetSysTime(tm *info){
-  uint32_t count = 500;
-  time_t now;
-  do{
-    time(&now);
-    localtime_r(&now, info);
-    if(info->tm_year > (2016 - 1900)){ info->tm_year += 1900; info->tm_mon++; return true; }
-    delay(10);
-  }while(count--);
-  return false;
-}
-
 void initGlobalVar(){
   bootTime.tm_hour    = INVALID_TIME_VALUE;
   bootTime.tm_min     = INVALID_TIME_VALUE;
@@ -711,8 +371,9 @@ void restartCycling(){
   goto_sleep(SLEEP_DURATION_MSEC);
 }
 
-void goto_sleep(int mseconds){
+void goto_sleep(uint32_t mseconds){
   esp_timer_delete(watchd);
+  forceMeasuresOff();
   pinMode(5,INPUT);
   pinMode(14,INPUT);
   pinMode(15,INPUT);
@@ -723,15 +384,18 @@ void goto_sleep(int mseconds){
   pinMode(26,INPUT);
   pinMode(27,INPUT);
   pinMode(GSM,INPUT);
-  pinMode(GPS,INPUT);
-  esp_sleep_enable_timer_wakeup(mseconds * uS_TO_mS_FACTOR);
+  pinMode(MEASURES_ENABLE_PIN,INPUT); // HIGH-Z = off
+  #if DEBUG_LEVEL >= DEBUG_LEVEL_2
+  _D(DebugPrintln("Sleep for : " + String(uint32_t(mseconds/1000)) + " seconds", DEBUG_LEVEL_2));
+  delay(100);
+  #endif
+  esp_sleep_enable_timer_wakeup(uint64_t(mseconds) * uint64_t(uS_TO_mS_FACTOR));
   //esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
   esp_deep_sleep_start();
 }
 
 void checkWakeUpReason(){
   esp_sleep_wakeup_cause_t wakeup_reason;
-  uint32_t ebuffer = 0;
   wakeup_reason = esp_sleep_get_wakeup_cause();
   #if DEBUG_LEVEL >= DEBUG_LEVEL_1
   switch(wakeup_reason)
@@ -745,18 +409,9 @@ void checkWakeUpReason(){
 
   }
   #endif
-  ebuffer =  errorCode & WRONG_BOOT_REASON_MASK;
-  ebuffer =  ebuffer << 1;
-  ebuffer &= WRONG_BOOT_REASON_MASK;
   if(wakeup_reason != ESP_SLEEP_WAKEUP_TIMER){
-	  ebuffer |= WRONG_BOOT_REASON;
-	  lastWrongResetReason = (int8_t)rtc_get_reset_reason(0);
+	  lastWrongResetReason = 1;
   }
-  errorCode &= ~WRONG_BOOT_REASON_MASK;
-  errorCode |= ebuffer;
-  errorCode &= ~WRONG_RESET_REASON_MASK;
-  errorCode |= (lastWrongResetReason << 24) & WRONG_RESET_REASON_MASK;
-  _D(DebugPrintln("Error Code: " +  String(errorCode, HEX), DEBUG_LEVEL_1));
 }
 
 #ifdef OLED_DISPLAY
@@ -772,6 +427,57 @@ void displayLocationData(int cnt, double latt, double lngg, int volt)
 }
 #endif
 
+static void watchDog(void* arg)
+{
+	_D(DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1));
+	delay(10);
+	bootCount = REFETCH_SYS_TIME;
+    goto_sleep(10000);
+}
+
+void setupWatchDog(void){
+    const esp_timer_create_args_t timargs = {
+            .callback = &watchDog
+    //        .name = "takecare"
+    };
+    esp_timer_create(&timargs, &watchd);
+    esp_timer_start_once(watchd, 300000000); //cut all after 5 minutes
+}
+#if DEBUG_LEVEL >= DEBUG_LEVEL_1
+void doResetTests(){
+  _D(DebugPrintln("Boot: not in cycle.", DEBUG_LEVEL_1));
+  #ifdef GSM_MODULE
+  if (volt >= 3.6){ GSMCheckSignalStrength(); }
+  #endif
+  #ifdef TEMP_SENSOR
+  _D(DebugPrintln("Temperature: " + String(MeasureTemperature()), DEBUG_LEVEL_1));;
+  #endif
+  _D(DebugPrintln("Sleep for : " + String(currentTimeDiffMs - millis()), DEBUG_LEVEL_2));
+  delay(100);
+}
+void _PrintDataSet(t_SendData* DataSet){
+  _D(DebugPrint("DataSet Latitude= ", DEBUG_LEVEL_2));
+  _D(DebugPrint(DataSet->latitude, DEBUG_LEVEL_2));
+  _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_2));
+  _D(DebugPrint(DataSet->longitude, DEBUG_LEVEL_2));
+  _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_2));
+  _D(DebugPrint(DataSet->altitude, DEBUG_LEVEL_2));
+  _D(DebugPrint(" TimeStamp= ", DEBUG_LEVEL_2));
+  _D(DebugPrint(String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))), DEBUG_LEVEL_2));
+  _D(DebugPrint(" " + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), DEBUG_LEVEL_2));
+  _D(DebugPrint(" Battery= ", DEBUG_LEVEL_2));
+  _D(DebugPrint(String(double(DataSet->battery)/1000, 2), DEBUG_LEVEL_2));
+  _D(DebugPrint(" Satellites= ", DEBUG_LEVEL_2));
+  _D(DebugPrintln(DataSet->satellites, DEBUG_LEVEL_2));
+}
+void _PrintShortSummary(){
+  for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+    t_SendData* DataSet = availableDataSet[i];
+    _D(DebugPrint("Dataset " + String(i) + ": ", DEBUG_LEVEL_3));
+    _D(DebugPrint(LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), DEBUG_LEVEL_3));
+    _D(DebugPrintln("; " + String(DataSet->errCode, HEX), DEBUG_LEVEL_3));
+  }
+}
 void testMeasure(){
   uint32_t a_measures   = 0;
   int32_t  measures     = 0;
@@ -794,21 +500,4 @@ void testMeasure(){
   }
   //pinMode(BATTERY_ANALOG_ENABLE,INPUT);
 }
-
-static void watchDog(void* arg)
-{
-	_D(DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1));
-	delay(10);
-	bootCount = REFETCH_SYS_TIME;
-    goto_sleep(10000);
-}
-
-void setupWatchDog(void){
-    const esp_timer_create_args_t timargs = {
-            .callback = &watchDog
-    //        .name = "takecare"
-    };
-    esp_timer_create(&timargs, &watchd);
-    esp_timer_start_once(watchd, 300000000); //cut all after 5 minutes
-}
-
+#endif

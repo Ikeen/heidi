@@ -9,7 +9,9 @@
 #define HEIDI_DATA_H_
 
 #include <stdint.h>
+#include <WString.h>
 #include <esp_attr.h>
+#include <time.h>
 #include "heidi-defines.h"
 
 #define DATA_SET_LEN     32
@@ -24,15 +26,14 @@ typedef struct _t_SendData{
   int32_t  latitude;
   int32_t  longitude;
   uint16_t altitude;
-  uint16_t date; // 0-4 Day of the month / 5-8 Month /  9-15 Year offset from 1980
-  uint16_t time; // 0-4 Second divided by 2 / 5-10 Minute / 11-15 Hour
+  uint16_t date; // DOS-format: 0-4 Day of the month / 5-8 Month /  9-15 Year offset from 2020
+  uint16_t time; // DOS-format: 0-4 Second divided by 2 / 5-10 Minute / 11-15 Hour
   uint16_t battery; //1/1000 volt
   int16_t  temperature; //1/100 °C
-  uint32_t errCode; //
-  int8_t   secGPS; //seconds to fetch GPS position
-  //uint8_t  id;
+  uint16_t errCode; //
+  uint8_t  secGPS; //seconds to fetch GPS position
   uint8_t  satellites;
-  //total size: 24Bytes -> 28 = 7*4;
+  //total size: 22 Bytes;
 }t_SendData;
 
 extern t_SendData* availableDataSet[MAX_DATA_SETS];
@@ -41,9 +42,10 @@ void     initDataSets(void);
 void     initDataSet(t_SendData* DataSet);
 bool     emptyDataSet(t_SendData* DataSet);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
+void     cleanUpDataSets(bool TransmissionFailed);
 
-String generateSendLine(t_SendData* DataSet);
-String generateMultiSendLine(int first, int last, int backups = 0);
+String   generateSendLine(t_SendData* DataSet);
+String   generateMultiSendLine(int first, int last, int backups = 0);
 
 void     getRTCDataSpace(uint8_t**);
 

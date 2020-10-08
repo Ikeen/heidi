@@ -7,22 +7,15 @@
 
 #ifndef HEIDI_ERROR_H_
 #define HEIDI_ERROR_H_
+#include "heidi-data.h"
 
 /** error handling **/
 
 #define COULD_NOT_FETCH_GPS_TIME 0x0001
 #define GSM_TRANSMISSION_FAILED  0x0002
-#define COULD_NOT_FETCH_GPS_1    0x0010
-#define COULD_NOT_FETCH_GPS_2    0x0020
-#define COULD_NOT_FETCH_GPS_3    0x0040
-#define COULD_NOT_FETCH_GPS_4    0x0080
-#define WRONG_GPS_VALUES_1       0x0100
-#define WRONG_GPS_VALUES_2       0x0200
-#define WRONG_GPS_VALUES_3       0x0400
-#define WRONG_GPS_VALUES_4       0x0800
-#define WRONG_BOOT_REASON        0x00010000
-#define WRONG_BOOT_REASON_MASK   0x00FF0000
-#define WRONG_RESET_REASON_MASK  0xFF000000
+#define COULD_NOT_FETCH_GPS      0x0004
+#define WRONG_GPS_VALUES         0x0008
+#define WRONG_BOOT_REASON        0x0010
 
 //    case 1 : Serial.println ("POWERON_RESET");break;          /**<1, Vbat power on reset*/
 //    case 3 : Serial.println ("SW_RESET");break;               /**<3, Software reset digital core*/
@@ -40,6 +33,13 @@
 //    case 15 : Serial.println ("RTCWDT_BROWN_OUT_RESET");break;/**<15, Reset when the vdd voltage is not stable*/
 //    case 16 : Serial.println ("RTCWDT_RTC_RESET");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
 
-extern uint32_t errorCode;
+void initError();
+void setError(uint16_t code);
+void rmError(uint16_t code);
+bool getError(uint16_t code);
+void setError(t_SendData* DataSet, uint16_t code);
+void rmError(t_SendData* DataSet, uint16_t code);
+bool getError(t_SendData* DataSet, uint16_t code);
+uint16_t getErrorCode();
 
 #endif /* HEIDI_ERROR_H_ */

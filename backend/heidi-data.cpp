@@ -7,6 +7,7 @@
 #include <rom/rtc.h>
 #include <time.h>
 #include "heidi-backend.h"
+#include "heidi-measures.h"
 
 RTC_DATA_ATTR uint8_t SendData_Space[DATA_SET_MEM_SPACE]; //bis 32 Byte (derzeit 25) können wir hier 32 Datensätze = 1K verballern
 t_SendData* availableDataSet[MAX_DATA_SETS];
@@ -64,7 +65,7 @@ String generateSendLine(t_SendData* DataSet){
     result += "&Altitude=" + String(DataSet->altitude);
     result += "&Date=" + String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date)));
     result += "&Time=" + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time)));
-    result += "&Battery=" + String((double(DataSet->battery + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2);
+    result += "&Battery=" + String((double(DataSet->battery) / 1000), 2);
     result += "&FreeValue1=" + String((int)DataSet->satellites);
     result += "&FreeValue2="  + String((float)DataSet->temperature / 100, 2);
     result += "&FreeValue3="  + String(DataSet->errCode, HEX);
@@ -77,6 +78,7 @@ String generateMultiSendLine(int first, int last, int backups){
   //php.ini: max_input_var = 1000 by default (1 data set = 7..12 vars)
   //php.ini: post_max_size = 8M by default - SIM800 312k only! (1 data set = 90..150 byte)
   //->up 80 data sets possible
+  //don't forget to increase timeouts on web server side
   //"ID1=0002.1235&Lo1=-13.344855&La1=51.006709&Al1=305&Da1=2019-06-09&Ti1=17:20:00&Ba1=4.02&ID1=0002.1235&Lo1=...",
   t_SendData* DataSet;
   String result = "";
@@ -103,7 +105,7 @@ String generateMultiSendLine(int first, int last, int backups){
         result += "&Al" + String(k) + "=" + String(DataSet->altitude);
         result += "&Da" + String(k) + "=" + String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date)));
         result += "&Ti" + String(k) + "=" + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time)));
-        result += "&Ba" + String(k) + "=" + String((double(DataSet->battery + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2);
+        result += "&Ba" + String(k) + "=" + String((double(DataSet->battery) / 1000), 2);
         result += "&F1" + String(k) + "=" + String((int)DataSet->satellites);
         result += "&F2" + String(k) + "=" + String((float)DataSet->temperature / 100, 2);
         result += "&F3" + String(k) + "=" + String(DataSet->errCode, HEX);
@@ -113,6 +115,39 @@ String generateMultiSendLine(int first, int last, int backups){
   }
   return result;
 }
+
+void cleanUpDataSets(bool TransmissionFailed){
+  //mark transmission result
+  for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+    if (!emptyDataSet(availableDataSet[i])){
+      if (TransmissionFailed)  { setError(availableDataSet[i], GSM_TRANSMISSION_FAILED); }
+      else { rmError(availableDataSet[i], GSM_TRANSMISSION_FAILED); }
+    }
+  }
+  //delete all transmitted data
+  for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+    if(getError(availableDataSet[i], GSM_TRANSMISSION_FAILED) == false){
+      initDataSet(availableDataSet[i]);
+    }
+  }
+  //concentrate
+  int k = 0;
+  for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
+    if(!emptyDataSet(availableDataSet[i]) && (k < i) && emptyDataSet(availableDataSet[k])){
+      copyDataSet(availableDataSet[i], availableDataSet[k]);
+      initDataSet(availableDataSet[i]);
+    }
+    if(!emptyDataSet(availableDataSet[k])){ k++; }
+  }
+  //prepare next cycle
+  for(int i=(BOOT_CYCLES * DATA_SET_BACKUPS); i >= 0; i--){
+    if(!emptyDataSet(availableDataSet[i])){
+      copyDataSet(availableDataSet[i], availableDataSet[i+BOOT_CYCLES]);
+      initDataSet(availableDataSet[i]);
+    }
+  }
+}
+
 
 void getRTCDataSpace(uint8_t** buffer){
 	*buffer = SendData_Space;
