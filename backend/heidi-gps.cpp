@@ -12,6 +12,7 @@
 #include "heidi-sys.h"
 #include "heidi-gps.h"
 #include "heidi-error.h"
+#include "heidi-fence.h"
 #include "heidi-debug.h"
 #include "heidi-measures.h"
 
@@ -26,6 +27,7 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
   double   a_lng    = 0.0;
   double   a_lat    = 0.0;
   double   a_alt    = 0.0;
+  int      a_hdop   = 0;
   int      gps_sat  = 0;
   uint32_t startMs  = millis();
 
@@ -44,24 +46,45 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
         a_lng += gps.location.lng();
         a_lat += gps.location.lat();
         a_alt += gps.altitude.meters();
+        a_hdop += gps.hdop.value();
+        _D(DebugPrint("GPS: Lat :" + String(gps.location.lat(),6) + ", Lon: " + String(gps.location.lng(), 6), DEBUG_LEVEL_1));
+        _D(DebugPrintln("GPS: Sats:" + String(gps.satellites.value()) + ", HDOP: " + String(gps.hdop.value() / 10), DEBUG_LEVEL_1));
       }
     }
   }
   if(measures > 0){
-    a_lng = a_lng / measures;
-    a_lat = a_lat / measures;
-    a_alt = a_alt / measures;
+    a_lng /= measures;
+    a_lat /= measures;
+    a_alt /= measures;
+    a_hdop /= measures;
+    a_hdop /= 10;
 	  rmError(DataSet, COULD_NOT_FETCH_GPS);
   }
-  DataSet->latitude = (int32_t)(a_lat * 1000000);
-  DataSet->longitude = (int32_t)(a_lng * 1000000);
-  DataSet->altitude = (uint16_t)a_alt;
-  DataSet->secGPS = (int8_t)((millis() - startMs)/1000);
+  DataSet->latitude = GeoToInt(a_lat);
+  DataSet->longitude = GeoToInt(a_lng);
+  DataSet->altitude = (int16_t)a_alt;
+  //DataSet->secGPS = (int8_t)((millis() - startMs)/1000);
+  DataSet->GPShdop  = (uint8_t)a_hdop;
   if (!((measures > 0) && (DataSet->latitude == 0) && (DataSet->longitude == 0))){ //0.0, 0.0 must be wrong (or a fish)
     rmError(DataSet, WRONG_GPS_VALUES);
   }
+  DataSet->metersOut = 0;
+  if(!(getError(DataSet, COULD_NOT_FETCH_GPS) || getError(DataSet, WRONG_GPS_VALUES))){
+    t_PointData position;
+    position.latitude = a_lat;
+    position.longitude = a_lng;
+    if(!pointIn(&position)){
+      int distance = meterDistFromFence(&position);
+      if(distance > 65535){
+        DataSet->metersOut = 65535;
+      } else {
+        DataSet->metersOut = (uint16_t)distance;
+      }
+      _D(DebugPrintln("GPS: position " + String(DataSet->metersOut) + " meters out", DEBUG_LEVEL_1));
+    } _D(else {_D(DebugPrintln("GPS: position in", DEBUG_LEVEL_1));})
+  }
   DataSet->satellites = gps_sat;
-  _D(DebugPrintln("GPS done: " + String(DataSet->secGPS), DEBUG_LEVEL_2));
+  _D(DebugPrintln("GPS done: " + String((millis() - startMs)/1000), DEBUG_LEVEL_2));
   return measures;
 }
 
@@ -128,6 +151,31 @@ void closeGPS(){
   SerialGPS.end();
   MeasuresOff();
   _D(DebugPrintln("GPS off", DEBUG_LEVEL_2));
+}
+
+void testGPS(){
+  int startMs = millis();
+  while ((SerialGPS.available() == 0) && ((millis() - startMs) < 60000)) { delay(10); }
+  while ((SerialGPS.available() > 0)) {
+    gps.encode(SerialGPS.read());
+    if (   gps.location.isUpdated() && gps.location.isValid() && gps.altitude.isValid()
+        && gps.satellites.isValid() && gps.hdop.isValid()){
+      _D(DebugPrint("Latitude= ", DEBUG_LEVEL_1));
+      _D(DebugPrint(gps.location.lat(), 6, DEBUG_LEVEL_1));
+      _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_1));
+      _D(DebugPrint(gps.location.lng(), 6, DEBUG_LEVEL_1));
+      _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_1));
+      _D(DebugPrintln(gps.altitude.meters(), 6, DEBUG_LEVEL_1));
+      _D(DebugPrint("Satellites= ", DEBUG_LEVEL_1));
+      _D(DebugPrint(gps.satellites.value(), DEBUG_LEVEL_1));
+      _D(DebugPrint(" HDOP= ", DEBUG_LEVEL_1));
+      _D(DebugPrintln(gps.hdop.value()/10, DEBUG_LEVEL_1));
+      break;
+    }
+  }
+  if(!SerialGPS.available()){
+    _D(DebugPrintln("Could not fetch GPS", DEBUG_LEVEL_1));
+  }
 }
 
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1

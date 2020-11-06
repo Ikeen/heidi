@@ -18,33 +18,9 @@
 
 #include "heidi-backend.h"
 #include "images.h"
-#ifdef OLED_DISPLAY
-#include "SSD1306.h"
-#endif
 #include <sys/time.h>
 #include "heidi-measures.h"
 #include "heidi-sys.h"
-
-//#define RECEIVER
-//#define SENDER
-
-#ifdef RECEIVER
-#define USE_LORA
-#endif
-#ifdef SENDER
-#define USE_LORA
-#endif
-
-#ifdef OLED_DISPLAY
-SSD1306 display(0x3c, 4, 15);
-String rssi = "RSSI --";
-String packSize = "--";
-String packet ;
-#endif
-
-RTC_DATA_ATTR int8_t     bootCount            = START_FROM_RESET;
-RTC_DATA_ATTR int8_t     lastWrongResetReason = 0;
-RTC_DATA_ATTR int32_t    lastTimeDiffMs       = 0;
 
 t_SendData* currentDataSet;
 
@@ -64,12 +40,13 @@ void setup()
   tm timeinfo;
   msStartTime = millis();
   #ifdef GSM_MODULE
-    GSM_off();
+  hGSM_off();
   #endif
   LED_off();
   setupWatchDog();
   Serial.begin(115200); //9600);
   /**** check voltage ****/
+  #ifdef CHECK_BATTERY
   MeasuresOn();  //enable all measures - switch off in goto_sleep
   volt = MeasureVoltage();
   _D(DebugPrintln("Battery: " + String(volt, 2), DEBUG_LEVEL_1));
@@ -83,11 +60,11 @@ void setup()
     _D(delay(100));
     goto_sleep(SLEEP_DURATION_MSEC - millis());
   }
+  #else
+  volt = 4.0;
+  #endif
   _D(DebugPrintln("Boot number: " + String(bootCount), DEBUG_LEVEL_1));
   /**** setup ****/
-#ifdef OLED_DISPLAY
-  void SetupDisplay();
-#endif
 #ifdef USE_LORA
   SetupLoRa();
 #endif
@@ -130,13 +107,19 @@ void setup()
   _D(DebugPrintln(volt, 2, DEBUG_LEVEL_1));
   //find expected boot time
   if(!isInCycle(init_cycle, &bootCount)){ //calculates expected boot time
-	lastTimeDiffMs = 0;       //not useful out of regular cycles
+	  lastTimeDiffMs = 0;       //not useful out of regular cycles
     _D(doResetTests());
+    doResetInits();
+    #ifndef TEST_ON_BOOT
     if (currentTimeDiffMs <= 0) { goto_sleep(SLEEP_DURATION_MSEC); } //something went wrong
-	if ((currentTimeDiffMs - millis()) < 1000) { goto_sleep(1000); } //just to be sure
+	  if ((currentTimeDiffMs - millis()) < 1000) { goto_sleep(1000); } //just to be sure
     closeGPS();
     goto_sleep(currentTimeDiffMs - millis());
+    #else
+    bootCount = 0;
+    #endif
   }
+
   lastWrongResetReason = 0;
   currentDataSet = availableDataSet[bootCount];
 
@@ -150,9 +133,15 @@ void setup()
   _D(DebugPrintln("cor. boot time: " + TimeString(bootTime), DEBUG_LEVEL_1));
   _D(DebugPrintln("exp. boot time: " + TimeString(expBootTime), DEBUG_LEVEL_1));
 #else
-  GetSysTime(&timeinfo);
-  _copyTime(&timeinfo, &bootTime);
-  _copyDate(&timeinfo, &bootTime);
+  currentTimeDiffMs = SLEEP_DUR_NOTIME;
+  _D(doResetTests());
+  if (GetSysTime(&timeinfo)){
+    _copyTime(&timeinfo, &bootTime);
+    _copyDate(&timeinfo, &bootTime);
+  } else {
+    MeasuresOff();
+    goto_sleep(SLEEP_DUR_NOTIME);
+  }
 #endif
 #ifdef TEMP_SENSOR
   currentDataSet->temperature = (int16_t)round(MeasureTemperature() * 100);
@@ -163,94 +152,46 @@ void setup()
   currentDataSet->date    = dosDate(bootTime.tm_year, bootTime.tm_mon, bootTime.tm_mday);
   currentDataSet->time    = dosTime(bootTime.tm_hour, bootTime.tm_min, bootTime.tm_sec);
   currentDataSet->battery = (uint16_t)(round(volt * 1000));
-  _D(_PrintDataSet(currentDataSet));
-#if DEBUG_LEVEL >= DEBUG_LEVEL_2
-  {
-    // why that complicated and not just memcopy?
-    //push_data.phtml expects 8 bit count of values, 16 bit ID, 2x32bit coordinates
-    // and than count-3 16 bit values - always 16 bit
-    byte hexbuffer[64];
-    String b64u = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";   // base64url dictionary
-    hexbuffer[0] = 11; //count of data values
-    hexbuffer[1] = herdeID();
-    hexbuffer[2] = animalID();
-    #define HEX_BUFFER_OFFSET 3
-    _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET +  0, currentDataSet->latitude);
-    _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET +  4, currentDataSet->longitude);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET +  8, currentDataSet->altitude);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 10, currentDataSet->date);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 12, currentDataSet->time);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 14, currentDataSet->battery);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 16, currentDataSet->temperature);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 18, currentDataSet->errCode);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, currentDataSet->secGPS);
-    _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, currentDataSet->satellites);
-    #define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 24)
-    String HexStr = "";
-    for(int i=0; i<HEX_BUFFER_LEN; i++){
-      String _hex = String(hexbuffer[i], HEX);
-      if (_hex.length() < 2) {_hex = "0" + _hex;}
-      HexStr = HexStr + _hex;
-    }
-    _D(DebugPrintln("bin: " + HexStr, DEBUG_LEVEL_2));
-    String Base64Str = "";
-    for (int i=0; i<=(HEX_BUFFER_LEN-3); i+=3){
-      Base64Str += b64u.charAt(hexbuffer[i] >> 2);
-      Base64Str += b64u.charAt(((hexbuffer[i]   & 3)  << 4) | (hexbuffer[i+1] >> 4));
-      Base64Str += b64u.charAt(((hexbuffer[i+1] & 15) << 2) | (hexbuffer[i+2] >> 6));
-      Base64Str += b64u.charAt(hexbuffer[i+2]   & 63);
-    }
-    if (HEX_BUFFER_LEN % 3 == 2){
-      Base64Str += b64u.charAt(hexbuffer[HEX_BUFFER_LEN-2] >> 2);
-      Base64Str += b64u.charAt(((hexbuffer[HEX_BUFFER_LEN-2] & 3)<< 4) | (hexbuffer[HEX_BUFFER_LEN-1] >> 4));
-      Base64Str += b64u.charAt((hexbuffer[HEX_BUFFER_LEN-1] & 15) << 2);
-    }
-    else if (HEX_BUFFER_LEN % 3 == 1){
-      Base64Str += b64u.charAt(hexbuffer[HEX_BUFFER_LEN-1] >> 2);
-      Base64Str += b64u.charAt((hexbuffer[HEX_BUFFER_LEN-1] & 3)<< 4);
-    }
-    _D(DebugPrintln("bas: " + Base64Str, DEBUG_LEVEL_2));
-  }
-#endif
+  _D(_PrintDataSet(currentDataSet, DEBUG_LEVEL_3));
   MeasuresOff();
 
 #ifdef GSM_MODULE
   if (doDataTransmission(bootCount)){
 	  int HTTPrc = 0;
 	  bool GSMfailure = true;
-	  _D(_PrintShortSummary());
-    String sendLine = generateMultiSendLine(0, BOOT_CYCLES - 1, DATA_SET_BACKUPS);
-    if ((sendLine.length() > 0) && (volt >= 3.5)){
-      _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3));
-      /*for (int i=0; i<2; i++)*/{
-        GSM_on();
-        if (GSMsetup()){
-          _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_1));
+	  _D(_PrintShortSummary(DEBUG_LEVEL_3));
+    String sendLine = generateMulti64SendLine(0, BOOT_CYCLES - 1, DATA_SET_BACKUPS);
+    if ((sendLine.length() > 0) && (volt >= GSM_MINIMUM_VOLTAGE)){
+      {
+        hGSM_on();
+        if (hGSMsetup()){
+          _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3));
           int HTTPtimeOut = sendLine.length() * 20 + 1000;
           if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-          HTTPrc = GSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data2.php",
+          HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
                              "application/x-www-form-urlencoded",
                               sendLine,
                               HTTPtimeOut,
                               HTTPtimeOut);
           if (HTTPrc == 200){
-            GSMfailure = false;
+            _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_1));
+            GSMfailure = !setFenceFromHTTPresponse(hGSMGetLastResponse());
           }
         }else{
           _D(DebugPrintln("GPRS check OK.", DEBUG_LEVEL_1));
         }
-        GSMshutDown();
-        GSM_off();
-      }//*for (int i=0; i<2; i++)*/
+        hGSMshutDown();
+        hGSM_off();
+      }
       cleanUpDataSets(GSMfailure);
     }
     _D(DebugPrintln("GPRS send done: " + String(millis() - msStartTime), DEBUG_LEVEL_2));
     #if DEBUG_LEVEL >= DEBUG_LEVEL_0
     if (GSMfailure){
-	    if(volt < 3.5){
+	    if(volt < GSM_MINIMUM_VOLTAGE){
 	      _D(DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1));
 	    } else {
-        _D(DebugPrintln("GSM transmission failed: " + String(HTTPrc), DEBUG_LEVEL_1));
+        _D(DebugPrintln("GSM result: " + String(HTTPrc), DEBUG_LEVEL_1));
 	    }
     }
     #endif
@@ -290,14 +231,7 @@ void setup()
 }
 
 void loop()
-{
-  #ifdef OLED_DISPLAY
-  display.clear();
-  display.drawString(4 , 1 , "GPS waiting\nfor 1st lock\n" + String(float(analogRead(ANALOG_PIN_0))/4095*6.6, 2) + " V\n");
-  display.display();
-  delay(1000);
-  #endif
-}
+{}
 
 #ifdef USE_LORA
 void SetupLoRa(){
@@ -333,19 +267,6 @@ void SetupLoRa(){
   //LoRa.receive();
 }
 #endif //USE_LORA
-#ifdef OLED_DISPLAY
-void SetupDisplay(){
-  pinMode(16,OUTPUT);
-  digitalWrite(16, LOW);    // set GPIO16 low to reset OLED
-  delay(50);
-  digitalWrite(16, HIGH); // while OLED is running, must set GPIO16 in high、
-  display.init();
-  display.flipScreenVertically();
-  display.setFont(ArialMT_Plain_16);
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-}
-#endif
-
 
 void initGlobalVar(){
   bootTime.tm_hour    = INVALID_TIME_VALUE;
@@ -354,14 +275,15 @@ void initGlobalVar(){
   expBootTime.tm_hour = INVALID_TIME_VALUE;
   expBootTime.tm_min  = INVALID_TIME_VALUE;
   expBootTime.tm_sec  = INVALID_TIME_VALUE;
-  initDataSets();
-  _D(DebugPrintln("Boot number: " + String(bootCount), DEBUG_LEVEL_1));
+  initRTCData();
   if (bootCount == START_FROM_RESET){
-	_D(DebugPrintln("Clear all data sets", DEBUG_LEVEL_1));
-	for(int i=0; i<MAX_DATA_SETS; i++){
+    _D(DebugPrintln("Clear all data sets", DEBUG_LEVEL_1));
+    for(int i=0; i<MAX_DATA_SETS; i++){
       initDataSet(availableDataSet[i]);
-	}
-	bootCount = REFETCH_SYS_TIME;
+    }
+    _D(DebugPrintln("Clear fence", DEBUG_LEVEL_1));
+    void clearFence();
+    bootCount = REFETCH_SYS_TIME;
   }
 }
 
@@ -414,19 +336,6 @@ void checkWakeUpReason(){
   }
 }
 
-#ifdef OLED_DISPLAY
-void displayLocationData(int cnt, double latt, double lngg, int volt)
-{
-  display.clear();
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  display.setFont(ArialMT_Plain_16);
-  String DisplayData="Digits: " + String(cnt) + ",\n U:" + String(float(volt)/4095*3.3, 2) + "\n";
-  //String DisplayData="P: " + String(cnt) + ", U:" + String(float(volt)/4095*3.3, 2) + " V\nLat: " + String(latt, 6) + "\nLon: " + String(lngg, 6) + "\n";
-  display.drawString(4 , 1 , DisplayData);
-  display.display();
-}
-#endif
-
 static void watchDog(void* arg)
 {
 	_D(DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1));
@@ -446,38 +355,46 @@ void setupWatchDog(void){
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1
 void doResetTests(){
   _D(DebugPrintln("Boot: not in cycle.", DEBUG_LEVEL_1));
+  //testGeoFencing();
+  //testData();
   #ifdef GSM_MODULE
-  if (volt >= 3.6){ GSMCheckSignalStrength(); }
+  //if (volt >= GSM_MINIMUM_VOLTAGE){ hGSMCheckSignalStrength(); }
+  #endif
+  #ifdef GPS_MODULE
+  //testGPS();
   #endif
   #ifdef TEMP_SENSOR
-  _D(DebugPrintln("Temperature: " + String(MeasureTemperature()), DEBUG_LEVEL_1));;
+  _D(DebugPrintln("Temperature: " + String(MeasureTemperature()), DEBUG_LEVEL_1));
   #endif
-  _D(DebugPrintln("Sleep for : " + String(currentTimeDiffMs - millis()), DEBUG_LEVEL_2));
-  delay(100);
 }
-void _PrintDataSet(t_SendData* DataSet){
-  _D(DebugPrint("DataSet Latitude= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(DataSet->latitude, DEBUG_LEVEL_2));
-  _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(DataSet->longitude, DEBUG_LEVEL_2));
-  _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(DataSet->altitude, DEBUG_LEVEL_2));
-  _D(DebugPrint(" TimeStamp= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))), DEBUG_LEVEL_2));
-  _D(DebugPrint(" " + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), DEBUG_LEVEL_2));
-  _D(DebugPrint(" Battery= ", DEBUG_LEVEL_2));
-  _D(DebugPrint(String(double(DataSet->battery)/1000, 2), DEBUG_LEVEL_2));
-  _D(DebugPrint(" Satellites= ", DEBUG_LEVEL_2));
-  _D(DebugPrintln(DataSet->satellites, DEBUG_LEVEL_2));
-}
-void _PrintShortSummary(){
-  for(int i=0; i<(BOOT_CYCLES * (DATA_SET_BACKUPS + 1)); i++){
-    t_SendData* DataSet = availableDataSet[i];
-    _D(DebugPrint("Dataset " + String(i) + ": ", DEBUG_LEVEL_3));
-    _D(DebugPrint(LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), DEBUG_LEVEL_3));
-    _D(DebugPrintln("; " + String(DataSet->errCode, HEX), DEBUG_LEVEL_3));
+void doResetInits(){
+  #ifdef GSM_MODULE
+  _D(DebugPrintln("Get new fence - send ID", DEBUG_LEVEL_1));
+  if (volt >= GSM_MINIMUM_VOLTAGE){
+    hGSM_on();
+    if (hGSMsetup()){
+      int HTTPtimeOut = 10000;
+      clearFence();
+      for (int i = 0; i<3; i++){
+        int HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
+                                "application/x-www-form-urlencoded",
+                                "ID=" + _herdeID(),
+                                HTTPtimeOut,
+                                HTTPtimeOut);
+        _D(DebugPrintln("HTTP result: " + String(HTTPrc), DEBUG_LEVEL_1));
+        if (HTTPrc == 200){
+          _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_2));
+          if (setFenceFromHTTPresponse(hGSMGetLastResponse())) { break; }
+        } _D( else { DebugPrintln("GSM HTTP error: " + String(HTTPrc), DEBUG_LEVEL_1); } )
+      }
+      //TODO: SMS alert if fails
+      hGSMshutDown();
+    }
+    hGSM_off();
   }
+  #endif
 }
+
 void testMeasure(){
   uint32_t a_measures   = 0;
   int32_t  measures     = 0;
@@ -485,18 +402,18 @@ void testMeasure(){
   //pinMode(BATTERY_ANALOG_ENABLE,OUTPUT);
   //digitalWrite(BATTERY_ANALOG_ENABLE, LOW);
   while(true){
-	for(int i=1; i<1000;i++){
-	  analog_value += analogRead(BATTERY_ANALOG_PIN);
-	  a_measures++;
-	  delay(1);
-	}
-	if(a_measures > 0){
-	  analog_value /= a_measures;
-	}
-	Serial.print("Measured Value: ");
-	Serial.println(analog_value);
-	a_measures   = 0;
-	measures     = 0;
+    for(int i=1; i<1000;i++){
+	    analog_value += analogRead(BATTERY_ANALOG_PIN);
+	    a_measures++;
+	    delay(1);
+    }
+	  if(a_measures > 0){
+	    analog_value /= a_measures;
+    }
+	  Serial.print("Measured Value: ");
+	  Serial.println(analog_value);
+	  a_measures   = 0;
+	  measures     = 0;
   }
   //pinMode(BATTERY_ANALOG_ENABLE,INPUT);
 }

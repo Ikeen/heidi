@@ -1,0 +1,318 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+<title>Heidi Map</title>
+</head>
+<body bgcolor="#FFFFFF" text="#000000" onload='init();'>
+<font size=+1 face="monospace">
+<div id="Map" style="height: 650px; width: 80%" ></div>
+<br>
+<input id="togglePolyLayer" type="button" onclick="EnablePolygon()" value="Neue Weide">
+<input id="submitPolyLayer" type="button" onclick="PostNewWeide()" value="Übertragen" disabled>
+<input id="decDay" type="button" onclick="DecrementDay()" value="-"> Tag <input id="incDay" type="button" onclick="IncrementDay()" value="+">
+<input id="decHour" type="button" onclick="DecrementHour()" value="-"> Stunde <input id="incHour" type="button" onclick="IncrementHour()" value="+">
+
+<br><br>
+<?php
+    //Connect to database
+    $servername = 'localhost';
+    $username   = 'HeidiTracker';
+    $password   = '12wanderfalke34!';
+    $dbname     = 'Heidi';
+    $Fence      = array();
+    $Pales      = 0;
+    $Track      = array();
+    $TrackPnts  = 0;
+    $MapToken   = "";
+ 
+    if (isset($_GET['ID'])) {$TrackerID = $_GET['ID'];} else {$TrackerID = "0002.0001";}
+    if (isset($_GET['Date'])) {$CurDate = $_GET['Date'];} else {$CurDate = date('Y-m-d H:i:s');}
+
+    // Create connection
+    $conn = new mysqli($servername, $username, $password, $dbname);
+    // Check connection
+    if ($conn->connect_error) {
+        die("Database Connection failed: " . $conn->connect_error);
+    }
+
+    $sql  = 'SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, FreeValue2, FreeValue1 FROM TrackerData ';
+    $sql .= 'WHERE TrackerID = \'' . $TrackerID . '\' AND TimeStamp <= \'' . $CurDate . '\' ';
+    $sql .= 'AND Longitude != \'0.0\' AND Latitude != \'0.0\' ';
+    $sql .= 'ORDER BY TimeStamp DESC LIMIT 1';
+
+    // 'ORDER BY TimeStamp DESC LIMIT 0,1' -> last
+    // 'ORDER BY TimeStamp DESC LIMIT 1,1' -> fore last 
+    // 'ORDER BY TimeStamp DESC LIMIT 2,1' -> fore fore last 
+
+    $PositionResult = FALSE;
+    if ($result=$conn->query($sql))
+    {
+      if ($row=$result->fetch_row())
+      {
+           
+        $TrackerLongitude = floatval($row[0]);
+        $TrackerLatitude  = floatval($row[1]);
+        $PositionResult   = TRUE;
+
+        echo 'TrID: ' . $TrackerID . '<br>';
+        echo 'H&ouml;he: ' . $row[2] . '<br>';
+        echo 'Zeit: ' . $row[3] . '<br>';
+        echo 'Batt: ' . $row[4] . '<br>';
+        echo 'Temp: ' . $row[5] . '<br>';
+        echo 'Sats: ' . $row[6] . '<br>';
+      }
+      $result->close();
+    } 
+
+    $sql  = 'SELECT Longitude, Latitude FROM TrackerData ';
+    $sql .= 'WHERE TrackerID = \'' . $TrackerID . '\' AND TimeStamp <= \'' . $CurDate . '\' ';
+    $sql .= 'AND Longitude != \'0.0\' AND Latitude != \'0.0\' ';
+    $sql .= 'ORDER BY TimeStamp DESC LIMIT 16';
+
+    $TrackPnts = 0;
+    if ($result=$conn->query($sql))
+    {
+      while ($row = $result->fetch_row()){
+        $TrackPnts++; 
+        $Track[] = $row[0];
+        $Track[] = $row[1];
+      }
+      $result->close();
+    } 
+
+
+    $HerdeID = substr($TrackerID,0,4);
+    $sql = "SELECT Longitude, Latitude FROM Fence WHERE HerdeID = '{$HerdeID}' AND Active = 1;";
+    if ($result = $conn->query($sql)){ 
+      while ($row = $result->fetch_row()){
+        $Pales++; 
+        $Fence[] = $row[0];
+        $Fence[] = $row[1];
+      }
+      $result->close();
+    }
+   // $sql = "SELECT Token FROM mapbox WHERE No = 1;";
+   // if ($result = $conn->query($sql)){ 
+   //   while ($row = $result->fetch_row()){
+   //     $MapToken = $row[0];
+   //   }
+   //   $result->close();
+   // }
+    $conn->close();
+?>
+</font>
+</body>
+<!--><script src="http://www.openlayers.org/api/OpenLayers.js"></script></!-->
+<script src="./ol/OpenLayers.js"></script>
+<script>
+  var conn   = new XMLHttpRequest();
+  var map,vectorLayer,selectMarkerControl,selectedFeature;
+  var GotPosition = <?php echo json_encode($PositionResult); ?>;
+  var lat     =   <?php echo json_encode($TrackerLatitude); ?>;  //getUrlVars()["lat"];
+  var lon     =   <?php echo json_encode($TrackerLongitude); ?>; //getUrlVars()["lon"];
+  var Pales   =   <?php echo json_encode($Pales); ?>;
+  var Fence   =   <?php echo json_encode($Fence); ?>; 
+  var MapToken  = <?php echo json_encode($MapToken); ?>; 
+  var TrackPnts = <?php echo json_encode($TrackPnts); ?>;
+  var Track   =   <?php echo json_encode($Track); ?>; 
+  var CurDate =   <?php echo json_encode($CurDate); ?>; 
+  CurDate = CurDate.substr(0, CurDate.indexOf(' ')) + "T" + CurDate.substr(CurDate.indexOf(' ')+1) + "Z";
+  var TimeStamp = new Date(CurDate);
+  var TrackerID = <?php echo json_encode($TrackerID); ?>; 
+  var url     = window.location.href;
+  var zoom    =   16;
+  var position;
+  var polygonLayer; 
+  var polygon;      
+  var newWeideLon, newWeideLat;
+
+  var fromProjection = new OpenLayers.Projection("EPSG:4326");   // Transform from WGS 1984
+  var toProjection   = new OpenLayers.Projection("EPSG:900913"); // to Spherical Mercator Projection
+  var cntrposition   = new OpenLayers.LonLat(lon, lat).transform( fromProjection, toProjection);
+
+  var size   = new OpenLayers.Size(36,25);
+  //var size   = new OpenLayers.Size(21,25);
+  var offset = new OpenLayers.Pixel(-(size.w/2), -size.h);
+  var icon1  = new OpenLayers.Icon('./img/whSheepS.png', size, offset);
+
+  function getUrlVars() {
+    var vars = {};
+    var parts = window.location.href.replace(/[?&]+([^=&]+)=([^&]*)/gi, function(m,key,value) {
+      vars[key] = value;
+    });
+    return vars;
+  }
+
+  function init()
+  {
+    if (!GotPosition) {
+      alert("Position konnte nicht ermittelt werden.");
+      return;
+    } else {  
+     // alert("Position: " + lat + "; " + lon + "; Zaunspfosten: " + Pales);
+    }
+    if (url.indexOf('?') > -1){
+      url = url.substr(0, url.indexOf('?'));
+    }
+    //alert(CurDate + ";  " + TimeStamp.toUTCString());
+    
+    map = new OpenLayers.Map("Map",{
+            controls:
+            [
+              zoomBar = new OpenLayers.Control.PanZoomBar(),
+              new OpenLayers.Control.LayerSwitcher({}),
+              new OpenLayers.Control.Navigation(),
+              new OpenLayers.Control.OverviewMap(),
+              new OpenLayers.Control.Attribution()
+            ]
+          } );
+    if(MapToken == "") { 
+      var mappy = new OpenLayers.Layer.OSM("MAP", ["https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}"]);
+               // ["https://a.tile.openstreetmap.de/${z}/${x}/${y}.png",
+               //  "https://b.tile.openstreetmap.de/${z}/${x}/${y}.png",
+               //  "https://c.tile.openstreetmap.de/${z}/${x}/${y}.png"]);
+    } else {
+      var mappy  = new OpenLayers.Layer.OSM("MAP",
+                ["https://a.tiles.mapbox.com/v4/mapbox.satellite/${z}/${x}/${y}.jpg?access_token=" + MapToken,
+                 "https://b.tiles.mapbox.com/v4/mapbox.satellite/${z}/${x}/${y}.jpg?access_token=" + MapToken,
+		 "https://c.tiles.mapbox.com/v4/mapbox.satellite/${z}/${x}/${y}.jpg?access_token=" + MapToken,
+                 "https://d.tiles.mapbox.com/v4/mapbox.satellite/${z}/${x}/${y}.jpg?access_token=" + MapToken]);
+    }
+    var markers      = new OpenLayers.Layer.Markers( "Markers" );
+    var marker1      = new OpenLayers.Marker(cntrposition, icon1);
+
+    map.addLayers([mappy,markers]);
+    map.setCenter(cntrposition, zoom);
+    markers.addMarker(marker1);
+
+    if (Pales > 2) {
+      var sitePoints = [];
+      var siteStyle = {
+         'fillColor': "#990000",
+         'fillOpacity': 0.2,
+         'strokeColor': "#990000"
+      }
+      for (var i = 0; i<Pales; i++) {
+        var spoint = new OpenLayers.Geometry.Point(Fence[i*2], Fence[i*2+1]);
+        spoint.transform(fromProjection, map.getProjectionObject());
+        sitePoints.push(spoint);
+      }
+      sitePoints.push(sitePoints[0]);
+
+      var linearRing = new OpenLayers.Geometry.LinearRing(sitePoints);
+      var siteGeometry = new OpenLayers.Geometry.Polygon([linearRing]);
+      var polygonFeature = new OpenLayers.Feature.Vector(siteGeometry, null, siteStyle);
+      var fLayer = new OpenLayers.Layer.Vector("Zaun");
+      fLayer.addFeatures([polygonFeature]);      
+      map.addLayer(fLayer);
+    }
+
+    if (TrackPnts > 2) {
+      var trackPoints = [];
+      var trackStyle = {
+         'strokeWidth': 2,
+         'strokeOpacity': 0.5,
+         'strokeColor': "#999900"
+      }
+      for (var i = 0; i<TrackPnts; i++) {
+        var tpoint = new OpenLayers.Geometry.Point(Track[i*2], Track[i*2+1]);
+        tpoint.transform(fromProjection, map.getProjectionObject());
+        trackPoints.push(tpoint);
+      }
+
+      var linearString = new OpenLayers.Geometry.LineString(trackPoints);
+      //var trackGeometry = new OpenLayers.Geometry.Polygon([linearString]);
+      var trackFeature = new OpenLayers.Feature.Vector(linearString, null, trackStyle);
+      var tLayer = new OpenLayers.Layer.Vector("Laufweg");
+      tLayer.addFeatures([trackFeature]);      
+      map.addLayer(tLayer);
+    }
+  }
+
+  function EnablePolygon(){
+    polygonLayer = new OpenLayers.Layer.Vector("Neue Weide");
+    polygon      = new OpenLayers.Control.DrawFeature(polygonLayer,OpenLayers.Handler.Polygon);
+    map.addLayer(polygonLayer);
+    map.addControl(polygon);
+    polygonLayer.events.register('featureadded',polygonLayer, onAdded);
+    polygon.activate();
+    document.getElementById("togglePolyLayer").value  = "Reset";
+    document.getElementById("togglePolyLayer").onclick  = ResetPolygon;
+  }
+  
+  function ResetPolygon(){
+    polygonLayer.removeAllFeatures();
+    document.getElementById("submitPolyLayer").disabled  = true;
+  }
+
+  
+  function onAdded(event){
+    var polygon=event.feature.geometry;
+    var LatLonPoly = polygon.transform( map.getProjectionObject(), fromProjection);  
+    newWeideLon = new Array(LatLonPoly.getVertices().length);
+    newWeideLat = new Array(LatLonPoly.getVertices().length);
+    for (i = 0; i < LatLonPoly.getVertices().length; i++) { 
+      newWeideLon[i] = LatLonPoly.getVertices()[i].x;
+      newWeideLat[i] = LatLonPoly.getVertices()[i].y;
+      console.log(newWeideLon[i]);
+      console.log(newWeideLat[i]);
+    }
+    document.getElementById("submitPolyLayer").disabled  = false;
+	console.log("Submit on");
+  }
+
+  function GetPostParams(){
+    var params = "";
+    var elem = document.getElementById('PosFrm').elements;
+    var dead = false;
+
+    for(var i = 0; i < elem.length; i++){
+      if(elem[i].type == "text"){
+        if(params.length > 0){
+          params += "&";
+        }
+        if ((i == 2) && (elem[i].value.length == 0)){
+          dead = true;
+        }
+        if ((i >= 2) && dead){
+          params += elem[i].name + "=";       
+        } else {
+          params += elem[i].name + "=" + elem[i].value;
+        }
+      }
+    } 
+    return(params);
+  }
+  function DecrementDay(){
+    TimeStamp.setUTCDate(TimeStamp.getUTCDate() - 1);
+    ReLocateHeidi();
+  }
+  function IncrementDay(){
+    TimeStamp.setUTCDate(TimeStamp.getUTCDate() + 1);
+    ReLocateHeidi();
+  }
+  function DecrementHour(){
+    TimeStamp.setUTCHours(TimeStamp.getUTCHours() - 1);
+    ReLocateHeidi();
+  }
+  function IncrementHour(){
+    TimeStamp.setUTCHours(TimeStamp.getUTCHours() + 1);
+    ReLocateHeidi();
+  }
+  function ReLocateHeidi(){
+    //alert(TimeStamp.toUTCString());
+    url += "?ID=" + TrackerID + "&Date=" + TimeStamp.getUTCFullYear().toString();
+    url += "-" + lenTwo((TimeStamp.getUTCMonth()+1).toString()) + "-" + lenTwo(TimeStamp.getUTCDate().toString());
+    url += " " + lenTwo(TimeStamp.getUTCHours().toString()) + ":" + lenTwo(TimeStamp.getUTCMinutes().toString());
+    url += ":" + lenTwo(TimeStamp.getSeconds().toString());
+    window.location.href = url;
+  }
+  function lenTwo(value){
+    if (value.length ==1) { return "0"+value; }
+    return value;
+  }
+
+</script>
+</html>

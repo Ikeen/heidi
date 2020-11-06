@@ -23,6 +23,7 @@
 #include "heidi-debug.h"
 #include "heidi-gsm.h"
 #include "heidi-gps.h"
+#include "heidi-fence.h"
 #include "heidi-error.h"
 
 
@@ -52,21 +53,8 @@
 #define preambleLength  8
 #define codingRateDenominator 8 //5;8 -> 4/5; 4/8
 
-#ifdef GPS_MODULE
-int  GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms);
-bool SetSysToGPSTime();
-bool SetSysToGPS();
-#endif
-
-#ifdef OLED_DISPLAY
-void displayLocationData(int cnt, double latt, double lngg, int volt);
-#endif
-
 #ifdef USE_LORA
 void SetupLoRa(){
-#endif
-#ifdef OLED_DISPLAY
-  void SetupDisplay();
 #endif
 
 uint8_t herdeID();
@@ -82,11 +70,10 @@ void checkWakeUpReason();
 
 static void watchDog(void* arg);
 void setupWatchDog(void);
+void doResetInits(void);
 
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1
 void doResetTests();
-void _PrintDataSet(t_SendData*);
-void _PrintShortSummary();
 void testMeasure();
 #endif
 

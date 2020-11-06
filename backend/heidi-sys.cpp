@@ -23,6 +23,14 @@ uint8_t herdeID(){
 uint8_t animalID(){
   return HEIDI_ANIMAL;
 }
+
+String _herdeID(){
+  if (herdeID() < 10) { return "000" + String(herdeID()); }
+  if (herdeID() < 100) { return "00" + String(herdeID()); }
+  if (herdeID() < 1000) { return "0" + String(herdeID()); }
+  return String(herdeID());
+}
+
 bool isInCycle(int firstCycleInHour, int8_t* bootCount){
   if (bootTimeStampMs == INVALID_TIME_VALUE) { return false; } // should never happen
   bool inCycle = false;
@@ -149,6 +157,18 @@ bool GetSysTime(tm *info){
   }while(count--);
   return false;
 }
+String GetCSVvalue(String line, int no)
+{
+  int pos;
+  int end = -1;
+  int len = line.length();
+  for(int i=0; i<no; i++){
+    pos = end+1;
+    end = line.indexOf(';', pos);
+    if (end == -1) { end = len; }
+  }
+  return line.substring(pos, end);
+}
 void _copyTime(tm *from, tm *to){
   to->tm_hour = from->tm_hour;
   to->tm_min  = from->tm_min;
@@ -161,24 +181,95 @@ void _copyDate(tm *from, tm *to){
   to->tm_mon  = from->tm_mon;
   to->tm_year = from->tm_year;
 }
-void _copyInt32toBuffer(byte *buffer, int pos, int32_t value){
-  buffer[pos]   = (byte) value;
-  buffer[pos+1] = (byte) (value >> 8);
-  buffer[pos+2] = (byte) (value >> 0x10);
-  buffer[pos+3] = (byte) (value >> 0x18);
+void _copyInt32toBuffer(uint8_t *buffer, int pos, int32_t value){
+  buffer[pos]   = (uint8_t) value;
+  buffer[pos+1] = (uint8_t) (value >> 8);
+  buffer[pos+2] = (uint8_t) (value >> 0x10);
+  buffer[pos+3] = (uint8_t) (value >> 0x18);
 }
-void _copyint32toBuffer(byte *buffer, int pos, uint32_t value){
-  buffer[pos]   = (byte) value;
-  buffer[pos+1] = (byte) (value >> 8);
-  buffer[pos+2] = (byte) (value >> 0x10);
-  buffer[pos+3] = (byte) (value >> 0x18);
+void _copyUint32toBuffer(uint8_t *buffer, int pos, uint32_t value){
+  buffer[pos]   = (uint8_t) value;
+  buffer[pos+1] = (uint8_t) (value >> 8);
+  buffer[pos+2] = (uint8_t) (value >> 0x10);
+  buffer[pos+3] = (uint8_t) (value >> 0x18);
 }
-void _copyInt16toBuffer(byte *buffer, int pos, int16_t value){
-  buffer[pos]   = (byte) value;
-  buffer[pos+1] = (byte) (value >> 8);
+void _copyInt16toBuffer(uint8_t *buffer, int pos, int16_t value){
+  buffer[pos]   = (uint8_t) value;
+  buffer[pos+1] = (uint8_t) (value >> 8);
 }
-void _copyint16toBuffer(byte *buffer, int pos, uint16_t value){
-  buffer[pos]   = (byte) value;
-  buffer[pos+1] = (byte) (value >> 8);
+void _copyUint16toBuffer(uint8_t *buffer, int pos, uint16_t value){
+  buffer[pos]   = (uint8_t) value;
+  buffer[pos+1] = (uint8_t) (value >> 8);
+}
+int32_t _copyBufferToInt32(uint8_t *buffer, int pos){
+  int32_t value;
+  value  = buffer[pos];
+  value |= buffer[pos+1] << 8;
+  value |= buffer[pos+2] << 0x10;
+  value |= buffer[pos+3] << 0x18;
+  return value;
+}
+String b64u = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";   // base64url dictionary
+String b64Encode(uint8_t* Buffer, int length)
+{
+  String Base64Str = "";
+  for (int i=0; i<=(length); i+=3){
+    Base64Str += b64u.charAt(Buffer[i] >> 2);
+    Base64Str += b64u.charAt(((Buffer[i]   & 3)  << 4) | (Buffer[i+1] >> 4));
+    Base64Str += b64u.charAt(((Buffer[i+1] & 15) << 2) | (Buffer[i+2] >> 6));
+    Base64Str += b64u.charAt(Buffer[i+2]   & 63);
+  }
+  if (length % 3 == 2){
+    Base64Str += b64u.charAt(Buffer[HEX_BUFFER_LEN-2] >> 2);
+    Base64Str += b64u.charAt(((Buffer[HEX_BUFFER_LEN-2] & 3)<< 4) | (Buffer[HEX_BUFFER_LEN-1] >> 4));
+    Base64Str += b64u.charAt((Buffer[HEX_BUFFER_LEN-1] & 15) << 2);
+  }
+  else if (length % 3 == 1){
+    Base64Str += b64u.charAt(Buffer[HEX_BUFFER_LEN-1] >> 2);
+    Base64Str += b64u.charAt((Buffer[HEX_BUFFER_LEN-1] & 3)<< 4);
+  }
+  return Base64Str;
+}
+//Bc6XywAsVgoDH5jLAFBVCgOsmcsAhlUKAwWZywDvVQoDrGc0_x5WCgM
+int b64Decode(String Base64Str, uint8_t* Buffer) //returns data length
+{
+  int a, b, c, d;
+  int p = 0;
+  int length = Base64Str.length();
+  for (int i=0; i<length; i+=4) {
+    a = b64u.indexOf(Base64Str[i]);
+    b = b64u.indexOf(Base64Str[i+1]);
+    if (i < length-2) { c = b64u.indexOf(Base64Str[i+2]); } else { c = -1; }
+    if (i < length-3) { d = b64u.indexOf(Base64Str[i+3]); } else { d = -1; }
+    Buffer[p++] = (uint8_t)((a << 2) | ((b >> 4) & 0x03));
+    if (c >= 0) { Buffer[p++] = (uint8_t)(((b << 4) & 0xF0) | ((c >> 2) & 0x0F)); }
+    if (d >= 0) { Buffer[p++] = (uint8_t)(((c << 6) & 0xC0) | (d & 0x3F)); }
+  }
+  return p;
+}
+uint16_t crc16F(String data) //CRC-16/CCITT-FALSE
+{
+  uint16_t crc = 0xFFFF;
+  int len = data.length();
+  for (int i = 0; i < len; i++)
+  {
+    uint32_t x = ((crc >> 8) ^ (uint8_t)data.charAt(i)) & 0xFF;
+    x ^= (x >> 4);
+    crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
+  }
+  return crc;
+}
+uint32_t hex2int(String data)
+{
+  String   _alpabet = "0123456789ABCDEF";
+  String   _data = data;
+  uint32_t result = 0;
+  int len = _data.length();
+  _data.toUpperCase();
+  for (int i=0; i<len;i++){
+    result = result << 4;
+    result += _alpabet.indexOf(_data.charAt(i));
+  }
+  return result;
 }
 

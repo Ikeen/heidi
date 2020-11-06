@@ -26,6 +26,7 @@ void openGPS();
 void closeGPS();
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1
 void _PrintDataGPS();
+void testGPS();
 #endif
 
 #endif /*GSM_MODULE*/

@@ -16,10 +16,10 @@
 #define HEIDI_HERDE         1
 #define HEIDI_ANIMAL        1
 
-//#define OLED_DISPLAY
 #define GSM_MODULE
 #define GPS_MODULE
 #define TEMP_SENSOR
+#define CHECK_BATTERY
 
 #define BOOT_CYCLES         4
 #define START_FROM_RESET   -2
@@ -38,6 +38,7 @@
 #define NIGHT_HOUR_START    20
 #define NIGHT_HOUR_END      6
 
+#define GSM_MINIMUM_VOLTAGE 3.6
 
 
 #endif /* HEIDI_DEFINES_H_ */
