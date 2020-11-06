@@ -25,10 +25,10 @@ The project goal:
 * CAD work for housings - done
 * initial web service - done
 * 1st gateway tracker module for testings - done
-* endurance tests for housing, power supply and modul reliability - ongoing (with good results)
+* endurance tests for housing, power supply and modul reliability - done
 * 1st client tracker module for testings - tbd
 * endurance tests for lokal LoRa netwok reliability (gateway tracker <-> client trackers) - tbd
 * add accelerometer for vitality monitoring - tbd
-* add geofencing functionality -tbd
+* add geofencing functionality - base implementations done
 
 
