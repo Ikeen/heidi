@@ -26,7 +26,7 @@
     if (isset($_GET["ID"])){
       $TrackerID = $_GET["ID"];
     } else {
-      $TrackerID = "0002.0001";
+      $TrackerID = "0001.0001";
     }
     // Create connection
     $conn = new mysqli($servername, $username, $password, $dbname);
@@ -128,7 +128,7 @@
   var size   = new OpenLayers.Size(36,25);
   //var size   = new OpenLayers.Size(21,25);
   var offset = new OpenLayers.Pixel(-(size.w/2), -size.h);
-  var icon1  = new OpenLayers.Icon('./img/whSheepS.png', size, offset);
+  var icon1  = new OpenLayers.Icon('./img/36x25_Schaf.png', size, offset);
 
   function getUrlVars() {
     var vars = {};

@@ -26,8 +26,8 @@
     $Track      = array();
     $TrackPnts  = 0;
     $MapToken   = "";
- 
-    if (isset($_GET['ID'])) {$TrackerID = $_GET['ID'];} else {$TrackerID = "0002.0001";}
+
+    if (isset($_GET['ID'])) {$TrackerID = $_GET['ID'];} else {$TrackerID = "0001.0001";}
     if (isset($_GET['Date'])) {$CurDate = $_GET['Date'];} else {$CurDate = date('Y-m-d H:i:s');}
 
     // Create connection
@@ -43,15 +43,15 @@
     $sql .= 'ORDER BY TimeStamp DESC LIMIT 1';
 
     // 'ORDER BY TimeStamp DESC LIMIT 0,1' -> last
-    // 'ORDER BY TimeStamp DESC LIMIT 1,1' -> fore last 
-    // 'ORDER BY TimeStamp DESC LIMIT 2,1' -> fore fore last 
+    // 'ORDER BY TimeStamp DESC LIMIT 1,1' -> fore last
+    // 'ORDER BY TimeStamp DESC LIMIT 2,1' -> fore fore last
 
     $PositionResult = FALSE;
     if ($result=$conn->query($sql))
     {
       if ($row=$result->fetch_row())
       {
-           
+
         $TrackerLongitude = floatval($row[0]);
         $TrackerLatitude  = floatval($row[1]);
         $PositionResult   = TRUE;
@@ -64,7 +64,7 @@
         echo 'Sats: ' . $row[6] . '<br>';
       }
       $result->close();
-    } 
+    }
 
     $sql  = 'SELECT Longitude, Latitude FROM TrackerData ';
     $sql .= 'WHERE TrackerID = \'' . $TrackerID . '\' AND TimeStamp <= \'' . $CurDate . '\' ';
@@ -75,26 +75,26 @@
     if ($result=$conn->query($sql))
     {
       while ($row = $result->fetch_row()){
-        $TrackPnts++; 
+        $TrackPnts++;
         $Track[] = $row[0];
         $Track[] = $row[1];
       }
       $result->close();
-    } 
+    }
 
 
     $HerdeID = substr($TrackerID,0,4);
     $sql = "SELECT Longitude, Latitude FROM Fence WHERE HerdeID = '{$HerdeID}' AND Active = 1;";
-    if ($result = $conn->query($sql)){ 
+    if ($result = $conn->query($sql)){
       while ($row = $result->fetch_row()){
-        $Pales++; 
+        $Pales++;
         $Fence[] = $row[0];
         $Fence[] = $row[1];
       }
       $result->close();
     }
    // $sql = "SELECT Token FROM mapbox WHERE No = 1;";
-   // if ($result = $conn->query($sql)){ 
+   // if ($result = $conn->query($sql)){
    //   while ($row = $result->fetch_row()){
    //     $MapToken = $row[0];
    //   }
@@ -113,29 +113,29 @@
   var lat     =   <?php echo json_encode($TrackerLatitude); ?>;  //getUrlVars()["lat"];
   var lon     =   <?php echo json_encode($TrackerLongitude); ?>; //getUrlVars()["lon"];
   var Pales   =   <?php echo json_encode($Pales); ?>;
-  var Fence   =   <?php echo json_encode($Fence); ?>; 
-  var MapToken  = <?php echo json_encode($MapToken); ?>; 
+  var Fence   =   <?php echo json_encode($Fence); ?>;
+  var MapToken  = <?php echo json_encode($MapToken); ?>;
   var TrackPnts = <?php echo json_encode($TrackPnts); ?>;
-  var Track   =   <?php echo json_encode($Track); ?>; 
-  var CurDate =   <?php echo json_encode($CurDate); ?>; 
+  var Track   =   <?php echo json_encode($Track); ?>;
+  var CurDate =   <?php echo json_encode($CurDate); ?>;
   CurDate = CurDate.substr(0, CurDate.indexOf(' ')) + "T" + CurDate.substr(CurDate.indexOf(' ')+1) + "Z";
   var TimeStamp = new Date(CurDate);
-  var TrackerID = <?php echo json_encode($TrackerID); ?>; 
+  var TrackerID = <?php echo json_encode($TrackerID); ?>;
   var url     = window.location.href;
-  var zoom    =   16;
+  var zoom    =   18;
   var position;
-  var polygonLayer; 
-  var polygon;      
+  var polygonLayer;
+  var polygon;
   var newWeideLon, newWeideLat;
 
   var fromProjection = new OpenLayers.Projection("EPSG:4326");   // Transform from WGS 1984
   var toProjection   = new OpenLayers.Projection("EPSG:900913"); // to Spherical Mercator Projection
   var cntrposition   = new OpenLayers.LonLat(lon, lat).transform( fromProjection, toProjection);
 
-  var size   = new OpenLayers.Size(36,25);
+  var size   = new OpenLayers.Size(30,35);
   //var size   = new OpenLayers.Size(21,25);
   var offset = new OpenLayers.Pixel(-(size.w/2), -size.h);
-  var icon1  = new OpenLayers.Icon('./img/whSheepS.png', size, offset);
+  var icon1  = new OpenLayers.Icon('./img/30x35_Schaf.png', size, offset);
 
   function getUrlVars() {
     var vars = {};
@@ -150,14 +150,14 @@
     if (!GotPosition) {
       alert("Position konnte nicht ermittelt werden.");
       return;
-    } else {  
+    } else {
      // alert("Position: " + lat + "; " + lon + "; Zaunspfosten: " + Pales);
     }
     if (url.indexOf('?') > -1){
       url = url.substr(0, url.indexOf('?'));
     }
     //alert(CurDate + ";  " + TimeStamp.toUTCString());
-    
+
     map = new OpenLayers.Map("Map",{
             controls:
             [
@@ -168,7 +168,7 @@
               new OpenLayers.Control.Attribution()
             ]
           } );
-    if(MapToken == "") { 
+    if(MapToken == "") {
       var mappy = new OpenLayers.Layer.OSM("MAP", ["https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}"]);
                // ["https://a.tile.openstreetmap.de/${z}/${x}/${y}.png",
                //  "https://b.tile.openstreetmap.de/${z}/${x}/${y}.png",
@@ -183,16 +183,16 @@
     var markers      = new OpenLayers.Layer.Markers( "Markers" );
     var marker1      = new OpenLayers.Marker(cntrposition, icon1);
 
-    map.addLayers([mappy,markers]);
+    map.addLayer(mappy);
     map.setCenter(cntrposition, zoom);
     markers.addMarker(marker1);
 
     if (Pales > 2) {
       var sitePoints = [];
       var siteStyle = {
-         'fillColor': "#990000",
-         'fillOpacity': 0.2,
-         'strokeColor': "#990000"
+         'fillColor': "#40ff40",
+         'fillOpacity': 0.5,
+         'strokeColor': "#40ff40"
       }
       for (var i = 0; i<Pales; i++) {
         var spoint = new OpenLayers.Geometry.Point(Fence[i*2], Fence[i*2+1]);
@@ -205,7 +205,7 @@
       var siteGeometry = new OpenLayers.Geometry.Polygon([linearRing]);
       var polygonFeature = new OpenLayers.Feature.Vector(siteGeometry, null, siteStyle);
       var fLayer = new OpenLayers.Layer.Vector("Zaun");
-      fLayer.addFeatures([polygonFeature]);      
+      fLayer.addFeatures([polygonFeature]);
       map.addLayer(fLayer);
     }
 
@@ -213,8 +213,8 @@
       var trackPoints = [];
       var trackStyle = {
          'strokeWidth': 2,
-         'strokeOpacity': 0.5,
-         'strokeColor': "#999900"
+         'strokeOpacity': 1,
+         'strokeColor': "#ff8000"
       }
       for (var i = 0; i<TrackPnts; i++) {
         var tpoint = new OpenLayers.Geometry.Point(Track[i*2], Track[i*2+1]);
@@ -226,9 +226,10 @@
       //var trackGeometry = new OpenLayers.Geometry.Polygon([linearString]);
       var trackFeature = new OpenLayers.Feature.Vector(linearString, null, trackStyle);
       var tLayer = new OpenLayers.Layer.Vector("Laufweg");
-      tLayer.addFeatures([trackFeature]);      
+      tLayer.addFeatures([trackFeature]);
       map.addLayer(tLayer);
     }
+    map.addLayer(markers);
   }
 
   function EnablePolygon(){
@@ -241,19 +242,19 @@
     document.getElementById("togglePolyLayer").value  = "Reset";
     document.getElementById("togglePolyLayer").onclick  = ResetPolygon;
   }
-  
+
   function ResetPolygon(){
     polygonLayer.removeAllFeatures();
     document.getElementById("submitPolyLayer").disabled  = true;
   }
 
-  
+
   function onAdded(event){
     var polygon=event.feature.geometry;
-    var LatLonPoly = polygon.transform( map.getProjectionObject(), fromProjection);  
+    var LatLonPoly = polygon.transform( map.getProjectionObject(), fromProjection);
     newWeideLon = new Array(LatLonPoly.getVertices().length);
     newWeideLat = new Array(LatLonPoly.getVertices().length);
-    for (i = 0; i < LatLonPoly.getVertices().length; i++) { 
+    for (i = 0; i < LatLonPoly.getVertices().length; i++) {
       newWeideLon[i] = LatLonPoly.getVertices()[i].x;
       newWeideLat[i] = LatLonPoly.getVertices()[i].y;
       console.log(newWeideLon[i]);
@@ -277,7 +278,7 @@
           dead = true;
         }
         if ((i >= 2) && dead){
-          params += elem[i].name + "=";       
+          params += elem[i].name + "=";
         } else {
           params += elem[i].name + "=" + elem[i].value;
         }

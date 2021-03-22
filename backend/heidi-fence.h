@@ -11,7 +11,7 @@
 #include "heidi-defines.h"
 #include "heidi-data.h"
 
-#define EMPTY_POINT_VALUE 400 //irregular GPS value
+#define EMPTY_POINT_VALUE 400000000 //irregular GPS value
 
 typedef struct  _t_PointData{
   double  latitude;

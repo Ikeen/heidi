@@ -11,18 +11,24 @@
 #ifdef GPS_MODULE
 #include <stdint.h>
 #include <WString.h>
+#include "esp32-hal-gpio.h"
 #include "TinyGPS++.h"
 #include "heidi-data.h"
 
-#define GPS_RX   16    //GPIO16
-#define GPS_TX   17    //GPIO17
-#define GPS_UART_NO 2
-#define WAIT_FOR_GPS_TIME   120000
+#define GPS_RXD   GPIO_NUM_16
+#define GPS_TXD   GPIO_NUM_17
+#define GPS_UART_NO 1
+//#define GPS_RX   GPIO_NUM_23
+//#define GPS_TX   GPIO_NUM_21
+//#define GPS_UART_NO 2
+#define GPS_BAUD 9600
+
+#define WAIT_FOR_GPS_TIME 180000
 
 int  GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms);
 bool SetSysToGPSTime();
 bool SetSysToGPS();
-void openGPS();
+bool openGPS();
 void closeGPS();
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1
 void _PrintDataGPS();

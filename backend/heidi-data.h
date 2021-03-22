@@ -13,28 +13,38 @@
 #include <esp_attr.h>
 #include <time.h>
 #include "heidi-defines.h"
+#ifdef ACCELEROMETER
+#include "heidi-acc.h"
+#define RTC_DATA_SPACE_OFFSET ACCEL_ULP_MEM_SIZE //size in uint32
+#else
+#define RTC_DATA_SPACE_OFFSET 0
+#endif
 
 #define HEX_BUFFER_OFFSET 3
 #define HEX_BUFFER_VALUES 12 //_t_SendData values + ID
 #define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 2 + 4 + 4 + (2 * (HEX_BUFFER_VALUES - 3)))
 
-#define DATA_SET_LEN     28
-#define DATA_SET_BACKUPS 24
-#define MAX_DATA_SETS (BOOT_CYCLES * (DATA_SET_BACKUPS + 1))
-#define DATA_SET_MEM_SPACE (DATA_SET_LEN * MAX_DATA_SETS)
+typedef __attribute__((__packed__)) struct _t_ConfigData{
+   int8_t bootCount;
+   int8_t bootCycles; //(before transmit Data)
+  uint8_t sleepMinutes;
+  uint8_t nightHourStart;
+  uint8_t nightHourEnd;
+   int8_t nightBootCycles;
+  uint8_t nightSleepMin;
+  uint8_t dummy8;
+  uint8_t accThres1;
+  uint8_t accThres2;
+ uint16_t accAlertThres1;
+ uint16_t accAlertThres2;
+ uint16_t distAlertThres;
+  int32_t lastTimeDiffMs;
+}t_ConfigData;
 
-#define FENCE_MAX_POS    16
-#define FENCE_SET_LEN    (4*2)
-#define FENCE_MEM_SPACE  (FENCE_MAX_POS * FENCE_SET_LEN)
+#define HEIDI_CONFIG_LENGTH 20 //must be a multiple of 4
+#define HEIDI_CONFIG_LENGTH_RTC (HEIDI_CONFIG_LENGTH >> 2)
 
-#define STATUS_MEM_SPACE  (4+2) //see heidi-data.cpp
-
-#define RTC_DATA_SPACE (DATA_SET_MEM_SPACE + FENCE_MEM_SPACE + STATUS_MEM_SPACE)
-#if (RTC_DATA_SPACE > 3328)
-  #error 'Too much RTC space for data sets\n'
-#endif
-
-typedef struct _t_SendData{
+typedef __attribute__((__packed__)) struct _t_SendData{
   int32_t  latitude;
   int32_t  longitude;
   int16_t  altitude;
@@ -46,32 +56,57 @@ typedef struct _t_SendData{
   uint8_t  GPShdop; //horizontal position dilution
   uint8_t  satellites;
   uint16_t metersOut;
-  //total size: 24 Bytes;
+  uint16_t accThres1;
+  uint16_t accThres2;
+  //total size: 28 Bytes;
 }t_SendData;
 
-typedef struct _t_FenceData{
+#define DATA_SET_LEN     28 //must be a multiple of 4
+
+//#define DATA_SET_BACKUPS 24
+#define MAX_DATA_SETS 64
+#define DATA_SET_MEM_SPACE (DATA_SET_LEN * MAX_DATA_SETS)
+#define DATA_SET_MEM_SPACE_RTC (DATA_SET_MEM_SPACE >> 2)
+
+typedef __attribute__((__packed__)) struct _t_FenceData{
   int32_t  latitude;
   int32_t  longitude;
 }t_FenceData;
 
+#define FENCE_MAX_POS    16
+#define FENCE_SET_LEN    (4*2)
+#define FENCE_MEM_SPACE  (FENCE_MAX_POS * FENCE_SET_LEN) //must be a multiple of 4
+#define FENCE_MEM_SPACE_RTC (FENCE_MEM_SPACE >> 2)
 
-extern t_SendData* availableDataSet[MAX_DATA_SETS];
-extern t_FenceData* FenceDataSet[FENCE_MAX_POS];
-extern int8_t     bootCount;
-extern int8_t     lastWrongResetReason;
-extern int32_t    lastTimeDiffMs;
 
-void     initRTCData(void);
+#define RTC_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + DATA_SET_MEM_SPACE + FENCE_MEM_SPACE)
+#if (RTC_DATA_SPACE > 3840)
+  #error 'Too much RTC space for data sets\n'
+#endif
+
+
+extern t_ConfigData* heidiConfig;
+extern t_SendData*   availableDataSet[MAX_DATA_SETS];
+extern t_FenceData*  FenceDataSet[FENCE_MAX_POS];
+
+void     initRTCData(bool reset);
 void     initDataSet(t_SendData* DataSet);
 bool     emptyDataSet(t_SendData* DataSet);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
 void     cleanUpDataSets(bool TransmissionFailed);
+void     freeFirstDataSet(void);
 
 String   generateSendLine(t_SendData* DataSet);
-String   generateMultiSendLine(int first, int last, int backups = 0);
-String   generateMulti64SendLine(int first, int last, int backups = 0);
+String   generateMultiSendLine(int first, int last, int* setsDone);
+String   generateMulti64SendLine(int first, int last);
+
+bool     setSettingsFromHTTPresponse(String response);
+bool     newSettingsB64(String b64);
 
 void     getRTCDataSpace(uint8_t**);
+
+int8_t   getBootCycles(void);
+int32_t  getCycleTimeMS(void);
 
 int32_t  GeoToInt(double geo);
 double   IntToGeo(int32_t val);
@@ -93,6 +128,9 @@ uint8_t  dosHour(const uint16_t time);
 uint8_t  dosMinute(const uint16_t time);
 uint8_t  dosSecond(const uint16_t time);
 
+void testRTC(t_SendData* currentDataSet, tm* bootTime);
+void fillRTCbounary();
+void testRTCbounary();
 
 
 

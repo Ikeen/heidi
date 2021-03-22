@@ -6,7 +6,8 @@
  */
 
 #include "heidi-defines.h"
-#ifdef GSM_MODULE
+bool GPSenabled = false;
+#ifdef GPS_MODULE
 #include <Arduino.h>
 #include <sys/time.h>
 #include "heidi-sys.h"
@@ -20,7 +21,6 @@
 // The TinyGPS++ object
 HardwareSerial SerialGPS(GPS_UART_NO);
 TinyGPSPlus gps;
-
 
 int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
   int      measures = 0;
@@ -90,28 +90,33 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms){
 
 bool SetSysToGPSTime()
 {
-  int startMs = millis();
   uint16_t year = 0;
   uint8_t  mon  = 0;
   uint8_t  day  = 0;
   uint32_t timeoutms = WAIT_FOR_GPS_TIME;
+  int startMs = millis();
   setError(COULD_NOT_FETCH_GPS_TIME);
+  //_DD(DebugPrint("GPS raw data: ", DEBUG_LEVEL_3));
   while(((year <= 2000) || (mon == 0) || (day == 0)) && ((millis() - startMs) < timeoutms)){
     while ((SerialGPS.available() == 0) && ((millis() - startMs) < timeoutms)) {
       delay(10);
     }
-    while (SerialGPS.available() > 0) {
-     gps.encode(SerialGPS.read());
+    while ((SerialGPS.available() > 0)  && ((millis() - startMs) < timeoutms)){
+     int y = SerialGPS.read();
+     //_DD(DebugPrint(String((char)y), DEBUG_LEVEL_3));
+     gps.encode(y);
+     //gps.encode(SerialGPS.read());
      if (gps.date.isUpdated() && gps.date.isValid() && gps.time.isUpdated() && gps.time.isValid()){
+        //_DD(DebugPrintln("", DEBUG_LEVEL_3));
         year = gps.date.year();
         mon  = gps.date.month();
         day  = gps.date.day();
         if ((year > 2000) && (mon > 0) && (day > 0)){
           bool result = SetSysToGPS();
-          _D(DebugPrint("Set sys-time to GPS time Date= ", DEBUG_LEVEL_3));
-          _D(DebugPrint(String(year) + "-" + String(mon) + "-" + String(day), DEBUG_LEVEL_3));
-          _D(DebugPrint(" Time= ", DEBUG_LEVEL_3));
-          _D(DebugPrintln(String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()), DEBUG_LEVEL_3));
+          _DD(DebugPrint("Set sys-time to GPS time Date= ", DEBUG_LEVEL_3));
+          _DD(DebugPrint(String(year) + "-" + String(mon) + "-" + String(day), DEBUG_LEVEL_3));
+          _DD(DebugPrint(" Time= ", DEBUG_LEVEL_3));
+          _DD(DebugPrintln(String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()), DEBUG_LEVEL_3));
 		      return result;
         }
 	    }
@@ -142,15 +147,30 @@ bool SetSysToGPS(){
   return false;
 }
 
-void openGPS(){
-  MeasuresOn();
-  SerialGPS.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX, false);
-  _D(DebugPrintln("GPS on", DEBUG_LEVEL_2));
+bool openGPS(){
+  if (GSMenabled){
+    _D(DebugPrintln("GSM still enabled - cannot open GPS", DEBUG_LEVEL_1); delay(50);)
+    return false;
+  }
+  if (!openMeasures()){
+    _D(DebugPrintln("enable GPS power failed", DEBUG_LEVEL_1); delay(50);)
+    return false;
+  }
+  if (!GPSenabled){
+    GPSenabled = true;
+    SerialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RXD, GPS_TXD, false);
+
+    _D(DebugPrintln("GPS open", DEBUG_LEVEL_2));
+  } _D(else { DebugPrintln("GPS already open", DEBUG_LEVEL_2); delay(50); })
+  return true;
 }
 void closeGPS(){
-  SerialGPS.end();
-  MeasuresOff();
-  _D(DebugPrintln("GPS off", DEBUG_LEVEL_2));
+  if (GPSenabled){
+    SerialGPS.end();
+    closeMeasures();
+    _D(DebugPrintln("GPS closed", DEBUG_LEVEL_2));
+  } _D(else { DebugPrintln("GPS already closed", DEBUG_LEVEL_2); })
+  GPSenabled = false;
 }
 
 void testGPS(){
@@ -180,22 +200,22 @@ void testGPS(){
 
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1
 void _PrintDataGPS(){
-  _D(DebugPrint("Latitude= ", DEBUG_LEVEL_3));
-  _D(DebugPrint(gps.location.lat(), 6, DEBUG_LEVEL_3));
-  _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_3));
-  _D(DebugPrint(gps.location.lng(), 6, DEBUG_LEVEL_3));
-  _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_3));
-  _D(DebugPrint(gps.altitude.meters(), 6, DEBUG_LEVEL_3));
-  _D(DebugPrint(" Date= ", DEBUG_LEVEL_3));
-  _D(DebugPrint(String(gps.date.year()) + "-" + String(gps.date.month()) + "-" + String(gps.date.day()), DEBUG_LEVEL_3));
-  _D(DebugPrint(" Time= ", DEBUG_LEVEL_3));
-  _D(DebugPrint(String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()), DEBUG_LEVEL_3));
-  _D(DebugPrint(" Age= ", DEBUG_LEVEL_3));
-  _D(DebugPrint(gps.location.age(), DEBUG_LEVEL_3));
-  _D(DebugPrint("ms", DEBUG_LEVEL_3));
-  _D(DebugPrint(" Sat= ", DEBUG_LEVEL_3));
-  _D(DebugPrintln(gps.satellites.value(), DEBUG_LEVEL_3));
+  _DD(DebugPrint("Latitude= ", DEBUG_LEVEL_3));
+  _DD(DebugPrint(gps.location.lat(), 6, DEBUG_LEVEL_3));
+  _DD(DebugPrint(" Longitude= ", DEBUG_LEVEL_3));
+  _DD(DebugPrint(gps.location.lng(), 6, DEBUG_LEVEL_3));
+  _DD(DebugPrint(" Altitude= ", DEBUG_LEVEL_3));
+  _DD(DebugPrint(gps.altitude.meters(), 6, DEBUG_LEVEL_3));
+  _DD(DebugPrint(" Date= ", DEBUG_LEVEL_3));
+  _DD(DebugPrint(String(gps.date.year()) + "-" + String(gps.date.month()) + "-" + String(gps.date.day()), DEBUG_LEVEL_3));
+  _DD(DebugPrint(" Time= ", DEBUG_LEVEL_3));
+  _DD(DebugPrint(String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()), DEBUG_LEVEL_3));
+  _DD(DebugPrint(" Age= ", DEBUG_LEVEL_3));
+  _DD(DebugPrint(gps.location.age(), DEBUG_LEVEL_3));
+  _DD(DebugPrint("ms", DEBUG_LEVEL_3));
+  _DD(DebugPrint(" Sat= ", DEBUG_LEVEL_3));
+  _DD(DebugPrintln(gps.satellites.value(), DEBUG_LEVEL_3));
 }
 #endif
 
-#endif //GSM_MODULE
+#endif //GPS_MODULE

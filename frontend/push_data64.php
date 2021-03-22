@@ -8,7 +8,7 @@
     $password   = "12wanderfalke34!";
     $dbname     = "Heidi";
     $herdeID    = '';
-    
+
     // Create connection
     $conn = new mysqli($servername, $username, $password, $dbname);
     // Check connection
@@ -22,8 +22,8 @@
       //php.ini: max_input_var = 1000 by default; post_max_size = 8M by default
       $stateOK    = TRUE;
       $i          = 1;
-      $rounds     = 0; //prevent from running wild 
-      while(($i > 0) && ($rounds < 100) && $stateOK){ 
+      $rounds     = 0; //prevent from running wild
+      while(($i > 0) && ($rounds < 100) && $stateOK){
         $rounds++;
         $urldata = $_POST[$urlmarker];
         //echo  $urldata . '<br>';
@@ -35,18 +35,18 @@
         $pos = 1;
         $count = $data[$pos++];
         //echo "<br>" . $count . ", " . $pos . "<br>";
-        if($count < 7 ) { continue; }     
+        if($count < 7 ) { continue; }
         //uint_8
         $herde = $data[$pos++];
-        if ($herde < 10) { $herde = '000' . $herde; } 
-        elseif ($herde < 100) { $herde = '00' . $herde; } 
-        elseif ($herde < 1000) { $herde = '0' . $herde; } 
+        if ($herde < 10) { $herde = '000' . $herde; }
+        elseif ($herde < 100) { $herde = '00' . $herde; }
+        elseif ($herde < 1000) { $herde = '0' . $herde; }
         if ($herdeID === '') { $herdeID = $herde; }
         //echo $herde . ", " . $pos . "<br>";
         //uint_8
         $animal = $data[$pos++];
-        if ($animal < 10) { $animal = '000' . $animal; } 
-        elseif ($animal < 100) { $animal = '00' . $animal; } 
+        if ($animal < 10) { $animal = '000' . $animal; }
+        elseif ($animal < 100) { $animal = '00' . $animal; }
         elseif ($animal < 1000) { $animal = '0' . $animal; } 
         $id = $herde . '.' . $animal;
         //echo $animal . ", " . $pos . "<br>";
@@ -59,7 +59,7 @@
         $lng /= 1000000;
         //echo  $lng . ", " . $pos . "<br>";
         //int_16 (needs special threadmet)
-        if($data[$pos+1] > 127) 
+        if($data[$pos+1] > 127)
         { $alt = (integer)($data[$pos++] + ($data[$pos++] << 8) + (0xFF << 16) + (0xFF << 24)); }
         else
         { $alt = (integer)($data[$pos++] + ($data[$pos++] << 8)); }
@@ -68,9 +68,9 @@
         $_date = $data[$pos++] + ($data[$pos++] << 8);
         $year = ($_date >> 9) + 1980;
         $mon  = ($_date >> 5) & 0x0F;
-        if ($mon < 10) { $mon = '0' . $mon; } 
+        if ($mon < 10) { $mon = '0' . $mon; }
         $day  =  $_date  & 0x1F;
-        if ($day < 10) { $day = '0' . $day; } 
+        if ($day < 10) { $day = '0' . $day; }
         $date = $year . '-' . $mon . '-' . $day;
         //echo  $date . ", " . $pos . "<br>";
         //16-bit DOS-time
@@ -90,26 +90,26 @@
         $sql0 = "SELECT Count(*) FROM TrackerData WHERE TrackerID = '{$id}' AND TimeStamp = '{$date} {$time}';";
         $sql1 = "INSERT INTO TrackerData (TrackerID, Longitude, Latitude, Altitude, TimeStamp, Battery";
         $sql2 = "VALUES ('{$id}', '{$lng}', '{$lat}', '{$alt}', '{$date} {$time}', '{$batt}'";
-        
+
         if ($count >= 8) {
           //uint_16 satellites
           $sql1 .= ', FreeValue1';
           $sat = (integer)($data[$pos++] + ($data[$pos++] << 8));
           //echo  "sat: " . $sat . ", " . $pos . "<br>";
           $sql2 .= ", '{$sat}'";
-        } 
+        }
 
         if ($count >= 9) {
           //int_16 / 100 temperature
           $sql1 .= ', FreeValue2';
-          if($data[$pos+1] > 127) 
+          if($data[$pos+1] > 127)
           { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8) + (0xFF << 16) + (0xFF << 24)); }
           else
           { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8)); }
           $temp /= 100;
           //echo  "temp: " . $temp . ", " . $pos . "<br>";
           $sql2 .= ", '{$temp}'";
-        } 
+        }
 
         if ($count >= 10) {
           //uint_16 error code
@@ -117,32 +117,32 @@
           $err = "0x" . strtoupper(dechex((integer)($data[$pos++] + ($data[$pos++] << 8))));
           //echo  "err: " . $err . ", " . $pos . "<br>";
           $sql2 .= ", '{$err}'";
-        } 
+        }
 
         for ($x = 4; $x <= $count-7; $x++) {
-          //uint_16 
+          //uint_16
           $sql1 .= ", FreeValue{$x}";
           $free = (integer)($data[$pos++] + ($data[$pos++] << 8));
           //echo  'FreeValue ' . $x . ': ' . $free . ", " . $pos . "<br>";
           $sql2 .= ", '{$free}'";
-        } 
+        }
 
         //echo "{$sql1}) {$sql2})" . '<br><br>';
-        if ($sqlres = $conn->query($sql0)){ 
+        if ($sqlres = $conn->query($sql0)){
           if ($row = $sqlres->fetch_row()){
             if ($row[0] == 0){
               $sql = "{$sql1}) {$sql2})";
               $stateOK = $conn->query($sql);
             } else { $stateOK = TRUE; }
-            $i++; 
+            $i++;
           } else { $i = 0; }
           $sqlres->close();
         } else {
           echo "sql error: " . $conn->error . "<br>";
           $i = 0;
           $stateOK = FALSE;
-        } 
-        if (i < 10){ $urlmarker = "X0{$i}"; } else { $urlmarker = "X{$i}"; }
+        }
+        if ($i < 10){ $urlmarker = "X0{$i}"; } else { $urlmarker = "X{$i}"; }
         if (empty($_POST[$urlmarker])){ $i = 0; }
       }
       $i=1;
@@ -158,7 +158,13 @@
       if(!empty($_POST["ID"])){
         $herdeID = substr($_POST["ID"],0,4);
         tellFence($conn, $herdeID);
-      } else { echo " - no valid Data"; }
+        tellSettings($conn, $herdeID);
+      } else if (isset($_GET['ID'])) {
+        $herdeID = substr($_GET['ID'],0,4);
+        tellFence($conn, $herdeID);
+        tellSettings($conn, $herdeID);
+      }
+      else { echo " - no valid Data"; }
     }
     $conn->close();
 
@@ -178,6 +184,27 @@ function tellFence($conn, $herdeID)
     echo ';' . $b64n . ';' . dechex(crc16F($b64n));
   }
 }
+
+function tellSettings($conn, $herdeID)
+{
+  $sql0 = "SELECT * FROM Settings WHERE HerdeID = '{$herdeID}';";
+  if ($sqlres = $conn->query($sql0)){ 
+    $row = $sqlres->fetch_row();
+    $count = $sqlres->field_count;
+    $settings_data = pack('C', (integer)$count);
+    $i = 1; //1st [0] is ID
+    while ($i < $count){
+      $settings_data .= pack('S', (integer)($row[$i])); 
+      $i++;
+    }
+    $sqlres->close();
+    $b64n = base64_encode($settings_data);
+    $b64n = strtr($b64n, '+/', '-_');
+    $b64n = preg_replace("/[^a-zA-Z0-9-_]/", "", $b64n);
+    echo ';' . $b64n . ';' . dechex(crc16F($b64n));
+  }
+}
+
 function crc16F($data) //CRC-16/CCITT-FALSE
 {
   $crc = 0xFFFF;

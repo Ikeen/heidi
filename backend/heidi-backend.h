@@ -63,18 +63,28 @@ bool     GetSysTime(tm* info);
 int8_t   GetLocalTimeHourShift();
 double   GetVoltage();
 
-void initGlobalVar();
-void restartCycling();
-void goto_sleep(uint32_t mseconds);
-void checkWakeUpReason();
-
-static void watchDog(void* arg);
+double CheckBattery(void);
+void initGlobalVar(bool powerOnReset);
+void setupSystemDateTime(void);
 void setupWatchDog(void);
+static void watchDog(void* arg);
 void doResetInits(void);
 
-#if DEBUG_LEVEL >= DEBUG_LEVEL_1
+void restartCycling();
+void goto_sleep(int32_t mseconds);
+
+bool wasPowerOnReset(void);
+bool wasRegularWakeUp(void);
+bool wasULPWakeUp(void);
+
+
+_D(
 void doResetTests();
 void testMeasure();
+void checkWakeUpReason();
+#ifdef TEST_RTC
+void testRTC(t_SendData*);
 #endif
+)
 
 #endif /* HEIDI_BACKEND_H_ */

@@ -8,11 +8,13 @@
 #include "heidi-defines.h"
 #include "heidi-error.h"
 #include "heidi-debug.h"
+#include "heidi-data.h"
 #include "heidi-sys.h"
 
 extern tm bootTime;
 extern tm expBootTime;
 extern int currentTimeDiffMs;
+extern t_ConfigData* heidiConfig;
 
 static int bootTimeStampMs;
 static int expectedBootTimeMs;
@@ -55,16 +57,17 @@ bool isInCycle(int firstCycleInHour, int8_t* bootCount){
     }
     t += CYCLE_DURATION_MIN;
     i++;
-    if (i == BOOT_CYCLES) { i = 0; }
+    if (i == getBootCycles()) { i = 0; }
   }
   if (t >=60 ) { t -= 60; }
   //now we have the current (if in cycle) or the next (if out of cycle) boot minute -> t
   //time for calculations - 1st: expected boot time
   int x = (bootTime.tm_hour * 3600 + t * 60) * 1000; //ms time stamp for the next / current cycle so far
-  if((x - bootTimeStampMs) < -SLEEP_DURATION_MSEC){
+  //if((x - bootTimeStampMs) < -SLEEP_DURATION_MSEC){
+  if((bootTimeStampMs - x) > getCycleTimeMS()){
 	  //woken up early (maybe woken up yesterday, but exp. today)
 	  if ((bootTime.tm_hour + 1) > 23) { expBootTime.tm_hour = 0; } else { expBootTime.tm_hour = bootTime.tm_hour + 1; }
-  } else if ((x - bootTimeStampMs) > SLEEP_DURATION_MSEC){
+  } else if ((x - bootTimeStampMs) > getCycleTimeMS()){
 	  //woken up late (maybe woken up today, but exp. yesterday)
 	  if ((bootTime.tm_hour - 1) < 0) { expBootTime.tm_hour = 23; } else { expBootTime.tm_hour = bootTime.tm_hour - 1; }
   } else {
@@ -79,10 +82,7 @@ bool isInCycle(int firstCycleInHour, int8_t* bootCount){
   return inCycle;
 }
 bool doDataTransmission(int8_t bootCount){
-  if (bootCount == BOOT_CYCLES - 1){
-    if ((bootTime.tm_hour > NIGHT_HOUR_START) && (bootTime.tm_hour < NIGHT_HOUR_END)){
-      if ((bootTime.tm_hour % 2) == 0) {return true;} else {return false;}
-    }
+  if (bootCount == getBootCycles() - 1){
     return true;
   }else{
     return false;
@@ -95,9 +95,9 @@ bool calcCurrentTimeDiff(){
 	return false;
   }
   int y = expectedBootTimeMs - bootTimeStampMs;
-  if(y < (SLEEP_DURATION_MSEC - MS_PER_DAY)){
+  if(y < (getCycleTimeMS() - MS_PER_DAY)){
     currentTimeDiffMs = y + MS_PER_DAY;
-  } else if (y > (MS_PER_DAY - SLEEP_DURATION_MSEC)){
+  } else if (y > (MS_PER_DAY - getCycleTimeMS())){
 	currentTimeDiffMs = y - MS_PER_DAY;
   } else {
     currentTimeDiffMs = y;
@@ -108,7 +108,7 @@ bool calcCurrentTimeDiff(){
 bool isInTime(const int target_m, const int current_m, const int current_s){
   int current = current_m;
   int target  = target_m;
-  int wrap_border = 3600 - (SLEEP_DURATION_MSEC / 1000);
+  int wrap_border = 3600 - (getCycleTimeMS() / 1000);
 
   if (target > 60)  { target -= 60; }
   current *= 60;
@@ -169,6 +169,9 @@ String GetCSVvalue(String line, int no)
   }
   return line.substring(pos, end);
 }
+bool _night(void) {
+  return ((bootTime.tm_hour >= heidiConfig->nightHourStart) | (bootTime.tm_hour < heidiConfig->nightHourEnd));
+}
 void _copyTime(tm *from, tm *to){
   to->tm_hour = from->tm_hour;
   to->tm_min  = from->tm_min;
@@ -207,6 +210,12 @@ int32_t _copyBufferToInt32(uint8_t *buffer, int pos){
   value |= buffer[pos+1] << 8;
   value |= buffer[pos+2] << 0x10;
   value |= buffer[pos+3] << 0x18;
+  return value;
+}
+uint16_t _copyBufferToUInt16(uint8_t *buffer, int pos){
+  uint16_t value;
+  value  = buffer[pos];
+  value |= buffer[pos+1] << 8;
   return value;
 }
 String b64u = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";   // base64url dictionary

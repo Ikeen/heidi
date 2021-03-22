@@ -8,20 +8,23 @@
 #ifndef HEIDI_GSM_H_
 #define HEIDI_GSM_H_
 #include "heidi-defines.h"
-#define GSM      13    // On/Off
+#include "esp32-hal-gpio.h"
 
 #ifdef GSM_MODULE
 #include <stdint.h>
 #include <WString.h>
-#define GSM_RST  21
-#define GSM_RXD  23    //!!!
-#define GSM_TXD  4     //!!!
-#define GSM_UART_NO 1
-#define GSM_ON   LOW
-#define GSM_OFF  HIGH
 
-void hGSM_on();
-void hGSM_off();
+#define GSM_RXD  GPIO_NUM_16
+#define GSM_TXD  GPIO_NUM_17
+#define GSM_UART_NO 1
+//#define GSM_RXD  GPIO_NUM_23
+//#define GSM_TXD  GPIO_NUM_21
+//#define GSM_UART_NO 2
+#define GSM_BAUD 57600
+
+bool openGSM();
+void closeGSM();
+
 bool hGSMsetup();
 bool hGSMshutDown();
 bool hGSMsetupGPRS(const String apn, const String user, const String pwd);
