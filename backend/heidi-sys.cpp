@@ -33,12 +33,12 @@ String _herdeID(){
   return String(herdeID());
 }
 
-bool isInCycle(int firstCycleInHour, int8_t* bootCount){
+bool isInCycle(int firstCycleInDay, int8_t* bootCount){
   if (bootTimeStampMs == INVALID_TIME_VALUE) { return false; } // should never happen
   bool inCycle = false;
   int i = 0;
-  int t = firstCycleInHour; //minute of 1st cycle within a new hour
-  while (t < (60 + firstCycleInHour)){
+  int t = firstCycleInDay; //minute of 1st cycle within a new day
+  while (t < (1440 + firstCycleInDay)){
     if (isInTime(t, bootTime.tm_min, bootTime.tm_sec)){
       inCycle = true;
    	  if (*bootCount == i) {
@@ -49,7 +49,7 @@ bool isInCycle(int firstCycleInHour, int8_t* bootCount){
       }
       break;
     } else {
-      if (bootTime.tm_min >= firstCycleInHour) {
+      if (bootTime.tm_min >= firstCycleInDay) {
 		if(t > bootTime.tm_min) { break; }
 	  } else {
 		if(t > (bootTime.tm_min + 60)) { break; }
@@ -119,7 +119,7 @@ bool isInTime(const int target_m, const int current_m, const int current_s){
   else if (diffToRegularS < (wrap_border * -1)) { diffToRegularS += 3600; }
   #if DEBUG_LEVEL > 0
   if ((diffToRegularS >= -SLEEP_MAX_SHIFT_S) && (diffToRegularS <= SLEEP_MAX_SHIFT_S)) {
-    _D(DebugPrintln("InTime: target: " + String(target) + "; current: " + String(current) + "diff: " + String(diffToRegularS) + "max_diff: " + String(SLEEP_MAX_SHIFT_S), DEBUG_LEVEL_1));
+    _D(DebugPrintln("InTime: target: " + String(target) + "; current: " + String(current) + "; diff: " + String(diffToRegularS) + "; max_diff: " + String(SLEEP_MAX_SHIFT_S), DEBUG_LEVEL_1));
   }
   #endif
   return ((diffToRegularS >= -SLEEP_MAX_SHIFT_S) && (diffToRegularS <= SLEEP_MAX_SHIFT_S));

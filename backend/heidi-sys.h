@@ -16,7 +16,7 @@ uint8_t herdeID();
 String _herdeID();
 uint8_t animalID();
 
-bool isInCycle(int firstCycleInHour, int8_t* bootCount);
+bool isInCycle(int firstCycleInDay, int8_t* bootCount);
 bool doDataTransmission(int8_t bootCount );
 bool calcCurrentTimeDiff();
 bool isInTime(const int target_m, const int current_m, const int current_s);

@@ -92,8 +92,8 @@ void setup()
 #endif
 
 #ifdef TEMP_SENSOR
-  currentDataSet->temperature = MeasureTemperature();
-  _D(DebugPrintln("Temperature: " + String(currentDataSet->temperature) + "C", DEBUG_LEVEL_1);)
+  currentDataSet->temperature = (int16_t)(MeasureTemperature()*100);
+  _D(DebugPrintln("Temperature: " + String(((float)currentDataSet->temperature / 100)) + "C", DEBUG_LEVEL_1);)
 #endif
 
   setupSystemDateTime();
@@ -162,7 +162,9 @@ void setup()
                               HTTPtimeOut);
           if (HTTPrc == 200){
             _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_1);)
-            GSMfailure = !setFenceFromHTTPresponse(hGSMGetLastResponse());
+            GSMfailure = false;
+            setFenceFromHTTPresponse(hGSMGetLastResponse());
+            setSettingsFromHTTPresponse(hGSMGetLastResponse());
           }
         }else{
           _D(DebugPrintln("GPRS check OK.", DEBUG_LEVEL_1);)

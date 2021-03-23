@@ -21,7 +21,7 @@
 #endif
 
 #define HEX_BUFFER_OFFSET 3
-#define HEX_BUFFER_VALUES 12 //_t_SendData values + ID
+#define HEX_BUFFER_VALUES 14 //_t_SendData values + ID
 #define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 2 + 4 + 4 + (2 * (HEX_BUFFER_VALUES - 3)))
 
 typedef __attribute__((__packed__)) struct _t_ConfigData{

@@ -209,19 +209,20 @@ String generateMulti64SendLine(int first, int last)
       uint8_t hexbuffer[64];
       hexbuffer[0] = HEX_BUFFER_VALUES; //count of data values
       hexbuffer[1] = herdeID();
-      hexbuffer[2] = animalID();
-      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  0, DataSet->latitude);
-      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  4, DataSet->longitude);
-      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  8, DataSet->altitude);
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 10, DataSet->date);
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 12, DataSet->time);
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 14, DataSet->battery);
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 16, DataSet->satellites);
-      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  + 18, DataSet->temperature);
-      //_copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, DataSet->errCode);
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, DataSet->accThres1);
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, DataSet->GPShdop);
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->metersOut);
+      hexbuffer[2] = animalID();  //1
+      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  0, DataSet->latitude); //2
+      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  4, DataSet->longitude); //3
+      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  8, DataSet->altitude); //4
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 10, DataSet->date); //5
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 12, DataSet->time); //6
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 14, DataSet->battery); //7
+      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  + 16, DataSet->temperature); //8
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 18, DataSet->errCode); //9
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, DataSet->satellites); //10
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, DataSet->GPShdop); //11
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThres1);  //12
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThres2);  //13
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //14 = HEX_BUFFER_VALUES
 
       String HexStr = "";
       for(int i=0; i<HEX_BUFFER_LEN; i++){

@@ -86,12 +86,20 @@
         //uint_16 / 1000
         $batt = (integer)($data[$pos++] + ($data[$pos++] << 8));
         $batt /= 1000;
-        //echo  "batt: " . $batt . ", " . $pos . "<br>";
+        //uint_16 / 100
+        if($data[$pos+1] > 127)
+        { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8) + (0xFF << 16) + (0xFF << 24)); }
+        else
+        { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8)); }
+        $temp /= 100;
+        //echo  "temp: " . $temp . ", " . $pos . "<br>";
+        $err = "0x" . strtoupper(dechex((integer)($data[$pos++] + ($data[$pos++] << 8))));
+        //echo  "errc: " . $err . ", " . $pos . "<br>";
         $sql0 = "SELECT Count(*) FROM TrackerData WHERE TrackerID = '{$id}' AND TimeStamp = '{$date} {$time}';";
-        $sql1 = "INSERT INTO TrackerData (TrackerID, Longitude, Latitude, Altitude, TimeStamp, Battery";
-        $sql2 = "VALUES ('{$id}', '{$lng}', '{$lat}', '{$alt}', '{$date} {$time}', '{$batt}'";
-
-        if ($count >= 8) {
+        $sql1 = "INSERT INTO TrackerData (TrackerID, Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode ";
+        $sql2 = "VALUES ('{$id}', '{$lng}', '{$lat}', '{$alt}', '{$date} {$time}', '{$batt}', '{$temp}', '{$err}'";
+        /*
+        if ($count >= 10) {
           //uint_16 satellites
           $sql1 .= ', FreeValue1';
           $sat = (integer)($data[$pos++] + ($data[$pos++] << 8));
@@ -99,27 +107,23 @@
           $sql2 .= ", '{$sat}'";
         }
 
-        if ($count >= 9) {
-          //int_16 / 100 temperature
+        if ($count >= 11) {
+          //int_16 GPShdop
           $sql1 .= ', FreeValue2';
-          if($data[$pos+1] > 127)
-          { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8) + (0xFF << 16) + (0xFF << 24)); }
-          else
-          { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8)); }
-          $temp /= 100;
-          //echo  "temp: " . $temp . ", " . $pos . "<br>";
-          $sql2 .= ", '{$temp}'";
+          $GPShdop = (integer)($data[$pos++] + ($data[$pos++] << 8));
+          //echo  "GPShdop: " . $GPShdop . ", " . $pos . "<br>";
+          $sql2 .= ", '{$GPShdop}'";
         }
 
-        if ($count >= 10) {
-          //uint_16 error code
+        if ($count >= 12) {
+          //uint_16 acc threshold 1 counter
           $sql1 .= ', FreeValue3';
-          $err = "0x" . strtoupper(dechex((integer)($data[$pos++] + ($data[$pos++] << 8))));
-          //echo  "err: " . $err . ", " . $pos . "<br>";
-          $sql2 .= ", '{$err}'";
+          $acc1 = (integer)($data[$pos++] + ($data[$pos++] << 8));
+          //echo  "acc1: " . $acc1 . ", " . $pos . "<br>";
+          $sql2 .= ", '{$acc1}'";
         }
-
-        for ($x = 4; $x <= $count-7; $x++) {
+        */
+        for ($x = 1; $x <= $count-9; $x++) {
           //uint_16
           $sql1 .= ", FreeValue{$x}";
           $free = (integer)($data[$pos++] + ($data[$pos++] << 8));
@@ -150,6 +154,7 @@
       if ($stateOK === TRUE) {
         echo "OK";
         tellFence($conn, $herdeID);
+        tellSettings($conn, $herdeID);
       } else {
         echo "Error: " . $sql . "<br>" . $conn->error;
       }

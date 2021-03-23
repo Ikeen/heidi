@@ -14,13 +14,13 @@
  */
 #define HEIDI_GATE_WAY
 #define HEIDI_HERDE         1
-#define HEIDI_ANIMAL        2
+#define HEIDI_ANIMAL        1
 
 #define GSM_MODULE
 #define GPS_MODULE
-//#define TEMP_SENSOR
+#define TEMP_SENSOR
 #define I2C_BUS
-//#define CHECK_BATTERY
+#define CHECK_BATTERY
 #define ACCELEROMETER
 #define I2C_SWITCH
 #define USE_ULP
