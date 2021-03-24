@@ -4,6 +4,24 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 <title>Heidi Map</title>
+<style>
+table {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+  border-collapse: collapse;
+  <!-- width: 100%; -->
+}
+
+td, th {
+  border: 1px solid #aaaaaa;
+  text-align: left;
+  padding: 3px;
+}
+
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+</style>
 </head>
 <body bgcolor="#FFFFFF" text="#000000" onload='init();'>
 <font size=+1 face="monospace">
@@ -12,7 +30,7 @@
 <input id="togglePolyLayer" type="button" onclick="EnablePolygon()" value="Neue Weide">
 <input id="submitPolyLayer" type="button" onclick="PostNewWeide()" value="Übertragen" disabled>
 <input id="decDay" type="button" onclick="DecrementDay()" value="-"> Tag <input id="incDay" type="button" onclick="IncrementDay()" value="+">
-<input id="decHour" type="button" onclick="DecrementHour()" value="-"> Stunde <input id="incHour" type="button" onclick="IncrementHour()" value="+">
+<input id="decMin" type="button" onclick="DecrementMin()" value="-"> 15 Min <input id="incMin" type="button" onclick="IncrementMin()" value="+">
 
 <br><br>
 <?php
@@ -28,17 +46,21 @@
     $MapToken   = "";
 
     if (isset($_GET['ID'])) {$TrackerID = $_GET['ID'];} else {$TrackerID = "0001.0001";}
-    if (isset($_GET['Date'])) {$CurDate = $_GET['Date'];} else {$CurDate = date('Y-m-d H:i:s');}
-
+    if (isset($_GET['Date'])) {$OrigDate = $_GET['Date'];} else {$OrigDate = date('Y-m-d H:i:s');}
+    
+    $LocalDate = date_create_from_format('Y-m-d H:i:s', $OrigDate);
+    $CurDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalDate));
+    
     // Create connection
     $conn = new mysqli($servername, $username, $password, $dbname);
     // Check connection
     if ($conn->connect_error) {
         die("Database Connection failed: " . $conn->connect_error);
     }
-
-    $sql  = 'SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, FreeValue2, FreeValue1 FROM TrackerData ';
-    $sql .= 'WHERE TrackerID = \'' . $TrackerID . '\' AND TimeStamp <= \'' . $CurDate . '\' ';
+    //          row    0         1          2         3         4         5           6            7            8          9          10          11
+    //                                                                                            Sats       GPShdop     acc1        acc2        Mout 
+    $sql  = 'SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5 FROM TrackerData ';
+    $sql .= 'WHERE TrackerID = \'' . $TrackerID . '\' AND TimeStamp <= \'' . $CurDateUTC . '\' ';
     $sql .= 'AND Longitude != \'0.0\' AND Latitude != \'0.0\' ';
     $sql .= 'ORDER BY TimeStamp DESC LIMIT 1';
 
@@ -56,18 +78,24 @@
         $TrackerLatitude  = floatval($row[1]);
         $PositionResult   = TRUE;
 
-        echo 'TrID: ' . $TrackerID . '<br>';
-        echo 'H&ouml;he: ' . $row[2] . '<br>';
-        echo 'Zeit: ' . $row[3] . '<br>';
-        echo 'Batt: ' . $row[4] . '<br>';
-        echo 'Temp: ' . $row[5] . '<br>';
-        echo 'Sats: ' . $row[6] . '<br>';
+        $tz = new DateTimeZone( "UTC" );
+        $MeasDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
+        $MeasDate = date('Y-m-d H:i:s', date_timestamp_get($MeasDateUTC));
+        if($row[8] < 10) { $Quality = 10; } else { $Quality = $row[8]; }
+        $Quality = 10 / $Quality;
+        echo '<table>';
+        echo '<tr><th>TrID: </th><th>'     . $TrackerID . '</th><th>Batt:</th><th>'  . $row[4]  . '</th></tr>';
+        echo '<tr><th>Zeit: </th><th>'     . $MeasDate  . '</th><th>Temp:</th><th>'  . $row[5]  . '</th></tr>';
+        echo '<tr><th>Entf: </th><th>'     . $row[11]   . '</th><th>Bew1:</th><th>'  . $row[9]  . '</th></tr>';
+        echo '<tr><th>H&ouml;he: </th><th>' . $row[2]    . '</th><th>Bew2:</th><th>'  . $row[10] . '</th></tr>';
+        echo '<tr><th>Sats: </th><th>'     . $row[7]    . '</th><th>Quali:</th><th>' . $Quality . '</th></tr>';
+        echo '</table>';
       }
       $result->close();
     }
 
     $sql  = 'SELECT Longitude, Latitude FROM TrackerData ';
-    $sql .= 'WHERE TrackerID = \'' . $TrackerID . '\' AND TimeStamp <= \'' . $CurDate . '\' ';
+    $sql .= 'WHERE TrackerID = \'' . $TrackerID . '\' AND TimeStamp <= \'' . $CurDateUTC . '\' ';
     $sql .= 'AND Longitude != \'0.0\' AND Latitude != \'0.0\' ';
     $sql .= 'ORDER BY TimeStamp DESC LIMIT 16';
 
@@ -117,9 +145,13 @@
   var MapToken  = <?php echo json_encode($MapToken); ?>;
   var TrackPnts = <?php echo json_encode($TrackPnts); ?>;
   var Track   =   <?php echo json_encode($Track); ?>;
-  var CurDate =   <?php echo json_encode($CurDate); ?>;
-  CurDate = CurDate.substr(0, CurDate.indexOf(' ')) + "T" + CurDate.substr(CurDate.indexOf(' ')+1) + "Z";
-  var TimeStamp = new Date(CurDate);
+  var CurDateUTC =   <?php echo json_encode($CurDateUTC); ?>;
+  CurDateUTC = CurDateUTC.substr(0, CurDateUTC.indexOf(' ')) + "T" + CurDateUTC.substr(CurDateUTC.indexOf(' ')+1) + "Z";
+  var TimeStamp = new Date(CurDateUTC);
+  
+console.log("TimeStamp: " + TimeStamp.toString());
+
+  var newTimeStampStr = "";
   var TrackerID = <?php echo json_encode($TrackerID); ?>;
   var url     = window.location.href;
   var zoom    =   18;
@@ -275,33 +307,35 @@
  }
   
   function DecrementDay(){
-    TimeStamp.setUTCDate(TimeStamp.getUTCDate() - 1);
-    ReLocateHeidi();
+    console.log(CalcDate(-1,0));
+    //ReLocateHeidi();
   }
   function IncrementDay(){
-    TimeStamp.setUTCDate(TimeStamp.getUTCDate() + 1);
-    ReLocateHeidi();
+    CalcDate(1,0);
   }
-  function DecrementHour(){
-    TimeStamp.setUTCHours(TimeStamp.getUTCHours() - 1);
-    ReLocateHeidi();
+  function DecrementMin(){
+    CalcDate(0,-15);
   }
-  function IncrementHour(){
-    TimeStamp.setUTCHours(TimeStamp.getUTCHours() + 1);
-    ReLocateHeidi();
+  function IncrementMin(){
+    CalcDate(0,15);
   }
-  function ReLocateHeidi(){
-    //alert(TimeStamp.toUTCString());
-    url += "?ID=" + TrackerID + "&Date=" + TimeStamp.getUTCFullYear().toString();
-    url += "-" + lenTwo((TimeStamp.getUTCMonth()+1).toString()) + "-" + lenTwo(TimeStamp.getUTCDate().toString());
-    url += " " + lenTwo(TimeStamp.getUTCHours().toString()) + ":" + lenTwo(TimeStamp.getUTCMinutes().toString());
-    url += ":" + lenTwo(TimeStamp.getSeconds().toString());
-    window.location.href = url;
+  function CalcDate(DayInc, MinInc){
+
+    var newTime = new Date(TimeStamp);
+    newTime.setSeconds(0);
+    newTime.setDate(newTime.getDate() + DayInc);
+    newTime.setMinutes(newTime.getMinutes() + MinInc);
+    var newTimeStampStr = newTime.getFullYear() + "-" + lenTwo((newTime.getMonth()+1).toString()) + "-" + lenTwo(newTime.getDate().toString()) + "%20";
+    newTimeStampStr += lenTwo(newTime.getHours().toString()) + ":" + lenTwo(newTime.getMinutes().toString()) + ":" + lenTwo(newTime.getSeconds().toString());
+    //console.log("redirect : heidimap.phtml?ID=" + TrackerID + "&Date=" + newTimeStampStr);
+    window.location.replace("heidimap.phtml?ID=" + TrackerID + "&Date=" + newTimeStampStr);
   }
+  
   function lenTwo(value){
     if (value.length ==1) { return "0"+value; }
     return value;
   }
+  
   function cutsix(value){
     var result = new String("");
     result += value;

@@ -58,14 +58,25 @@ div.a {
 
 <?php
 
-    $TrackerID = $_GET['TrackerID'];
-    $StartDate = $_GET['StartDate'];
-    $EndDate   = $_GET['EndDate'];
+    $TrackerID = $_GET['ID'];
+    if (isset($_GET['StartDate'])) {$StartDate = $_GET['StartDate']; } 
+    else { $StartDate = date('Y-m-d') . " 00:00:00"; }
+    if (isset($_GET['EndDate'])) {$EndDate = $_GET['EndDate']; } 
+    else { $EndDate = date('Y-m-d') . " 23:59:59"; }
     $Table     = "TrackerData";
-    $Action    = $_GET['ShowData'];
+    if (isset($_GET['ShowData'])) { $Action = $_GET['ShowData']; } 
+    else { $Action = "TAB"; } 
+
+    $LocalDate = date_create_from_format('Y-m-d H:i:s', $StartDate);
+    $StartDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalDate));
+    $LocalDate = date_create_from_format('Y-m-d H:i:s', $EndDate);
+    $EndDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalDate));
     
-    $sql  = "SELECT TrackerID, Longitude, Latitude, Altitude, TimeStamp, Battery FROM {$Table} ";
-    $sql .= "WHERE TrackerID = '{$TrackerID}' AND TimeStamp >= '{$StartDate }' AND TimeStamp <= '{$EndDate}' ";
+    
+    //          row    0         1          2         3         4          5            6           7            8          9          10         11 
+    //                                                                                             Sats       GPShdop     acc1        acc2        Mout 
+    $sql  = "SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5 FROM TrackerData ";
+    $sql .= "WHERE TrackerID = '{$TrackerID}' AND TimeStamp >= '{$StartDateUTC }' AND TimeStamp <= '{$EndDateUTC}' ";
     $sql .= "ORDER BY TimeStamp DESC";
 
     if ($result=mysqli_query($conn,$sql))
@@ -77,10 +88,12 @@ div.a {
         echo "&emsp;&lt;name&gt;Heidi track&lt;/name&gt;<br>";
         echo "&emsp;&lt;trk&gt;&lt;name&gt;{$TrackerID}&lt;/name&gt;&lt;trkseg&gt;<br>";
       } else {
+        echo "<b> Tracker: ". $TrackerID . "</b>  von " . $StartDate . " bis " . $EndDate . "<br><br>";
         echo "<table id='c4ytable'>";
-        echo "<tr><th>TrackerID</th><th>Longitude</th><th>Latitude</th><th>Altitude</th><th>TimeStamp</th><th>Battery</th></tr>";
+        echo "<tr><th>Zeit</th><th>L&auml;nge</th><th>Breite</th><th>Entfernung</th><th>BWidx1</th><th>BWidx2</th><th>Batterie</th><th>Temp.</th><th>Sats</th><th>GPShdop</th><th>ErrorCode</th></tr>";
       }
       // Fetch one and one row
+      $tz = new DateTimeZone( "UTC" );
       while ($row=mysqli_fetch_row($result))
       {
         if ($Action == "GPX") {
@@ -89,7 +102,11 @@ div.a {
           echo "&lt;time&gt;" . date_format($d,"y-m-d") . "T" . date_format($d,"H:i:s") . "Z&lt;/time&gt;&lt;/trkpt&gt;";
           echo "<br>";
         } else {
-          echo "<tr><td>".$row[0]."</td><td>".$row[1]."</td><td>".$row[2]."</td><td>".$row[3]."</td><td>".$row[4]."</td><td>".$row[5]."</td></tr>";
+          
+          $MeasDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
+          $MeasDate = date('Y-m-d H:i:s', date_timestamp_get($MeasDateUTC));
+          echo "<tr><td>".$MeasDate."</td><td>".$row[0]."</td><td>".$row[1]."</td><td>".$row[11]."</td><td>".$row[9]."</td><td>".$row[10];
+          echo "</td><td>".$row[4]."</td><td>".$row[5]."</td><td>".$row[7]."</td><td>".$row[8]."</td><td>".$row[6]."</td></tr>";
         }
       }
 
