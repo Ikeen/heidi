@@ -87,8 +87,8 @@ tr:nth-child(even) {
         echo '<tr><th>TrID: </th><th>'     . $TrackerID . '</th><th>Batt:</th><th>'  . $row[4]  . '</th></tr>';
         echo '<tr><th>Zeit: </th><th>'     . $MeasDate  . '</th><th>Temp:</th><th>'  . $row[5]  . '</th></tr>';
         echo '<tr><th>Entf: </th><th>'     . $row[11]   . '</th><th>Bew1:</th><th>'  . $row[9]  . '</th></tr>';
-        echo '<tr><th>H&ouml;he: </th><th>' . $row[2]    . '</th><th>Bew2:</th><th>'  . $row[10] . '</th></tr>';
-        echo '<tr><th>Sats: </th><th>'     . $row[7]    . '</th><th>Quali:</th><th>' . $Quality . '</th></tr>';
+        echo '<tr><th>H&ouml;he: </th><th>' . round($row[2],0)    . '</th><th>Bew2:</th><th>'  . $row[10] . '</th></tr>';
+        echo '<tr><th>Sats: </th><th>'     . $row[7]    . '</th><th>Quali:</th><th>' . round($Quality,2) . '</th></tr>';
         echo '</table>';
       }
       $result->close();

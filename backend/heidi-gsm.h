@@ -14,13 +14,17 @@
 #include <stdint.h>
 #include <WString.h>
 
+#ifdef COMMON_SERIAL
 #define GSM_RXD  GPIO_NUM_16
 #define GSM_TXD  GPIO_NUM_17
 #define GSM_UART_NO 1
-//#define GSM_RXD  GPIO_NUM_23
-//#define GSM_TXD  GPIO_NUM_21
-//#define GSM_UART_NO 2
-#define GSM_BAUD 57600
+#else
+#define GSM_RXD  GPIO_NUM_23
+#define GSM_TXD  GPIO_NUM_4
+#define GSM_UART_NO 2
+#endif
+#define GSM_RST  GPIO_NUM_21
+#define GSM_BAUD 19200 //57600
 
 bool openGSM();
 void closeGSM();

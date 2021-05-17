@@ -18,23 +18,34 @@ t_ConfigData* heidiConfig;
 t_SendData*   availableDataSet[MAX_DATA_SETS];
 t_FenceData*  FenceDataSet[FENCE_MAX_POS];
 
+void initConfig(bool reset){
+  heidiConfig = (t_ConfigData*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
+  if(reset) {
+    _D(DebugPrintln("RESET all RTC data", DEBUG_LEVEL_1);)
+    heidiConfig->bootCount       = START_FROM_RESET;
+    heidiConfig->bootCycles      = DEFAULT_BOOT_CYCLES;
+    heidiConfig->sleepMinutes    = DEFAULT_CYCLE_DURATION;
+    heidiConfig->nightHourStart  = DEFALUT_NIGHT_HOUR_START_UTC;
+    heidiConfig->nightHourEnd    = DEFALUT_NIGHT_HOUR_END_UTC;
+    heidiConfig->nightBootCycles = (DEFAULT_BOOT_CYCLES * 2);
+    heidiConfig->nightSleepMin   = DEFAULT_CYCLE_DURATION;
+    heidiConfig->lastTimeDiffMs  = 0;
+    heidiConfig->status          = (NEW_FENCE | RESET_INITS);
+    heidiConfig->accThres1       = DEFALUT_ACCELERATION_THRESHOLD;
+    heidiConfig->accAlertThres1  = DEFALUT_ACCEL_THRES_MAX_COUNT;
+    heidiConfig->accThres2       = DEFALUT_ACCELERATION_THRESHOLD;
+    heidiConfig->accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT;
+    heidiConfig->accNightFactor  = 100;  //equals to 1
+    heidiConfig->telNo[0][0]     = 0xBB; //empty
+    heidiConfig->telNo[1][0]     = 0xBB; //empty
+  }
+}
+
 void initRTCData(bool reset){
   #ifdef TEST_RTC
   if(reset){ fillRTCbounary(); }
   #endif
-
-  heidiConfig = (t_ConfigData*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
-  if(reset) {
-    _D(DebugPrintln("RESET all RTC data", DEBUG_LEVEL_1);)
-    heidiConfig->bootCount    = START_FROM_RESET;
-    heidiConfig->bootCycles   = BOOT_CYCLES;
-    heidiConfig->sleepMinutes = (SLEEP_DURATION_MSEC / 60000);
-    heidiConfig->nightHourStart = NIGHT_HOUR_START;
-    heidiConfig->nightHourEnd   = NIGHT_HOUR_END;
-    heidiConfig->nightBootCycles= BOOT_CYCLES;
-    heidiConfig->nightSleepMin  = (SLEEP_DURATION_MSEC / 30000);
-    heidiConfig->lastTimeDiffMs = 0;
-  }
+  initConfig(reset);
   uint8_t* curSet;
   //_D(DebugPrintln("Init data sets", DEBUG_LEVEL_1));
   //_D(delay(100));
@@ -92,7 +103,7 @@ void initDataSet(t_SendData* DataSet){
   DataSet->time        = 0;
   DataSet->battery     = 0;
   DataSet->GPShdop     = 0;
-  DataSet->temperature = NO_TEMPERATURE; //-127 .. sheep is dead.. definitely ;-)
+  DataSet->temperature = TEMPERATURE_NOT_SET; //-273,15 .. if this is the real temperature, the sheep is dead.. definitely ;-)
   DataSet->errCode     = 0;
   DataSet->satellites  = 0;
   DataSet->metersOut   = 0;
@@ -125,7 +136,6 @@ String generateSendLine(t_SendData* DataSet){
   String result = "";
   if (!emptyDataSet(DataSet)){
     result = "TrackerID=";
-    int8_t hour_shift = GetLocalTimeHourShift(); //local time setting to be done
     int l = String(herdeID()).length();
     for (int i=0; i<(4-l); i++){ result += "0";}
     result += String(herdeID()) + ".";
@@ -158,12 +168,10 @@ String generateMultiSendLine(int first, int last, int* setsDone){
   int k = 0;
   for (int a=last; a<first; a--){
     DataSet = availableDataSet[a];
-    if (emptyDataSet(DataSet)) { continue; }
-    if ((a < getBootCycles()) || ((DataSet->errCode & GSM_TRANSMISSION_FAILED) == GSM_TRANSMISSION_FAILED)) {
+    if (!emptyDataSet(DataSet)) {
       k++;
 	    if (k > 1) { result += "&"; }
 	    result += "ID" + String(k) + "=";
-      int8_t hour_shift = GetLocalTimeHourShift(); //local time setting to be done
       int l = String(herdeID()).length();
       for (int j=0; j<(4-l); j++){ result += "0";}
       result += String(herdeID()) + ".";
@@ -182,8 +190,8 @@ String generateMultiSendLine(int first, int last, int* setsDone){
       result += "&F3" + String(k) + "=" + String(DataSet->accThres1);
       result += "&F4" + String(k) + "=" + String((int)DataSet->GPShdop);
       result += "&F5" + String(k) + "=" + String((int)DataSet->metersOut);
+      if (k == 83) { break; } //1000 max POST vars reached
     }
-    if (k == 83) { break; } //1000 max POST vars reached
   }
   *setsDone = k;
   return result;
@@ -198,8 +206,7 @@ String generateMulti64SendLine(int first, int last)
   int k = 0;
   for (int a=last; a>=first; a--){
     DataSet = availableDataSet[a];
-    if (emptyDataSet(DataSet)) { continue; }
-      if ((a < getBootCycles()) || ((DataSet->errCode & GSM_TRANSMISSION_FAILED) == GSM_TRANSMISSION_FAILED)) {
+    if (!emptyDataSet(DataSet)) {
       k++;
       if (k > 1) { result += "&"; }
       _D(_PrintDataSet(DataSet, DEBUG_LEVEL_1));
@@ -223,14 +230,15 @@ String generateMulti64SendLine(int first, int last)
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThres1);  //12
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThres2);  //13
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //14 = HEX_BUFFER_VALUES
-
-      String HexStr = "";
-      for(int i=0; i<HEX_BUFFER_LEN; i++){
-        String _hex = String(hexbuffer[i], HEX);
-        if (_hex.length() < 2) {_hex = "0" + _hex;}
-        HexStr = HexStr + _hex;
-      }
-      _D(DebugPrintln("bin: " + HexStr, DEBUG_LEVEL_2));
+      _D(
+        String HexStr = "";
+        for(int i=0; i<HEX_BUFFER_LEN; i++){
+          String _hex = String(hexbuffer[i], HEX);
+          if (_hex.length() < 2) {_hex = "0" + _hex;}
+          HexStr = HexStr + _hex;
+        }
+        DebugPrintln("bin: " + HexStr, DEBUG_LEVEL_2);
+      )
       result += "X" + LenTwo(String(k)) + "=" + b64Encode(hexbuffer, HEX_BUFFER_LEN);
     }
   }
@@ -239,8 +247,8 @@ String generateMulti64SendLine(int first, int last)
 
 bool setSettingsFromHTTPresponse(String response)
 {
-  String settingsData = GetCSVvalue(response, 4);
-  String settingsCRC = GetCSVvalue(response, 5);
+  String settingsData = getCSVvalue(response, 4);
+  String settingsCRC = getCSVvalue(response, 5);
   uint16_t c_crc = crc16F(settingsData);
   if ((settingsData.length() == 0) && (settingsCRC.length() == 0)) { return true; }
   if (settingsData.length() > 3){
@@ -252,6 +260,25 @@ bool setSettingsFromHTTPresponse(String response)
       } _D( else { DebugPrintln("setting settings failed", DEBUG_LEVEL_1); } )
     } _D( else { DebugPrintln("settings CRC error", DEBUG_LEVEL_1); } )
   } _D( else { DebugPrintln("settings data error", DEBUG_LEVEL_1); } )
+  return false;
+}
+
+bool setTelNoFromHTTPresponse(String response)
+{
+  String settingsData = getCSVvalue(response, 6);
+  String settingsCRC = getCSVvalue(response, 7);
+  uint16_t c_crc = crc16F(settingsData);
+  if ((settingsData.length() == 0) && (settingsCRC.length() == 0)) { return true; }
+  if (settingsData.length() > 3){
+    uint16_t t_crc = (uint16_t)hex2int(settingsCRC);
+    if(t_crc == c_crc){
+      if(newTelNoB64(settingsData)){
+        _D(DebugPrintln("new tel. number set", DEBUG_LEVEL_1));
+        _DD( for(int x= 0; x<TEL_NO_CNT; x++) {DebugPrintln("number " +String(x) + ": " + getTelNo(x), DEBUG_LEVEL_3);})
+        return true;
+      } _D( else { DebugPrintln("setting tel. number failed", DEBUG_LEVEL_1); } )
+    } _D( else { DebugPrintln("tel. number CRC error", DEBUG_LEVEL_1); } )
+  } _D( else { DebugPrintln("tel. number data error", DEBUG_LEVEL_1); } )
   return false;
 }
 
@@ -270,6 +297,31 @@ bool newSettingsB64(String b64){
   if ( buffer[0] >= 9 ) { heidiConfig->accAlertThres1   = _copyBufferToUInt16(buffer,17); _DD( DebugPrintln("settings accAlertThres1   " + String(heidiConfig->accAlertThres1), DEBUG_LEVEL_3); )}
   if ( buffer[0] >= 10) { heidiConfig->accThres2        = _copyBufferToUInt16(buffer,19); _DD( DebugPrintln("settings accThres2        " + String(heidiConfig->accThres2), DEBUG_LEVEL_3); )}
   if ( buffer[0] >= 11) { heidiConfig->accAlertThres2   = _copyBufferToUInt16(buffer,21); _DD( DebugPrintln("settings accAlertThres2   " + String(heidiConfig->accAlertThres2), DEBUG_LEVEL_3); )}
+  if ( buffer[0] >= 12) { heidiConfig->accNightFactor   = _copyBufferToUInt16(buffer,23); _DD( DebugPrintln("settings accNightFact     " + String(heidiConfig->accNightFactor), DEBUG_LEVEL_3); )}
+  if (heidiConfig->sleepMinutes < MIN_CYCLE_DURATION) { heidiConfig->sleepMinutes = MIN_CYCLE_DURATION; }
+  if (heidiConfig->nightSleepMin < MIN_CYCLE_DURATION) { heidiConfig->nightSleepMin = MIN_CYCLE_DURATION; }
+  if (heidiConfig->sleepMinutes > MAX_CYCLE_DURATION) { heidiConfig->sleepMinutes = MAX_CYCLE_DURATION; }
+  if (heidiConfig->nightSleepMin > MAX_CYCLE_DURATION) { heidiConfig->nightSleepMin = MAX_CYCLE_DURATION; }
+  if (heidiConfig->bootCycles > MAX_BOOT_CYCLES) { heidiConfig->bootCycles = MAX_BOOT_CYCLES; }
+  if (heidiConfig->nightBootCycles > MAX_BOOT_CYCLES) { heidiConfig->nightBootCycles = MAX_BOOT_CYCLES; }
+  if (heidiConfig->bootCycles < 1) { heidiConfig->bootCycles = DEFAULT_BOOT_CYCLES; }
+  if (heidiConfig->nightBootCycles < 1) { heidiConfig->nightBootCycles = DEFAULT_BOOT_CYCLES; }
+  if ((heidiConfig->nightHourStart < 0) || (heidiConfig->nightHourStart > 23)) { heidiConfig->nightHourStart = 0; }
+  // if we have a bad night end-Value we set start = end, means no night modus
+  if ((heidiConfig->nightHourEnd < 0) || (heidiConfig->nightHourEnd > 23)) { heidiConfig->nightHourEnd = heidiConfig->nightHourStart; }
+  // if no night modus - set them to zero
+  if (heidiConfig->nightHourStart == heidiConfig->nightHourEnd) { heidiConfig->nightHourStart = 0; heidiConfig->nightHourEnd = 0; }
+  return true;
+}
+
+bool newTelNoB64(String b64){
+  unsigned char buffer[256];
+  int dataLen = b64Decode(b64, buffer);
+  if (( buffer[0] == 0 ) || ( buffer[0] > 2 )) { return false; }
+  for(int n=0; n<buffer[0]; n++){
+    if (n >= TEL_NO_CNT){ break; }
+    for(int i=0; i<TEL_NO_LEN; i++) { heidiConfig->telNo[n][i] = buffer[n*12+i+1]; }
+  }
   return true;
 }
 
@@ -277,13 +329,13 @@ void cleanUpDataSets(bool TransmissionFailed){
   //mark transmission result
   for(int i=0; i<MAX_DATA_SETS; i++){
     if (!emptyDataSet(availableDataSet[i])){
-      if (TransmissionFailed)  { setError(availableDataSet[i], GSM_TRANSMISSION_FAILED); }
-      else { rmError(availableDataSet[i], GSM_TRANSMISSION_FAILED); }
+      if (TransmissionFailed)  { setError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED); }
+      else { rmError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED); }
     }
   }
   //delete all transmitted data
   for(int i=0; i<MAX_DATA_SETS; i++){
-    if(getError(availableDataSet[i], GSM_TRANSMISSION_FAILED) == false){
+    if(getError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED) == false){
       initDataSet(availableDataSet[i]);
     }
   }
@@ -307,7 +359,22 @@ void freeFirstDataSet(void){
   }
 }
 
-
+String getTelNo(int which){
+  static String TelNo;
+  TelNo = "";
+  if(which >= TEL_NO_CNT) { return TelNo; }
+  for(int i=0; i<TEL_NO_LEN; i++){
+    uint8_t b = heidiConfig->telNo[which][i];
+    for(int j=0; j<2; j++){
+      uint8_t n = b & 0xf;
+      if (n >= 0x0B) { return TelNo; }
+      else if (n == 0x0A) { TelNo = TelNo + '+'; }
+      else if (n <= 0x09) { TelNo = TelNo + String(n); }
+      b = b >> 4;
+    }
+  }
+  return TelNo;
+}
 void testData()
 {
   _D(
@@ -316,11 +383,11 @@ void testData()
 
      _D(DebugPrintln("testCSV1: " + testCSV1, DEBUG_LEVEL_1));
      for(int i=1; i<7; i++){
-       _D(DebugPrintln(String(i) + ": '" + GetCSVvalue(testCSV1,i) + "'", DEBUG_LEVEL_1));
+       _D(DebugPrintln(String(i) + ": '" + getCSVvalue(testCSV1,i) + "'", DEBUG_LEVEL_1));
      }
      _D(DebugPrintln("testCSV2: " + testCSV2, DEBUG_LEVEL_1));
      for(int i=1; i<6; i++){
-       _D(DebugPrintln(String(i) + ": '" + GetCSVvalue(testCSV2,i) + "'", DEBUG_LEVEL_1));
+       _D(DebugPrintln(String(i) + ": '" + getCSVvalue(testCSV2,i) + "'", DEBUG_LEVEL_1));
      }
   )
 }
@@ -329,12 +396,16 @@ void getRTCDataSpace(uint8_t** buffer){
 	*buffer = (uint8_t*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
 }
 
-int8_t getBootCycles(void){
-  if(_night()){
-    return heidiConfig->nightBootCycles;
-  }
-  return heidiConfig->bootCycles;
+bool getState(uint32_t which){
+  return((heidiConfig->status & which) != 0);
 }
+void setState(uint32_t which){
+  heidiConfig->status |= which;
+}
+void clrState(uint32_t which){
+  heidiConfig->status &= ~which;
+}
+
 int32_t getCycleTimeMS(void){
   if(_night()){
     return heidiConfig->nightSleepMin * 60000;
@@ -352,11 +423,11 @@ double   IntToGeo(int32_t val)
 }
 
 
-String DateString(tm timestamp){
-  return String(timestamp.tm_year) + "-" + LenTwo(String(timestamp.tm_mon)) + "-" + LenTwo(String(timestamp.tm_mday));
+String DateString(tm* timestamp){
+  return String(timestamp->tm_year) + "-" + LenTwo(String(timestamp->tm_mon)) + "-" + LenTwo(String(timestamp->tm_mday));
 }
-String TimeString(tm timestamp){
-  return LenTwo(String(timestamp.tm_hour)) + ":" + LenTwo(String(timestamp.tm_min)) + ":"+ LenTwo(String(timestamp.tm_sec));
+String TimeString(tm* timestamp){
+  return LenTwo(String(timestamp->tm_hour)) + ":" + LenTwo(String(timestamp->tm_min)) + ":"+ LenTwo(String(timestamp->tm_sec));
 }
 String LenTwo(const String No){
   if (No.length() == 1) { return "0" + No; }
@@ -400,7 +471,7 @@ uint8_t dosSecond(const uint16_t time){
 #ifdef TEST_RTC
 
 #define RTC_TEST_PATTERN 0x55AA55AA
-#define RTC_TEST_MAX_MEM 1124
+#define RTC_TEST_MAX_MEM 2048
 
 void testRTC(t_SendData* currentDataSet, tm* bootTime){
   currentDataSet->date = dosDate(bootTime->tm_year, bootTime->tm_mon, bootTime->tm_mday);

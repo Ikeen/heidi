@@ -11,18 +11,24 @@
 
 bool setFenceFromHTTPresponse(String response)
 {
-  String fenceData = GetCSVvalue(response, 2);
-  String fenceCRC = GetCSVvalue(response, 3);
+  String fenceData = getCSVvalue(response, 2);
+  String fenceCRC = getCSVvalue(response, 3);
   uint16_t c_crc = crc16F(fenceData);
   if ((fenceData.length() == 0) && (fenceData.length() == 0)) { return true; }
   if (fenceData.length() > 25){
     uint16_t t_crc = (uint16_t)hex2int(fenceCRC);
     if(t_crc == c_crc){
-      clearFence();
-      if(newFenceB64(fenceData)){
-        _D(DebugPrintln("new fence set", DEBUG_LEVEL_1));
+      fchkrc_t frc = checkFenceB64(fenceData);
+      if (frc != fcrc_failed){
+        if(frc == fcrc_ok_new){
+          clrState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_1 | GPS_ALERT_PSD);
+          clearFence();
+          newFenceB64(fenceData);
+          setState(NEW_FENCE);
+          _D(DebugPrintln("new fence set", DEBUG_LEVEL_2));
+        } _D(else DebugPrintln("new fence = old fence", DEBUG_LEVEL_2);)
         return true;
-      } _D( else { DebugPrintln("setting fence failed", DEBUG_LEVEL_1); } )
+      } _D( else { DebugPrintln("check fence failed", DEBUG_LEVEL_1); } )
     } _D( else { DebugPrintln("fence CRC error", DEBUG_LEVEL_1); } )
   } _D( else { DebugPrintln("fence data error", DEBUG_LEVEL_1); } )
   return false;
@@ -35,10 +41,9 @@ void clearFence(){
   }
 }
 
-bool newFenceB64(String b64){
+void newFenceB64(String b64){
   unsigned char buffer[256];
   int dataLen = b64Decode(b64, buffer);
-  if ( buffer[0] < 3 ) { return false; }
   for(int i=1; i<dataLen; i+=8)
   {
     int lng = _copyBufferToInt32(buffer, i);
@@ -46,9 +51,43 @@ bool newFenceB64(String b64){
     addFencePoint(double(lat) / 1000000, double(lng) / 1000000);
     _DD(DebugPrintln("set lat: " + String(double(lat) / 1000000,6) + ", lng: " + String(double(lng) / 1000000,6), DEBUG_LEVEL_3));
   }
-  if ( buffer[0] > FENCE_MAX_POS ) { return false; }
   _D(DebugPrintln("Fence: "   + String(buffer[0]) + " poles set", DEBUG_LEVEL_2));
-  return true;
+}
+
+fchkrc_t checkFenceB64(String b64){
+  /* we do not clear NEW_FENCE state here, if fence is not new. This is done when reaching its position */
+  unsigned char buffer[256];
+  int dataLen = b64Decode(b64, buffer);
+  if ( buffer[0] < 3 ) { return fcrc_failed; }
+  if ( buffer[0] > FENCE_MAX_POS ) { return fcrc_failed; }
+  int p = 0;
+  fchkrc_t rc = fcrc_ok_same;
+  for(int i=1; i<dataLen; i+=8)
+  {
+    if(p >= FENCE_MAX_POS) { return fcrc_failed; }
+    int lng = _copyBufferToInt32(buffer, i);
+    int lat = _copyBufferToInt32(buffer, i+4);
+    double dlat = double(lat) / 1000000;
+    double dlng = double(lng) / 1000000;
+    if (emptyPoint(FenceDataSet[p]) || (FenceDataSet[p]->latitude != GeoToInt(dlat)) || (FenceDataSet[p]->longitude != GeoToInt(dlng))){
+      _D(
+        if (emptyPoint(FenceDataSet[p])) { DebugPrintln("new fence by more than: "   + String(p-1) + " poles", DEBUG_LEVEL_2);} else {
+          if (FenceDataSet[p]->latitude != GeoToInt(dlat)) { DebugPrintln("new fence by latitude: "   + String(FenceDataSet[p]->latitude) + " <> " + String(GeoToInt(dlat)), DEBUG_LEVEL_2);}
+          if (FenceDataSet[p]->latitude != GeoToInt(dlat)) { DebugPrintln("new fence by longitude: "   + String(FenceDataSet[p]->longitude) + " <> " + String(GeoToInt(dlng)), DEBUG_LEVEL_2);}
+        }
+      )
+      rc = fcrc_ok_new;
+      break;
+    }
+    p++;
+  }
+  if(p < FENCE_MAX_POS){
+    if (!emptyPoint(FenceDataSet[p])){ //1 point more...
+      _D(DebugPrintln("new fence by less than: " + String(p) + " poles", DEBUG_LEVEL_2));
+      rc = fcrc_ok_new;
+    }
+  }
+  return rc;
 }
 int addFencePoint(double laditude, double longitude)
 //returns new count of points, 0 if max was already reached

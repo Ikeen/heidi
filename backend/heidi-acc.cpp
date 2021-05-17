@@ -31,11 +31,9 @@
 #include <esp32/ulp.h>
 #include <LoRa.h>
 #include <driver/rtc_io.h>
-#include <driver/gpio.h>
-#include <soc/rtc_i2c_reg.h>
-#include <soc/sens_reg.h>
 #include "heidi-measures.h"
 #include "heidi-data.h"
+#include "heidi-sys.h"
 #include "heidi-acc.h"
 
 #ifdef ACCELEROMETER
@@ -46,32 +44,45 @@ bool init_ADXL345(){
   byte _ID;
   _D(DebugPrint("Init ADXL345.. ", DEBUG_LEVEL_2));
   //check sensor
-  if(_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DEVID, &_ID) != I2C_ERROR_OK){
-    _i2c_clockFree();
-    if(_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DEVID, &_ID)!= I2C_ERROR_OK) {
+  if(iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DEVID, &_ID) != I2C_ERROR_OK){
+    iic_clockFree();
+    if(iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DEVID, &_ID)!= I2C_ERROR_OK) {
       _D(DebugPrintln("ADXL345 read ID register failed." , DEBUG_LEVEL_1));
       return false;
     }
+    _D(DebugPrintln("successful", DEBUG_LEVEL_2));
   }
   if (_ID != 0xE5){
     _D(DebugPrintln("ADXL345 not found, read 0x" + String(_ID, HEX) + " instead 0xe5." , DEBUG_LEVEL_1));
     return false;
   }
-  // wake up sensor
-  if(_i2c_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x08) != I2C_ERROR_OK) { return false; }
-  _ADXL345_status = true;
-  // Set the range to whatever is appropriate for your project
-  _ADXL345_setRange(ADXL345_RANGE_16_G);
-  _ADXL345_setDataRate(ADXL345_DATARATE_12_5_HZ);
-  _ADXL345_setFullResBit(false);
   _D(DebugPrintln("successful", DEBUG_LEVEL_2));
   return true;
 }
 
+bool wake_config_ADXL345(void){
+  _D(DebugPrint("Wake ADXL345.. ", DEBUG_LEVEL_2));
+  // wake up sensor
+  if(iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x08) != I2C_ERROR_OK) { setError(E_IIC_ERROR); return false; }
+  _ADXL345_status = true;
+  // Set the range to whatever is appropriate for your project
+  if (!_ADXL345_setRange(ADXL345_RANGE_16_G)) { setError(E_IIC_ERROR); }
+  if (!_ADXL345_setDataRate(ADXL345_DATARATE_12_5_HZ)) { setError(E_IIC_ERROR); }
+  if (!_ADXL345_setFullResBit(false)) { setError(E_IIC_ERROR); }
+  _D(DebugPrintln("successful", DEBUG_LEVEL_2));
+  return true;
+}
+
+bool sleep_ADXL345(){
+  // wake up sensor
+  if(iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x00) != I2C_ERROR_OK) { setError(E_IIC_ERROR); return false; }
+  _ADXL345_status = false;
+  return true;
+}
 /*************************** BANDWIDTH ******************************/
 /*                          ~ SET & GET                             */
 bool _ADXL345_get_bw_code(uint8_t *value){
-  return (_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, value) == I2C_ERROR_OK);
+  return (iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, value) == I2C_ERROR_OK);
 }
 
 bool _ADXL345_set_bw(byte bw_code){
@@ -80,13 +91,13 @@ bool _ADXL345_set_bw(byte bw_code){
     return false;
   }
   else{
-    return (_i2c_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, bw_code) == I2C_ERROR_OK);
+    return (iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, bw_code) == I2C_ERROR_OK);
   }
 }
 /************************* FULL_RES BIT STATE ***********************/
 /*                           ~ GET & SET                            */
 bool _ADXL345_getFullResBit(bool* value) {
-  return (_i2c_getRegisterBit(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, 3, value) == I2C_ERROR_OK);
+  return (iic_getRegisterBit(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, 3, value) == I2C_ERROR_OK);
 }
 
 /*  If Set (1) Device is in Full Resolution Mode: Output Resolution Increase with G Range
@@ -95,7 +106,7 @@ bool _ADXL345_getFullResBit(bool* value) {
  *  And Scale Factor
  */
 bool _ADXL345_setFullResBit(bool fullResBit) {
-  return (_i2c_setRegisterBit(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, 3, fullResBit) == I2C_ERROR_OK);
+  return (iic_setRegisterBit(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, 3, fullResBit) == I2C_ERROR_OK);
 }
 
 /*************************** RATE BITS ******************************/
@@ -103,7 +114,7 @@ bool _ADXL345_setFullResBit(bool fullResBit) {
 bool _ADXL345_getRate(double *value){
   byte _b;
   *value = 0.0;
-  if (_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, &_b) != I2C_ERROR_OK) { return false; }
+  if (iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, &_b) != I2C_ERROR_OK) { return false; }
   _b &= B00001111;
   *value = (pow(2,((int) _b)-6)) * 6.25;
   return true;
@@ -116,9 +127,9 @@ bool _ADXL345_setRate(double rate){
   while (v >>= 1)
   { r++; }
   if (r <= 9) {
-    if (_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, &_b) == I2C_ERROR_OK){
+    if (iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, &_b) == I2C_ERROR_OK){
       _s = (byte) (r + 6) | (_b & B11110000);
-      return (_i2c_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, _b) == I2C_ERROR_OK);
+      return (iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, _b) == I2C_ERROR_OK);
     } else { return false; }
   }
   return true;
@@ -127,12 +138,12 @@ bool _ADXL345_setRate(double rate){
 bool _ADXL345_setDataRate(dataRate_t dataRate) {
   /* Note: The LOW_POWER bits are currently ignored and we always keep
      the device in 'normal' mode */
-  return (_i2c_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, dataRate) == I2C_ERROR_OK);
+  return (iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, dataRate) == I2C_ERROR_OK);
 }
 
 bool _ADXL345_getDataRate(dataRate_t *value) {
   uint8_t b;
-  if (_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, &b) != I2C_ERROR_OK) { return false; }
+  if (iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_BW_RATE, &b) != I2C_ERROR_OK) { return false; }
   *value = (dataRate_t)(b & 0x0F);
   return true;
 }
@@ -140,32 +151,32 @@ bool _ADXL345_getDataRate(dataRate_t *value) {
 bool _ADXL345_getRange(range_t *value) {
   /* Read the data format register to preserve bits */
   uint8_t b;
-  if (_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, &b) != I2C_ERROR_OK) { return false; }
+  if (iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, &b) != I2C_ERROR_OK) { return false; }
   *value = (range_t)(b & 0x03);
   return true;
 }
 
 bool _ADXL345_getX(int16_t *value) {
-  return (_i2c_readRegister16(ADXL345_DEFAULT_ADDRESS, ADXL345_DATAX0, value) == I2C_ERROR_OK);
+  return (iic_readRegister16(ADXL345_DEFAULT_ADDRESS, ADXL345_DATAX0, value) == I2C_ERROR_OK);
 }
 bool _ADXL345_getY(int16_t *value) {
-  return (_i2c_readRegister16(ADXL345_DEFAULT_ADDRESS, ADXL345_DATAY0, value) == I2C_ERROR_OK);
+  return (iic_readRegister16(ADXL345_DEFAULT_ADDRESS, ADXL345_DATAY0, value) == I2C_ERROR_OK);
 }
 bool _ADXL345_getZ(int16_t *value) {
-  return (_i2c_readRegister16(ADXL345_DEFAULT_ADDRESS, ADXL345_DATAZ0, value) == I2C_ERROR_OK);
+  return (iic_readRegister16(ADXL345_DEFAULT_ADDRESS, ADXL345_DATAZ0, value) == I2C_ERROR_OK);
 }
 
 bool _ADXL345_setRange(range_t range) {
   /* Read the data format register to preserve bits */
   uint8_t format;
-  if (_i2c_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, &format) != I2C_ERROR_OK) { return false; }
+  if (iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, &format) != I2C_ERROR_OK) { return false; }
   /* Update the data rate */
   format &= ~0x0F;
   format |= range;
   /* Make sure that the FULL-RES bit is enabled for range scaling */
   format |= 0x08;
   /* Write the register back to the IC */
-  return (_i2c_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, format) == I2C_ERROR_OK);
+  return (iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DATA_FORMAT, format) == I2C_ERROR_OK);
 }
 
 #ifdef USE_ULP
@@ -442,40 +453,12 @@ void init_accel_ULP(uint32_t intervall_us) {
     I_HALT()                                // HALT COPROCESSOR
   };
   _D(static_assert(sizeof(ulp_accel) <= (ACCEL_ULP_CODE_SIZE * 4), "ACCEL_ULP_CODE_SIZE TOO SMALL");)
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_0_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_0_RTC)
-  rtc_gpio_init(GPIO_NUM_0);
-  rtc_gpio_set_direction(GPIO_NUM_0, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_2_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_2_RTC)
-  rtc_gpio_init(GPIO_NUM_2);
-  rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_4_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_4_RTC)
-  rtc_gpio_init(GPIO_NUM_4);
-  rtc_gpio_set_direction(GPIO_NUM_4, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_12_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_12_RTC)
-  rtc_gpio_init(GPIO_NUM_12);
-  rtc_gpio_set_direction(GPIO_NUM_12, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_13_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_13_RTC)
-  rtc_gpio_init(GPIO_NUM_13);
-  rtc_gpio_set_direction(GPIO_NUM_13, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_14_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_14_RTC)
-  rtc_gpio_init(GPIO_NUM_14);
-  rtc_gpio_set_direction(GPIO_NUM_14, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_15_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_15_RTC)
-  rtc_gpio_init(GPIO_NUM_15);
-  rtc_gpio_set_direction(GPIO_NUM_15, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
-#if (RTC_GPIO_BIT_SDA == GPIO_NUM_27_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_27_RTC)
-  rtc_gpio_init(GPIO_NUM_27);
-  rtc_gpio_set_direction(GPIO_NUM_27, RTC_GPIO_MODE_INPUT_OUTPUT);
-#endif
+
+  rtc_gpio_init(I2C_SDA);
+  rtc_gpio_set_direction(I2C_SDA, RTC_GPIO_MODE_INPUT_OUTPUT);
+  rtc_gpio_init(I2C_SCL);
+  rtc_gpio_set_direction(I2C_SCL, RTC_GPIO_MODE_INPUT_OUTPUT);
 #if ULP_LED_BLINK
-  //LED
   rtc_gpio_init(GPIO_NUM_2);
   rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_OUTPUT_ONLY);
 #endif
@@ -487,10 +470,10 @@ void init_accel_ULP(uint32_t intervall_us) {
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_DATA_CUR] = ACCEL_X_VALUES;
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_CT1] = 0;
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_TH1] = heidiConfig->accThres1;
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH1] = heidiConfig->accAlertThres1;
+  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH1] = _getAccThresCnt(heidiConfig->accAlertThres1);
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_CT2] = 0;
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_TH2] = heidiConfig->accThres2;
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH2] = heidiConfig->accAlertThres2;
+  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH2] = _getAccThresCnt(heidiConfig->accAlertThres2);
   RTC_SLOW_MEM[ACCEL_X_REGISTER] = ADXL345_DATAX0;
   RTC_SLOW_MEM[ACCEL_Y_REGISTER] = ADXL345_DATAY0;
   RTC_SLOW_MEM[ACCEL_Z_REGISTER] = ADXL345_DATAZ0;
@@ -537,6 +520,12 @@ void set_accel_exthr2_ULP(uint16_t val){ RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD
 uint16_t get_accel_wake2_ULP(){ return (uint16_t)RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH2]; }
 void set_accel_wake2_ULP(uint16_t val){ RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH2] = val; }
 
+uint16_t _getAccThresCnt(uint16_t dayThres){
+  if (_night()){
+    return (uint16_t)((uint32_t)(dayThres * heidiConfig->accNightFactor) / 100);
+  }
+  return dayThres;
+}
 #if USE_MORE_THAN_128_INSN
 /*
  *  need to use a copy of ulp_process_macros_and_load to avoid code too big error - which seems useless

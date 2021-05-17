@@ -32,60 +32,102 @@ HardwareSerial SerialSIM800L(GPS_UART_NO);
 SIM800L* sim800l;
 */
 
-
-
 tm bootTime;
+tm sysTime;
 tm expBootTime;
-esp_timer_handle_t watchd; //the watchdog
-
+esp_timer_handle_t watchd = NULL; //the watchdog
 int currentTimeDiffMs  = 0;
-
-static int msStartTime        = 0;
-static uint16_t init_cycle    = (herdeID() % 10) * 6 - 1; //!!!!!!!!!!!!
 static double volt;
 
 
 void setup()
 {
   t_SendData* currentDataSet;
+  int  startMS = millis();
+  int  timeOut = MAX_AWAKE_TIME_TIMER;
+  _D(Serial.begin(115200); checkWakeUpReason(); )
+  bool powerOnReset = wasPowerOnReset();
+  _D(if(powerOnReset){ delay(3000); }) //enable COM terminal
+  _D(DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);)
 
-  msStartTime = millis();
   #ifdef USE_ULP
   stopULP(); //anyway
   #endif
-  _D(Serial.begin(115200);
-     checkWakeUpReason();
-  )
-
-  //check battery status and goto sleep, if too low
-  volt = CheckBattery();
 
   initError();
-  initGlobalVar(wasPowerOnReset());
-  setupWatchDog();
+  initGlobalVar(powerOnReset);
+
+  /* enable controls before brown-out check because disabling them also disables GPS- and GSM-power */
   enableControls(); // !!!!! may fail
+  #ifdef USE_ULP
+  sleep_ADXL345(); //keep silence during measuring, or sleep is was brown-out or we have low battery
+  #endif
+  /* this is for testing purposes - comment it out... */
+  //_D(if (powerOnReset) { volt = 4.0; getSystemSettings(); }) //!!!!!
 
-  _D(if(wasPowerOnReset()) { DebugPrintln("power on reset", DEBUG_LEVEL_1); } else {
-       DebugPrintln("Boot number: " + String(heidiConfig->bootCount), DEBUG_LEVEL_1); } delay(50);)
+  if (wasbrownOut()) {
+    _D(DebugPrintln("BOOT: was brown-out reset",DEBUG_LEVEL_1); delay(100);)
+    /* usually this should not happen - if so, we need to avoid endless booting */
+    disableControls(true);
+    setState(RESET_INITS);
+    doSleepRTCon(900000);
+  }
+  /*check battery status and goto sleep, if too low (disables measuring and controls too)*/
+  #ifndef USE_VOLTAGE_MEAS_PIN
+  /*if we need to enable measures for voltage measuring we do it first ...*/
+  openMeasures();
+  volt = CheckBattery();
+  #else
+  volt = CheckBattery();
+  {
+  int t = millis();
+  /*... otherwise we do it afterwards, what saves power in case of low battery */
+  openMeasures();
+  _D(DebugPrintln("Open Measures takes " + String(millis() - t)+ "ms", DEBUG_LEVEL_3); )
+  }
+  #endif
+
+  #ifdef PRE_MEASURE_HANDLING
+  initConfig(false);
+  if(!powerOnReset){
+    if(getState(PRE_MEAS_STATE)){
+      clrState(PRE_MEAS_STATE);
+      _D(DebugPrintln("Pre-Measure running.", DEBUG_LEVEL_1); delay(50);)
+      #ifdef USE_ULP
+      enableULP();
+      esp_sleep_enable_ulp_wakeup();
+      #endif
+      doSleepRTCon(PRE_CYCLE_TIME - millis());
+    }
+  }
+  _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
+  #endif
+
+  calcCycleTable();
+  setupWatchDog();
+
+  _D(
+    if(powerOnReset) { DebugPrintln("BOOT: was power on reset", DEBUG_LEVEL_1); }
+    else { DebugPrintln("BOOT: cycle number: " + String(heidiConfig->bootCount), DEBUG_LEVEL_1); }
+    DebugPrintln("BOOT: Heidi state: 0x" + String(heidiConfig->status, HEX) ,DEBUG_LEVEL_2);
+  )
+
+#ifdef USE_ULP
 #ifdef TEST_ACC
-  _D()
-  _D(DebugPrintln("accel measurement count: " + String(get_accel_meas_cnt_ULP()), DEBUG_LEVEL_2);)
-  _D(DebugPrintln("accel thresholt 1 count: " + String(get_accel_excnt1_ULP()), DEBUG_LEVEL_2);)
-  _D(DebugPrintln("accel thresholt 2 count: " + String(get_accel_excnt2_ULP()), DEBUG_LEVEL_2);)
-  _D(DebugPrintln("transmission result x: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2);)
-  _D(DebugPrintln("transmission result y: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2);)
-  _D(DebugPrintln("transmission result z: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2);)
-  _D(set_accel_excnt1_ULP(0);)
-  _D(set_accel_excnt2_ULP(0);)
-  delay(10000);
-  goto_sleep(30000);
+  _D(DebugPrintln("accel measurement count: " + String(get_accel_meas_cnt_ULP()), DEBUG_LEVEL_2);
+     DebugPrintln("transmission result x: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2);
+     DebugPrintln("transmission result y: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2);
+     DebugPrintln("transmission result z: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2);
+     set_accel_excnt1_ULP(0);
+     set_accel_excnt2_ULP(0);
+     delay(10000);
+     goto_sleep(30000);
+    )
 #endif
-
+#endif
   //prepare free data set
   freeFirstDataSet();
   currentDataSet = availableDataSet[0];
-
-  openMeasures();   //this here to prevent measures from multiple switching on/off
 
 #ifdef USE_LORA
   SetupLoRa();
@@ -95,95 +137,171 @@ void setup()
   currentDataSet->temperature = (int16_t)(MeasureTemperature()*100);
   _D(DebugPrintln("Temperature: " + String(((float)currentDataSet->temperature / 100)) + "C", DEBUG_LEVEL_1);)
 #endif
+#ifdef USE_ULP
+  currentDataSet->accThres1 = get_accel_excnt1_ULP();
+  currentDataSet->accThres2 = get_accel_excnt2_ULP();
+  _D(DebugPrintln("accel threshold 1 count: " + String(currentDataSet->accThres1), DEBUG_LEVEL_2);)
+  _D(DebugPrintln("accel threshold 2 count: " + String(currentDataSet->accThres2), DEBUG_LEVEL_2);)
+#else
+#ifdef TRACK_HEIDI_STATE
+  _D(
+    currentDataSet->accThres1 = heidiConfig->status;
+    DebugPrintln("set accThres1 to heidi status: 0x" + String(currentDataSet->accThres1, HEX), DEBUG_LEVEL_2);
+   )
+#endif
+#endif
 
-  setupSystemDateTime();
-  _D(if(_night()) {})
+  if(heidiConfig->bootCount <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER; }
+  /*setupSystemDateTime opens / checks GPS*/
+  if (!setupSystemDateTime(&sysTime, timeOut)) { heidiConfig->bootCount = REFETCH_SYS_TIME; goto_sleep(SLEEP_DUR_NOTIME); }
+  _D(DebugPrintln("Current system time: " + DateString(&sysTime) + " " + TimeString(&sysTime), DEBUG_LEVEL_1);)
+  setBootTimeFromCurrentTime(&sysTime, &bootTime);
+
+  _D(DebugPrintln("Boot time:   " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1);)
+  _DD(
+    DebugPrintln("bootCycles day: " + String(heidiConfig->bootCycles) + ", night: " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3);
+    DebugPrintln("_currentCycles: " + String(__currentCyclesD(_night())) + "( == " + String(_currentCycles()) + ")", DEBUG_LEVEL_3);
+    DebugPrintln("night from: " + String(heidiConfig->nightHourStart) + " to: " + String(heidiConfig->nightHourEnd), DEBUG_LEVEL_3);
+    if (_night()) {DebugPrintln("_night = true", DEBUG_LEVEL_2);} else {DebugPrintln("_night = false", DEBUG_LEVEL_3);}
+    if (getState(POWER_SAVE_1)) {DebugPrintln("POWER_SAVE_1 = true", DEBUG_LEVEL_2);} else {DebugPrintln("POWER_SAVE_1 = false", DEBUG_LEVEL_3);}
+  )
+
+  //_D(if(_night()) { setState(GOOD_NIGHT); } )
 
 #ifdef TEST_RTC
   _D(testRTC(currentDataSet, &bootTime);)
 #endif
 
-  //find expected boot time
-  if(!isInCycle(init_cycle, &(heidiConfig->bootCount))){ //calculates expected boot time
-    heidiConfig->lastTimeDiffMs = 0;       //not useful out of regular cycles
-    #ifdef GPS_MODULE
-    closeGPS();
-    #endif
-    closeMeasures();
-    doResetInits();
-
-    if (currentTimeDiffMs <= 0) { goto_sleep(getCycleTimeMS()); } //something went wrong
-    if ((currentTimeDiffMs - millis()) < 1000) { goto_sleep(1000); } //just to be sure
-    goto_sleep(currentTimeDiffMs - millis());
+  if (!GPSalert()){
+    //find expected boot time
+    if(!isInCycle(&(heidiConfig->bootCount))){ //calculates expected boot time
+      setState(NOT_IN_CYCLE);
+    } else {
+      clrState(NOT_IN_CYCLE);
+      _D(DebugPrintln("Expected boot time: " + TimeString(&expBootTime), DEBUG_LEVEL_1);)
+      calcCurrentTimeDiff();
+      _D(DebugPrintln("Expected boot time vs. real boot time: " + String(currentTimeDiffMs), DEBUG_LEVEL_1);)
+    }
   }
-  currentDataSet->errCode = getErrorCode(); //errors until now
-
 #ifdef GPS_MODULE
-  if (GPSGetPosition(currentDataSet, 10, 90000) == 0){
-    _D(DebugPrintln("GPS: Unable to fetch position.", DEBUG_LEVEL_1);)
-  }
-  _D(DebugPrintln("cor. boot time: " + TimeString(bootTime), DEBUG_LEVEL_1);)
-  _D(DebugPrintln("exp. boot time: " + TimeString(expBootTime), DEBUG_LEVEL_1);)
-  closeGPS();
+  //test alerts
+  //_D(clrState(NEW_FENCE); DebugPrintln("!!!!!! NEW FENCE off !!!!!", DEBUG_LEVEL_1);) //!!!!!!!!
+  if (!getState(NOT_IN_CYCLE) || GPSalert()){
+    if (GPSGetPosition(currentDataSet, 10, timeOut) == 0){
+      _D(DebugPrintln("GPS: Unable to fetch position.", DEBUG_LEVEL_1);)
+    } else {
+      if (currentDataSet->metersOut > heidiConfig->distAlertThres) {
+        if (!getState(NEW_FENCE)){
+          if (GPSalert() && getState(GPS_ALERT_PSD)) { clrState(GPS_ALERT_PSD); } //stop pausing alerts
+          if (getState(GPS_ALERT_2)){ clrState(GPS_ALERT_2); setState(GPS_ALERT_PSD); _D(DebugPrintln("GPS ALERT: silent", DEBUG_LEVEL_2);)}
+          else if (getState(GPS_ALERT_1)){ clrState(GPS_ALERT_1); setState(GPS_ALERT_2); _D(DebugPrintln("GPS ALERT: 2", DEBUG_LEVEL_2);)}
+          else if (getState(PRE_GPS_ALERT)){ clrState(PRE_GPS_ALERT); setState(GPS_ALERT_1); _D(DebugPrintln("GPS ALERT: 1", DEBUG_LEVEL_2);)}
+          else if (!getState(GPS_ALERT_PSD)){ setState(PRE_GPS_ALERT); _D(DebugPrintln("GPS ALERT: pre", DEBUG_LEVEL_2);)}
+        } else { currentDataSet->errCode |= E_NEW_FENCE_STATE; _D(DebugPrintln("GPS ALERT: distance too big, but new fence.", DEBUG_LEVEL_2);)}
+      } else { if (!getState(NEW_FENCE) && GPSalert()){ setState(GPS_ALERT_PSD); } } //pause alerting
+
+      if (currentDataSet->metersOut <= 5){ //disable alerting
+        _D(
+           if (GPSalert()) { DebugPrintln("GPS ALERT off", DEBUG_LEVEL_2); }
+           if (getState(NEW_FENCE)) { DebugPrintln("new fence active", DEBUG_LEVEL_2); };
+        )
+        clrState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 | GPS_ALERT_PSD | NEW_FENCE);
+      }
+
+    }
+    if(getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 | GPS_ALERT_PSD)) {
+      currentDataSet->errCode |= E_GPS_ALERT;
+    };
+    if(getState( GPS_ALERT_1 | GPS_ALERT_2 ) && !getState(GPS_ALERT_PSD)) {
+      currentDataSet->errCode |= E_GPS_ALERT_SMS;
+    };
 #else
-  currentDataSet->errCode |= COULD_NOT_FETCH_GPS;
-  currentDataSet->errCode |= COULD_NOT_FETCH_GPS_TIME;
+    currentDataSet->errCode |= COULD_NOT_FETCH_GPS;
+    currentDataSet->errCode |= COULD_NOT_FETCH_GPS_TIME;
 #endif
+    //finalize data set
+    currentDataSet->date     = dosDate(bootTime.tm_year, bootTime.tm_mon, bootTime.tm_mday);
+    currentDataSet->time     = dosTime(bootTime.tm_hour, bootTime.tm_min, bootTime.tm_sec);
+    currentDataSet->battery  = (uint16_t)(round(volt * 1000));
+    currentDataSet->errCode |= getErrorCode(); //add system errors
+    _D(
+      #ifdef MEAS_ACQUIRNG_TIME
+      currentDataSet->GPShdop = (uint8_t)(millis() / 1000);
+      DebugPrintln("set GPShdop to acquiring time: " + String(currentDataSet->GPShdop) + " ms", DEBUG_LEVEL_2);
+      #endif
+      #ifdef TRACK_HEIDI_STATE
+      currentDataSet->accThres2 = heidiConfig->status;
+      DebugPrintln("set accThres2 to heidi status: 0x" + String(currentDataSet->accThres2, HEX), DEBUG_LEVEL_2);
+      #endif
+    )
+    _DD(_PrintDataSet(currentDataSet, DEBUG_LEVEL_3);)
 
+  } else {
+    initDataSet(currentDataSet);
+  }
+#ifdef GPS_MODULE
+  closeGPS();
+#endif
 #ifdef USE_ULP
-  currentDataSet->accThres1 = get_accel_excnt1_ULP();
-  currentDataSet->accThres2 = get_accel_excnt2_ULP();
-  _D(DebugPrintln("accel thresholt 1 count: " + String(currentDataSet->accThres1), DEBUG_LEVEL_2);)
-  _D(DebugPrintln("accel thresholt 2 count: " + String(currentDataSet->accThres2), DEBUG_LEVEL_2);)
+  wake_config_ADXL345();
 #endif
-  //finalize data set
-  currentDataSet->date    = dosDate(bootTime.tm_year, bootTime.tm_mon, bootTime.tm_mday);
-  currentDataSet->time    = dosTime(bootTime.tm_hour, bootTime.tm_min, bootTime.tm_sec);
-  currentDataSet->battery = (uint16_t)(round(volt * 1000));
-  _DD(_PrintDataSet(currentDataSet, DEBUG_LEVEL_3);)
-
   closeMeasures();
+
 #ifdef GSM_MODULE
-  if (doDataTransmission(heidiConfig->bootCount)){
+  _DD(
+    DebugPrintln("heidiConfig->bootCount: " + String(heidiConfig->bootCount), DEBUG_LEVEL_3);
+    if (GPSalert()) {DebugPrintln("GPSalert = true", DEBUG_LEVEL_3);} else {DebugPrintln("GPSalert = false", DEBUG_LEVEL_3);}
+    if (doDataTransmission()) {DebugPrintln("doDataTransmission = true", DEBUG_LEVEL_3);} else {DebugPrintln("doDataTransmission = false", DEBUG_LEVEL_3);}
+    if (getState(PRE_GPS_ALERT)) {DebugPrintln("PRE_GPS_ALERT = true", DEBUG_LEVEL_3);} else {DebugPrintln("PRE_GPS_ALERT = false", DEBUG_LEVEL_3);}
+    if (getState(GPS_ALERT_1)) {DebugPrintln("GPS_ALERT_1 = true", DEBUG_LEVEL_3);} else {DebugPrintln("GPS_ALERT_1 = false", DEBUG_LEVEL_3);}
+    if (getState(GPS_ALERT_2)) {DebugPrintln("GPS_ALERT_2 = true", DEBUG_LEVEL_3);} else {DebugPrintln("GPS_ALERT_2 = false", DEBUG_LEVEL_3);}
+    if (getState(POWER_SAVE_2)) {DebugPrintln("POWER_SAVE_2 = true", DEBUG_LEVEL_3);} else {DebugPrintln("POWER_SAVE_2 = false", DEBUG_LEVEL_3);}
+  )
+  if (doDataTransmission()){
 	  int HTTPrc = 0;
 	  bool GSMfailure = true;
 	  _DD(_PrintShortSummary(DEBUG_LEVEL_3));
-    String sendLine = generateMulti64SendLine(0, (MAX_DATA_SETS-1));
-    if ((sendLine.length() > 0) && (volt >= GSM_MINIMUM_VOLTAGE)){
-      if(openGSM()){
-        if (hGSMsetup()){
-          _DD(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3);)
-          int HTTPtimeOut = sendLine.length() * 20 + 1000;
-          if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-          HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
-                             "application/x-www-form-urlencoded",
-                              sendLine,
-                              HTTPtimeOut,
-                              HTTPtimeOut);
-          if (HTTPrc == 200){
-            _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_1);)
-            GSMfailure = false;
-            setFenceFromHTTPresponse(hGSMGetLastResponse());
-            setSettingsFromHTTPresponse(hGSMGetLastResponse());
-          }
-        }else{
-          _D(DebugPrintln("GPRS check OK.", DEBUG_LEVEL_1);)
+    String sendLine = "";
+    if ((heidiConfig->bootCount >= _currentCycles()) || GPSalert()) { sendLine = generateMulti64SendLine(0, (MAX_DATA_SETS-1)); }
+    if ((sendLine.length() == 0)){ sendLine = "ID=" + _herdeID(); } //just get settings
+    if(openGSM()){
+      if (hGSMsetup()){
+        _DD(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3);)
+        int HTTPtimeOut = sendLine.length() * 20 + 1000;
+        if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
+        HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
+                            "application/x-www-form-urlencoded",
+                             sendLine,
+                             HTTPtimeOut,
+                             HTTPtimeOut);
+        if (HTTPrc == 200){
+          _D(DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_1);)
+          _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_2);)
+          GSMfailure = false;
+          setFenceFromHTTPresponse(hGSMGetLastResponse());
+          setSettingsFromHTTPresponse(hGSMGetLastResponse());
+          setTelNoFromHTTPresponse(hGSMGetLastResponse());
+          clrState(RESET_INITS);
         }
-        hGSMshutDown();
-        closeGSM();
       }
-      cleanUpDataSets(GSMfailure);
+      hGSMshutDown();
+      closeGSM();
     }
-    _D(DebugPrintln("GPRS send done: " + String(millis() - msStartTime), DEBUG_LEVEL_2));
-    #if DEBUG_LEVEL >= DEBUG_LEVEL_0
-    if (GSMfailure){
-	    if(volt < GSM_MINIMUM_VOLTAGE){
-	      _D(DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1);)
-	    } else {
-        _D(DebugPrintln("GSM result: " + String(HTTPrc), DEBUG_LEVEL_1);)
-	    }
+    cleanUpDataSets(GSMfailure);
+    _D(
+      DebugPrintln("GPRS send done: " + String(millis()), DEBUG_LEVEL_2);
+      if (GSMfailure){
+	      if(!getState(POWER_SAVE_2)){
+	        DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1);
+	      } else {
+          DebugPrintln("GSM result: " + String(HTTPrc), DEBUG_LEVEL_1);
+	      }
+      }
+    )
+    if (GSMfailure && GPSalert()){
+      if (getState(GPS_ALERT_1)) { clrState(GPS_ALERT_1); setState(PRE_GPS_ALERT); }
+      if (getState(GPS_ALERT_2)) { clrState(GPS_ALERT_2); setState(GPS_ALERT_1); }
     }
-    #endif
   }
 #endif
 
@@ -195,11 +313,18 @@ void setup()
 #endif
 
   heidiConfig->bootCount++;
-  if (heidiConfig->bootCount >= getBootCycles()) { heidiConfig->bootCount = 0; }
+  if (heidiConfig->bootCount >= _currentCycles()) { heidiConfig->bootCount = 0; }
 
+  _DD(DebugPrintln("Last diff: " + String(heidiConfig->lastTimeDiffMs) + " / current diff : " + String(currentTimeDiffMs), DEBUG_LEVEL_3);)
+  _D(DebugPrintln("SLEEP: heidi state: " + String(heidiConfig->status) ,DEBUG_LEVEL_1);)
+  if (getState(NOT_IN_CYCLE)){
+    clrState(NOT_IN_CYCLE);
+    heidiConfig->lastTimeDiffMs = 0;       //not useful out of regular cycles
+    currentTimeDiffMs = 0;
+  }
   int diffTimeFinalMs = heidiConfig->lastTimeDiffMs + currentTimeDiffMs;
-  _DD(DebugPrintln("getCycleTimeMS: " + String(getCycleTimeMS()), DEBUG_LEVEL_3);)
-  goto_sleep(getCycleTimeMS() + diffTimeFinalMs - millis());
+  heidiConfig->lastTimeDiffMs = diffTimeFinalMs;
+  goto_sleep(timeToNextBootMS() + diffTimeFinalMs - millis());
 }
 
 void loop()
@@ -241,6 +366,7 @@ void SetupLoRa(){
 #endif //USE_LORA
 
 void initGlobalVar(bool powerOnReset){
+  initSysTimeMS();
   bootTime.tm_hour    = INVALID_TIME_VALUE;
   bootTime.tm_min     = INVALID_TIME_VALUE;
   bootTime.tm_sec     = INVALID_TIME_VALUE;
@@ -248,7 +374,7 @@ void initGlobalVar(bool powerOnReset){
   expBootTime.tm_min  = INVALID_TIME_VALUE;
   expBootTime.tm_sec  = INVALID_TIME_VALUE;
   initRTCData(powerOnReset);
-  if(!wasRegularWakeUp()){ setError(WRONG_BOOT_REASON); }
+  if(!wasRegularWakeUp()){ setError(E_WRONG_BOOT_REASON); }
 }
 
 void restartCycling(){
@@ -256,51 +382,24 @@ void restartCycling(){
   goto_sleep(getCycleTimeMS());
 }
 
-void setupSystemDateTime(){
-  tm timeinfo;
+bool setupSystemDateTime(tm* systime, int timeOut){
   #ifdef GPS_MODULE
-  /**** check sys-time and cycle ****/
-  if (openGPS()){
-    if((!GetSysTime(&timeinfo)) || (heidiConfig->bootCount <= REFETCH_SYS_TIME)){
-      heidiConfig->lastTimeDiffMs = 0; //not useful anymore
-      delay(3000);
-      _D(DebugPrintln("Boot: Get time from GPS", DEBUG_LEVEL_1);)
-      if (!SetSysToGPSTime()){ //sets boot time if succeed
-        closeGPS();
-        goto_sleep(SLEEP_DUR_NOTIME);
-      } else {
-        if (!calcCurrentTimeDiff()){
-          closeGPS();
-          heidiConfig->bootCount = REFETCH_SYS_TIME;
-          goto_sleep(getCycleTimeMS());
-        }
-      }
-      _D(DebugPrintln("GPS time vs. internal timer: " + String(currentTimeDiffMs), DEBUG_LEVEL_1);)
-      GetSysTime(&timeinfo);
-    } else {
-      int bootMs = timeinfo.tm_hour * 3600 + timeinfo.tm_min * 60 + timeinfo.tm_sec;
-      bootMs *= 1000;
-      bootMs -= millis();
-      SetBootTimeFromMs(bootMs);
-    }
-    _copyDate(&timeinfo, &bootTime);
+  _D(DebugPrintln("Get system time from GPS", DEBUG_LEVEL_1);)
+  if (!openGPS()) {
+    if (heidiConfig->bootCount <= REFETCH_SYS_TIME){ return false; }
+    return getSysTime(systime);
   }
-  #else
-  currentTimeDiffMs = SLEEP_DUR_NOTIME;
-  if (GetSysTime(&timeinfo)){
-    _copyTime(&timeinfo, &bootTime);
-    _copyDate(&timeinfo, &bootTime);
-  } else {
-    goto_sleep(SLEEP_DUR_NOTIME);
+  if (!setSysTimeToGPSTime(timeOut)){
+    closeGPS();
+    if (heidiConfig->bootCount <= REFETCH_SYS_TIME){ return false; }
   }
   #endif
-  _D(DebugPrintln("Current sys time: " + DateString(timeinfo) + " " + TimeString(timeinfo), DEBUG_LEVEL_1);)
-  _D(DebugPrintln("sys. boot time:   " + DateString(bootTime) + " " + TimeString(bootTime), DEBUG_LEVEL_1);)
+  return getSysTime(systime);
 }
 
 void goto_sleep(int32_t mseconds){
-  esp_timer_delete(watchd);
-  disableControls();
+  if (watchd != NULL) { esp_timer_delete(watchd); }
+  disableControls(true);
   pinMode(GPIO_NUM_4,  INPUT); //SCL
   pinMode(GPIO_NUM_5,  INPUT);
   pinMode(GPIO_NUM_13, INPUT); //GSM_ENABLE_PIN; SDA
@@ -319,16 +418,28 @@ void goto_sleep(int32_t mseconds){
 
   int32_t sleeptime = mseconds;
   _DD(DebugPrintln("Sleep requested for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_3); delay(50);)
-  if (sleeptime > MAX_SLEEP_TIME_MS) { sleeptime = MAX_SLEEP_TIME_MS; }
-  if (sleeptime < MIN_SLEEP_TIME_MS) { sleeptime = MIN_SLEEP_TIME_MS; }
+  if (sleeptime > MAX_CYCLE_DURATION_MSEC) { sleeptime = MAX_CYCLE_DURATION_MSEC; }
+  #ifdef PRE_MEASURE_HANDLING
+  if (sleeptime < (PRE_CYCLE_TIME + MIN_SLEEP_TIME_MS)){
+    clrState(PRE_MEAS_STATE);
+    _D(DebugPrintln("Pre-Measure off - time's too short.", DEBUG_LEVEL_1); delay(50);)
+  } else {
+    setState(PRE_MEAS_STATE);
+    _D(DebugPrintln("Pre-Measure on.", DEBUG_LEVEL_1); delay(50);)
+    sleeptime -= PRE_CYCLE_TIME;
+  }
+  #endif
   _D(DebugPrintln("Sleep for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
   #ifdef USE_ULP
-  //if (wasRegularWakeUp()) { enableULP(); }
-  //else
-  { init_accel_ULP(ULP_INTERVALL_US); }
+  init_accel_ULP(ULP_INTERVALL_US);
   esp_sleep_enable_ulp_wakeup();
   #endif
-  esp_sleep_enable_timer_wakeup(uint64_t(sleeptime) * uint64_t(uS_TO_mS_FACTOR));
+  doSleepRTCon(sleeptime);
+}
+void doSleepRTCon(int32_t ms){
+  int32_t mSeconds = ms;
+  if (mSeconds < MIN_SLEEP_TIME_MS) { mSeconds = MIN_SLEEP_TIME_MS; }
+  esp_sleep_enable_timer_wakeup(uint64_t(mSeconds) * uint64_t(uS_TO_mS_FACTOR));
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
   esp_deep_sleep_start();
 }
@@ -351,8 +462,13 @@ void checkWakeUpReason(){
 #endif
 
 bool wasPowerOnReset(void){
+  _DD(DebugPrintln("RESET reason " + String(rtc_get_reset_reason(0)), DEBUG_LEVEL_3);)
   return rtc_get_reset_reason(0) == POWERON_RESET;
 }
+bool wasbrownOut(void){
+  return (rtc_get_reset_reason(0) == RTCWDT_BROWN_OUT_RESET) || (rtc_get_reset_reason(0) == SW_CPU_RESET) ;
+}
+
 bool wasRegularWakeUp(void){
   bool rst = rtc_get_reset_reason(0) == DEEPSLEEP_RESET;
   bool tmr = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
@@ -393,64 +509,44 @@ void doResetTests(){
   //_D(DebugPrintln("Temperature: " + String(MeasureTemperature()), DEBUG_LEVEL_1);)
   #endif
 }
-void doResetInits(){
-  #ifdef GSM_MODULE
-  _D(DebugPrintln("Get new fence - send ID", DEBUG_LEVEL_1);)
-  if (volt >= GSM_MINIMUM_VOLTAGE){
-
-    if (openGSM()){
-
-      if (hGSMsetup()){
-        int HTTPtimeOut = 10000;
-        for (int i = 0; i<1; i++){
-          int HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
-                                  "application/x-www-form-urlencoded",
-                                  "ID=" + _herdeID(),
-                                  HTTPtimeOut,
-                                  HTTPtimeOut);
-          _D(DebugPrintln("HTTP result: " + String(HTTPrc), DEBUG_LEVEL_1);)
-          if (HTTPrc == 200){
-            _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_2));
-            if ((setFenceFromHTTPresponse(hGSMGetLastResponse())) && (setSettingsFromHTTPresponse(hGSMGetLastResponse()))) { break; }
-          } _D( else { DebugPrintln("GSM HTTP error: " + String(HTTPrc), DEBUG_LEVEL_1); } )
-        }
-        //TODO: SMS alert if fails
-        hGSMshutDown();
-      }
-
-      closeGSM();
-    }
-  }
-  #endif
-}
 
 double CheckBattery(void){
   double val;
   /**** check voltage does not need any inits ****/
   #ifdef CHECK_BATTERY
   val = MeasureVoltage(BATTERY_MEASURE_PIN);
-  _D(DebugPrintln("Battery: " + String(val, 2), DEBUG_LEVEL_1);)
-  if (val <= 3.0){ // low Battery?
-    _D(DebugPrintln("Battery much too low.", DEBUG_LEVEL_1);)
-    _D(delay(100));
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ULP);
-    esp_sleep_enable_timer_wakeup(uint64_t(3600000) * uint64_t(uS_TO_mS_FACTOR)); //sleep for 1h
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
-    esp_deep_sleep_start();
+  _D(DebugPrintln("Battery: " + String(val, 2), DEBUG_LEVEL_1); delay(100);)
+  if (val <= GSM_POWER_SAVE_4_VOLTAGE){ // low Battery?
+    _D(DebugPrintln("Battery much too low.", DEBUG_LEVEL_1); delay(100);)
+    disableControls(true);
+    doSleepRTCon(MAX_CYCLE_DURATION_MSEC);
   }
-  if (val <= 3.3){ // low Battery?
-    _D(DebugPrintln("Battery too low.", DEBUG_LEVEL_1);)
-    _D(delay(100));
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ULP);
+  if (val <= GSM_POWER_SAVE_3_VOLTAGE){ // low Battery?
+    _D(DebugPrintln("Battery too low.", DEBUG_LEVEL_1); delay(100);)
+    //esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ULP);
     int32_t sleeptime = getCycleTimeMS();
-    if (sleeptime > MAX_SLEEP_TIME_MS) { sleeptime = MAX_SLEEP_TIME_MS; }
-    if ((sleeptime - millis()) < MIN_SLEEP_TIME_MS) { sleeptime = MIN_SLEEP_TIME_MS + millis(); }
-    esp_sleep_enable_timer_wakeup(uint64_t(sleeptime - millis()) * uint64_t(uS_TO_mS_FACTOR));
-    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
-    esp_deep_sleep_start();
+    if (sleeptime > MAX_CYCLE_DURATION_MSEC) { sleeptime = MAX_CYCLE_DURATION_MSEC; }
+    disableControls(true);
+    doSleepRTCon(sleeptime - millis());
+  }
+  if (val <= GSM_POWER_SAVE_2_VOLTAGE){
+    setState(POWER_SAVE_2);
+    setError(E_POWER_SAVE_2);
+    _DD(DebugPrintln("Battery: POWER_SAVE_2", DEBUG_LEVEL_3);)
+  } else if (val <= GSM_POWER_SAVE_1_VOLTAGE){
+    setState(POWER_SAVE_1);
+    clrState(POWER_SAVE_2);
+    setError(E_POWER_SAVE_1);
+    _DD(DebugPrintln("Battery: POWER_SAVE_1", DEBUG_LEVEL_3);)
+  }  else {
+    clrState(POWER_SAVE_1);
+    clrState(POWER_SAVE_2);
+    _DD(DebugPrintln("Battery: no POWER_SAVE", DEBUG_LEVEL_3);)
   }
   #else
   val = 4.0;
+  clrState(POWER_SAVE_1);
+  clrState(POWER_SAVE_2);
   #endif
   return val;
 }
@@ -472,6 +568,32 @@ void testMeasure(){
 	  _D(DebugPrintln("Measured Value: " + String(analog_value), DEBUG_LEVEL_1);)
 	  a_measures   = 0;
 	  measures     = 0;
+  }
+}
+
+byte hexbuffer[35] = { 0x0e, 0x01, 0x01, 0xa7, 0x55, 0x0a, 0x03, 0xe5, 0x97, 0xcb, 0x00, 0x1c, 0x01, 0xa7, 0x52, 0x7d, 0x8a, 0x4b, 0x0f, 0xdd, 0x09, 0x00, 0x00, 0x05, 0x00, 0x44, 0x00, 0x9c, 0x01, 0x20, 0x01, 0x00, 0x00, 0x2b, 0x40 };
+void CheckGSM(void){
+  if(openGSM()){
+    if (hGSMsetup()){
+      String sendLine = "X01=" + b64Encode(hexbuffer, 35);
+      _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_1);)
+      int HTTPtimeOut = sendLine.length() * 20 + 1000;
+      if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
+      int HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
+                          "application/x-www-form-urlencoded",
+                           sendLine,
+                           HTTPtimeOut,
+                           HTTPtimeOut);
+      if (HTTPrc == 200){
+        _D(DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_1);)
+        _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_1);)
+        setFenceFromHTTPresponse(hGSMGetLastResponse());
+        setSettingsFromHTTPresponse(hGSMGetLastResponse());
+        setTelNoFromHTTPresponse(hGSMGetLastResponse());
+      }
+    }
+    hGSMshutDown();
+    closeGSM();
   }
 }
 

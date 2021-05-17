@@ -33,7 +33,7 @@ void _PrintDataSet(t_SendData* DataSet, int dLevel){
   _D(DebugPrint(" Bat= ", dLevel));
   _D(DebugPrint(String(double(DataSet->battery)/1000, 2), dLevel));
   _D(DebugPrint(" Err= ", dLevel));
-  _D(DebugPrint(DataSet->errCode, dLevel));
+  _D(DebugPrint(String(DataSet->errCode, HEX), dLevel));
   _D(DebugPrint(" GPSHDOP= ", dLevel));
   _D(DebugPrint(DataSet->GPShdop, dLevel));
   _D(DebugPrint(" Sat= ", dLevel));

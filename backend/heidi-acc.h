@@ -17,6 +17,7 @@
 #ifndef TESTACCEL_H_
 #define TESTACCEL_H_
 
+#include <Arduino.h>
 #include <stdint.h>
 #include "esp32/ulp.h"
 
@@ -42,7 +43,7 @@ extern bool _ADXL345_status;
  * at least ULP_RTC_MEMORY_SIZE*4
  */
 
-#define ADXL345_DEFAULT_ADDRESS 0x53
+#define ADXL345_DEFAULT_ADDRESS byte(0x53)
 
 /*************************** REGISTER MAP ***************************/
 #define ADXL345_DEVID          0x00    // Device ID
@@ -163,6 +164,8 @@ typedef enum {
 
 
 bool    init_ADXL345(void);
+bool    wake_config_ADXL345(void);
+bool    sleep_ADXL345(void);
 bool    _ADXL345_get_bw_code(uint8_t* value);
 bool    _ADXL345_set_bw(uint8_t bw_code);
 bool    _ADXL345_getFullResBit(bool* value);
@@ -230,7 +233,7 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
  * set CONFIG_ULP_COPROC_RESERVE_MEM in ".arduinocdt/packages/esp32/hardware/esp32/1.0.0/tools/sdk/include/config/sdkconfig.h"
  *   AND in ".arduinocdt/packages/esp32/hardware/esp32/1.0.0/tools/sdk/sdkconfig" to a higher value (512 = step size)
  */
-#define ULP_LED_BLINK          1
+#define ULP_LED_BLINK          0
 #define USE_MORE_THAN_128_INSN 1
 
 #define I2C_DEBUG   0                  //need to increase code size if enabled
@@ -334,6 +337,8 @@ void set_accel_exthr2_ULP(uint16_t val);
 /* get / set wake value 2 */
 uint16_t get_accel_wake2_ULP();
 void set_accel_wake2_ULP(uint16_t val);
+
+uint16_t _getAccThresCnt(uint16_t dayThres);
 
 #if USE_MORE_THAN_128_INSN
 

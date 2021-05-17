@@ -52,11 +52,17 @@ typedef struct _t_distance_data{
   //see ods sheet
 }t_distance_data;
 
+typedef enum {
+  fcrc_ok_same,
+  fcrc_ok_new,
+  fcrc_failed
+} fchkrc_t;
 
 bool setFenceFromHTTPresponse(String response);
 void clearFence();
 int  addFencePoint(double laditude, double longitude);
-bool newFenceB64(String b64);
+void newFenceB64(String b64);
+fchkrc_t checkFenceB64(String b64);
 bool pointIn(t_PointData* point);
 int  meterDistFromFence(t_PointData* point);
 bool getPointOutside(t_PointData* point);

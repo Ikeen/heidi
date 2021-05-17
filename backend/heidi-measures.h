@@ -15,7 +15,7 @@
 #ifdef I2C_BUS
 #define I2C_ERROR_READ_COUNT (I2C_ERROR_NO_BEGIN + 1)
 #endif
-#ifdef I2C_SWITCH
+#ifdef I2C_BUS
 #include <Wire.h>
 #endif
 #include "heidi-debug.h"
@@ -33,10 +33,18 @@
 #define PCA_9536_MEAS_BIT        0x01
 #define PCA_9536_VOLT_BIT        0x02
 
-#define GSM_ENABLE_PIN        GPIO_NUM_13    // On/Off
-#define GSM_RST               GPIO_NUM_21
-#define MEASURES_ENABLE_PIN   GPIO_NUM_25   // GPIO25  -- enable measures, including GPS
-#define VOLT_ENABLE_PIN       GSM_RST
+#ifndef I2C_SWITCH
+#ifdef HEIDI_CONFIG_2
+#define GSM_ENABLE_PIN        GPIO_NUM_23
+#else
+#define GSM_ENABLE_PIN        GPIO_NUM_13
+#endif
+#define MEASURES_ENABLE_PIN   GPIO_NUM_25
+#endif
+
+#ifdef USE_VOLTAGE_MEAS_PIN
+#define VOLT_ENABLE_PIN       GPIO_NUM_21
+#endif
 
 #define MEASURES_ON   LOW
 #define MEASURES_OFF  HIGH
@@ -49,23 +57,30 @@
  * Voltage measuring
  */
 #define BATTERY_MEASURE_PIN     36
-#define ANALOG_MEASURE_OFFSET  166
-#define ANALOG_MEASURE_DIVIDER 605
 
+#ifdef HEIDI_CONFIG_1
+#define ANALOG_MEASURE_OFFSET  106
+#define ANALOG_MEASURE_DIVIDER 605
+#endif
+
+#ifdef HEIDI_CONFIG_2
+#define ANALOG_MEASURE_OFFSET  -75
+#define ANALOG_MEASURE_DIVIDER 567
+#endif
 /*
  * Temperature measuring
  */
 
 #define TEMP_SENSOR_PIN        GPIO_NUM_22
 #define NO_TEMPERATURE        -127
-
+#define TEMPERATURE_NOT_SET   -27315
 
 #ifdef TEMP_SENSOR
 float MeasureTemperature();
 #endif
 
 bool enableControls(void);
-void disableControls(void);
+void disableControls(bool);
 bool openMeasures(void);
 void closeMeasures(void);
 void stopULP(void);
@@ -82,15 +97,15 @@ double MeasureVoltage(uint8_t pin);
 bool init_PCA9536(void);
 #endif
 #ifdef I2C_BUS
-i2c_err_t _i2c_readRegister(uint8_t devAdress, uint8_t regAdress, uint8_t *value);
-i2c_err_t _i2c_readRegister16(uint8_t devAdress, uint8_t regAdress, int16_t *value);
-i2c_err_t _i2c_writeRegister(uint8_t devAdress, uint8_t regAdress, uint8_t value);
-i2c_err_t _i2c_setRegisterBit(uint8_t devAdress, uint8_t regAdress, int bitPos, bool state);
-i2c_err_t _i2c_getRegisterBit(uint8_t devAdress, uint8_t regAdress, int bitPos, bool *value);
+i2c_err_t iic_readRegister(uint8_t devAdress, uint8_t regAdress, uint8_t *value);
+i2c_err_t iic_readRegister16(uint8_t devAdress, uint8_t regAdress, int16_t *value);
+i2c_err_t iic_writeRegister(uint8_t devAdress, uint8_t regAdress, uint8_t value);
+i2c_err_t iic_setRegisterBit(uint8_t devAdress, uint8_t regAdress, int bitPos, bool state);
+i2c_err_t iic_getRegisterBit(uint8_t devAdress, uint8_t regAdress, int bitPos, bool *value);
 #endif
 
-uint8_t _i2c_x_readRegister(uint8_t devAdress, uint8_t regAdress);
+uint8_t iic_x_readRegister(uint8_t devAdress, uint8_t regAdress);
 
-void _i2c_clockFree(void);
+void iic_clockFree(void);
 
 #endif /* HEIDI_MEASURES_H_ */

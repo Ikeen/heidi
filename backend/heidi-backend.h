@@ -59,21 +59,20 @@ void SetupLoRa(){
 
 uint8_t herdeID();
 uint8_t animalID();
-bool     GetSysTime(tm* info);
-int8_t   GetLocalTimeHourShift();
 double   GetVoltage();
 
 double CheckBattery(void);
 void initGlobalVar(bool powerOnReset);
-void setupSystemDateTime(void);
+bool setupSystemDateTime(tm* systime, int timeOut);
 void setupWatchDog(void);
 static void watchDog(void* arg);
-void doResetInits(void);
 
 void restartCycling();
 void goto_sleep(int32_t mseconds);
+void doSleepRTCon(int32_t ms);
 
 bool wasPowerOnReset(void);
+bool wasbrownOut(void);
 bool wasRegularWakeUp(void);
 bool wasULPWakeUp(void);
 
@@ -82,6 +81,7 @@ _D(
 void doResetTests();
 void testMeasure();
 void checkWakeUpReason();
+void CheckGSM(void);
 #ifdef TEST_RTC
 void testRTC(t_SendData*);
 #endif

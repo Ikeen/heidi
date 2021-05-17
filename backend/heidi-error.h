@@ -11,11 +11,18 @@
 
 /** error handling **/
 
-#define COULD_NOT_FETCH_GPS_TIME 0x0001
-#define GSM_TRANSMISSION_FAILED  0x0002
-#define COULD_NOT_FETCH_GPS      0x0004
-#define WRONG_GPS_VALUES         0x0008
-#define WRONG_BOOT_REASON        0x0010
+#define E_WRONG_BOOT_REASON        0x0001
+#define E_GSM_TRANSMISSION_FAILED  0x0002
+#define E_COULD_NOT_FETCH_GPS_TIME 0x0004
+#define E_COULD_NOT_FETCH_GPS      0x0008
+#define E_WRONG_GPS_VALUES         0x0010
+#define E_NEW_FENCE_STATE          0x0020
+#define E_GPS_ALERT                0x0040
+#define E_ACC_ALERT                0x0080
+#define E_GPS_ALERT_SMS            0x0100
+#define E_IIC_ERROR                0x0200
+#define E_POWER_SAVE_1             0x0400
+#define E_POWER_SAVE_2             0x0800
 
 //    case 1 : Serial.println ("POWERON_RESET");break;          /**<1, Vbat power on reset*/
 //    case 3 : Serial.println ("SW_RESET");break;               /**<3, Software reset digital core*/

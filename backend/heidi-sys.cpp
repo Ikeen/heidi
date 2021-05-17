@@ -18,6 +18,9 @@ extern t_ConfigData* heidiConfig;
 
 static int bootTimeStampMs;
 static int expectedBootTimeMs;
+static int currentBootTableEntry = NO_TABLE_ENTRY;
+static int nextBootTableEntry = NO_TABLE_ENTRY;
+static uint8_t bootTimeTable[MAX_CYCLES_PER_DAY][4];
 
 uint8_t herdeID(){
   return HEIDI_HERDE;
@@ -33,66 +36,207 @@ String _herdeID(){
   return String(herdeID());
 }
 
-bool isInCycle(int firstCycleInDay, int8_t* bootCount){
+void calcCycleTable(void){
+  bool wrap = false;
+  bool daywrap = false;
+  uint8_t cycleNo;
+  uint8_t cycleMinute;
+  uint8_t cycleHour;
+  int turnbase;
+  int counter = 0;
+  for(int i=0; i<MAX_CYCLES_PER_DAY; i++){
+    bootTimeTable[i][0] = 0; bootTimeTable[i][1] = 0; bootTimeTable[i][2] = 0;
+  }
+  //night
+  if (heidiConfig->nightHourStart != heidiConfig->nightHourEnd){
+    wrap = false;
+    daywrap = false;
+    cycleNo = 1;
+    cycleHour = heidiConfig->nightHourStart;
+    cycleMinute = (herdeID() % 12) * 5; //1st cycle is odd to avoid LoRa jamming each other
+    turnbase = counter;
+    while ((counter < MAX_CYCLES_PER_DAY) && __night(cycleHour) ){
+      //_DD(DebugPrint("Boot table night: " + String(cycleNo) + ", " +  LenTwo(String(cycleHour)) + ", " +  LenTwo(String(cycleMinute)) , DEBUG_LEVEL_3));
+      //_DD(if (__night(cycleHour)) { DebugPrintln(" night", DEBUG_LEVEL_3); } else { DebugPrintln(" day", DEBUG_LEVEL_3); } )
+      bootTimeTable[counter][0] = cycleNo;
+      bootTimeTable[counter][1] = cycleMinute;
+      bootTimeTable[counter][2] = cycleHour;
+      counter++;
+      cycleNo++;
+      cycleMinute += heidiConfig->nightSleepMin;
+      if (cycleNo > __currentCycles(true)) { cycleNo = 1; }
+      if (cycleMinute >= 60) { cycleHour++; cycleMinute -= 60; }
+      if (cycleHour >= 24) { cycleHour = 0; daywrap = true;}
+      if ((heidiConfig->nightHourEnd < heidiConfig->nightHourStart) && (!daywrap)){ continue; }
+      if ((cycleHour >= heidiConfig->nightHourEnd) && (!wrap)) { cycleHour = heidiConfig->nightHourStart; wrap = true; }
+      if (wrap && (    (cycleHour > bootTimeTable[turnbase][2])
+                    || ((cycleHour == bootTimeTable[turnbase][2]) && (cycleMinute >= bootTimeTable[turnbase][1])))) { break; }
+    }
+  }
+  //day
+  wrap = false;
+  daywrap = false;
+  cycleNo = 1;
+  cycleHour = heidiConfig->nightHourEnd;
+  cycleMinute = (herdeID() % 12) * 5; //1st cycle is odd to avoid LoRa jamming each other
+  turnbase = counter;
+  while ((counter < MAX_CYCLES_PER_DAY)){
+    bootTimeTable[counter][0] = cycleNo;
+    bootTimeTable[counter][1] = cycleMinute;
+    bootTimeTable[counter][2] = cycleHour;
+    counter++;
+    cycleNo++;
+    cycleMinute += heidiConfig->sleepMinutes;
+    if (cycleNo > __currentCycles(false)) { cycleNo = 1; }
+    if (cycleMinute >= 60) { cycleHour++; cycleMinute -= 60; }
+    if (cycleHour >= 24) { cycleHour = 0; daywrap = true; }
+    if (heidiConfig->nightHourStart == heidiConfig->nightHourEnd) { wrap = daywrap; }
+    else if  (heidiConfig->nightHourStart > heidiConfig->nightHourEnd) {
+      if ((cycleHour >= heidiConfig->nightHourStart) && (!wrap)) { cycleHour = heidiConfig->nightHourEnd; wrap = true; }
+    } else {
+      if ((cycleHour >= heidiConfig->nightHourStart) && (!wrap) && (daywrap)) { cycleHour = heidiConfig->nightHourEnd; wrap = true; }
+    }
+    if (wrap) {
+      if (cycleHour > bootTimeTable[turnbase][2]) { break; }
+      if ((cycleHour == bootTimeTable[turnbase][2]) && (cycleMinute >= bootTimeTable[turnbase][1])){ break; }
+    }
+  }
+  //sort
+  for(int i=0; i<(counter-1); i++){
+    for (int j=i+1; j<counter; j++){
+      if ((bootTimeTable[j][2] * 60 + bootTimeTable[j][1]) < (bootTimeTable[i][2] * 60 + bootTimeTable[i][1])){
+        uint8_t dummy;
+        dummy = bootTimeTable[i][0]; bootTimeTable[i][0] = bootTimeTable[j][0]; bootTimeTable[j][0] = dummy;
+        dummy = bootTimeTable[i][1]; bootTimeTable[i][1] = bootTimeTable[j][1]; bootTimeTable[j][1] = dummy;
+        dummy = bootTimeTable[i][2]; bootTimeTable[i][2] = bootTimeTable[j][2]; bootTimeTable[j][2] = dummy;
+      }
+    }
+  }
+  //print
+  /*
+  _DD(
+    for(int i=0; i<counter; i++){
+      cycleHour = bootTimeTable[i][2];
+      DebugPrint("Boot table [" + String(i)+ "]: " + String(bootTimeTable[i][0]) + ", " +  LenTwo(String(cycleHour)) + ", " +  LenTwo(String(bootTimeTable[i][1])) , DEBUG_LEVEL_3);
+      if (__night(cycleHour)) { DebugPrintln(" night", DEBUG_LEVEL_3); } else { DebugPrintln(" day", DEBUG_LEVEL_3); }
+    }
+  )
+  */
+
+}
+
+bool isInCycle(int8_t* bootCount){
+  currentBootTableEntry = NO_TABLE_ENTRY;
+  nextBootTableEntry = NO_TABLE_ENTRY;
   if (bootTimeStampMs == INVALID_TIME_VALUE) { return false; } // should never happen
   bool inCycle = false;
-  int i = 0;
-  int t = firstCycleInDay; //minute of 1st cycle within a new day
-  while (t < (1440 + firstCycleInDay)){
-    if (isInTime(t, bootTime.tm_min, bootTime.tm_sec)){
-      inCycle = true;
-   	  if (*bootCount == i) {
-        _D(DebugPrintln("Boot: regular cycle " + String(i) + " boot", DEBUG_LEVEL_1));
-      } else {
-        _D(DebugPrintln("Boot: need to set boot count to " + String(i), DEBUG_LEVEL_1));
-        *bootCount = i;
-      }
-      break;
-    } else {
-      if (bootTime.tm_min >= firstCycleInDay) {
-		if(t > bootTime.tm_min) { break; }
-	  } else {
-		if(t > (bootTime.tm_min + 60)) { break; }
-	  }
+  int cnt = 0;
+  //find matching cycle
+  while((bootTimeTable[cnt][0] != 0) && (cnt < MAX_CYCLES_PER_DAY)){
+    bool upperwrap = false;
+    int upperborder = (bootTimeTable[cnt][2] * 3600) + (bootTimeTable[cnt][1] * 60) + _cyleMaxDiff_s(bootTimeTable[cnt][2]);
+    upperborder *= S_TO_mS_FACTOR;
+    if (upperborder > MS_PER_DAY) { upperwrap = true; upperborder -= MS_PER_DAY; }
+    bool lowerwrap = false;
+    int lowerborder = (bootTimeTable[cnt][2] * 3600) + (bootTimeTable[cnt][1] * 60) - _cyleMaxDiff_s(bootTimeTable[cnt][2]);
+    lowerborder *= S_TO_mS_FACTOR;
+    if (lowerborder > MS_PER_DAY) { lowerwrap = true; lowerborder += MS_PER_DAY; }
+    nextBootTableEntry = cnt;
+    /* _D(DebugPrintln("Check boot table [" + String(cnt) + "]: upper border: " + String(upperborder) \
+                    + " / lower border: " + String(lowerborder)  + " / boot time ms: " + String(bootTimeStampMs) \
+                    + "(" + LenTwo(String(bootTimeTable[nextBootTableEntry][2])) + ":" \
+                    + LenTwo(String(bootTimeTable[nextBootTableEntry][1])) + ")", DEBUG_LEVEL_1);)*/
+    if ((!lowerwrap) && (!upperwrap)){
+      if ((bootTimeStampMs > lowerborder) && (bootTimeStampMs < upperborder)) { currentBootTableEntry = cnt; break; }
     }
-    t += CYCLE_DURATION_MIN;
-    i++;
-    if (i == getBootCycles()) { i = 0; }
+    if (lowerwrap || upperwrap){
+      if ((bootTimeStampMs > lowerborder) || (bootTimeStampMs < upperborder)) { currentBootTableEntry = cnt; break; }
+    }
+    if (lowerborder > bootTimeStampMs) { break; }
+    cnt++;
   }
-  if (t >=60 ) { t -= 60; }
-  //now we have the current (if in cycle) or the next (if out of cycle) boot minute -> t
-  //time for calculations - 1st: expected boot time
-  int x = (bootTime.tm_hour * 3600 + t * 60) * 1000; //ms time stamp for the next / current cycle so far
-  //if((x - bootTimeStampMs) < -SLEEP_DURATION_MSEC){
-  if((bootTimeStampMs - x) > getCycleTimeMS()){
-	  //woken up early (maybe woken up yesterday, but exp. today)
-	  if ((bootTime.tm_hour + 1) > 23) { expBootTime.tm_hour = 0; } else { expBootTime.tm_hour = bootTime.tm_hour + 1; }
-  } else if ((x - bootTimeStampMs) > getCycleTimeMS()){
-	  //woken up late (maybe woken up today, but exp. yesterday)
-	  if ((bootTime.tm_hour - 1) < 0) { expBootTime.tm_hour = 23; } else { expBootTime.tm_hour = bootTime.tm_hour - 1; }
+  if (currentBootTableEntry != NO_TABLE_ENTRY){
+    inCycle = true;
+    if (*bootCount == bootTimeTable[currentBootTableEntry][0]) {
+      _D(DebugPrintln("Boot: regular cycle " + String(bootTimeTable[currentBootTableEntry][0]) + " boot", DEBUG_LEVEL_1);)
+    } else {
+      _D(DebugPrintln("Boot: need to set boot count to " + String(bootTimeTable[currentBootTableEntry][0]), DEBUG_LEVEL_1);)
+      *bootCount = bootTimeTable[currentBootTableEntry][0];
+    }
+    nextBootTableEntry = currentBootTableEntry + 1;
+    if (nextBootTableEntry >= MAX_CYCLES_PER_DAY) { nextBootTableEntry = 0; }
+    expBootTime.tm_hour = bootTimeTable[currentBootTableEntry][2];
+    expBootTime.tm_min  = bootTimeTable[currentBootTableEntry][1];
+    expBootTime.tm_sec  = 0;
   } else {
-    expBootTime.tm_hour = bootTime.tm_hour;
+    nextBootTableEntry = cnt;
+    if (nextBootTableEntry >= MAX_CYCLES_PER_DAY) { nextBootTableEntry = 0; }
+    expBootTime.tm_hour = bootTimeTable[nextBootTableEntry][2];
+    expBootTime.tm_min  = bootTimeTable[nextBootTableEntry][1];
+    expBootTime.tm_sec  = 0;
   }
-  expBootTime.tm_min = t;
-  expBootTime.tm_sec = 0;
-  expectedBootTimeMs = expBootTime.tm_hour * 3600 + t * 60;
-  expectedBootTimeMs *= 1000;
-  //2nd time diff
+  expectedBootTimeMs  = expBootTime.tm_hour * 3600 + expBootTime.tm_min * 60;
+  expectedBootTimeMs *= S_TO_mS_FACTOR;
   if (!calcCurrentTimeDiff()) { return false; };
+  _D(
+    if(currentBootTableEntry != NO_TABLE_ENTRY){
+      DebugPrintln("Current cycle time " + LenTwo(String(bootTimeTable[currentBootTableEntry][2])) + ":"
+                    + LenTwo(String(bootTimeTable[currentBootTableEntry][1])), DEBUG_LEVEL_1);
+    } else {
+      DebugPrintln("No current cycle time ", DEBUG_LEVEL_1);
+
+    }
+    if(nextBootTableEntry != NO_TABLE_ENTRY){
+      DebugPrintln("Next cycle time " + LenTwo(String(bootTimeTable[nextBootTableEntry][2])) + ":"
+                    + LenTwo(String(bootTimeTable[nextBootTableEntry][1])), DEBUG_LEVEL_1);
+    } else {
+      DebugPrintln("No next cycle time ", DEBUG_LEVEL_1);
+
+  }
+
+  )
   return inCycle;
 }
-bool doDataTransmission(int8_t bootCount){
-  if (bootCount == getBootCycles() - 1){
-    return true;
-  }else{
-    return false;
+
+int  getNextBootMS(){
+  if (nextBootTableEntry == NO_TABLE_ENTRY) { return NO_TIME_MS; }
+  int result = bootTimeTable[nextBootTableEntry][2] * 3600; //bootHour
+  result += bootTimeTable[nextBootTableEntry][1] * 60; //bootHour
+  result *= 1000;
+  return result;
+}
+
+int  timeToNextBootMS(){
+  int result;
+  if (GPSalert()){
+    _DD(DebugPrintln("timeToNextBoot = ALERT Boot time: ", DEBUG_LEVEL_3);)
+    result = SLEEP_DUR_ALERT;
+  } else {
+    result = getNextBootMS();
+    if (result == NO_TIME_MS) { return getCycleTimeMS(); }
+    result -= bootTimeStampMs;
+    if (result < 0) { result += MS_PER_DAY; }
   }
+  _DD(DebugPrintln("timeToNextBoot (seconds): " + String((int)( result / 1000)), DEBUG_LEVEL_3);)
+  return result;
+}
+
+bool doDataTransmission(){
+  bool result = (heidiConfig->bootCount >= _currentCycles());
+  result &= !getState(POWER_SAVE_2);
+  result |= GPSalert();
+  result |= getState(RESET_INITS);
+  return result;
+}
+
+bool GPSalert(){
+  return (getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 ) && !getState(GPS_ALERT_PSD));
 }
 
 bool calcCurrentTimeDiff(){
   if ((expectedBootTimeMs == INVALID_TIME_VALUE) || (bootTimeStampMs == INVALID_TIME_VALUE)) {
     currentTimeDiffMs = 0;
-	return false;
+	  return false;
   }
   int y = expectedBootTimeMs - bootTimeStampMs;
   if(y < (getCycleTimeMS() - MS_PER_DAY)){
@@ -109,7 +253,8 @@ bool isInTime(const int target_m, const int current_m, const int current_s){
   int current = current_m;
   int target  = target_m;
   int wrap_border = 3600 - (getCycleTimeMS() / 1000);
-
+  int sleep_max_shift = _currentCyleLen_m();
+  sleep_max_shift *= 3; //in seconds (*60), 5% (/20)
   if (target > 60)  { target -= 60; }
   current *= 60;
   current += current_s;
@@ -118,35 +263,40 @@ bool isInTime(const int target_m, const int current_m, const int current_s){
   if (diffToRegularS > wrap_border) { diffToRegularS -= 3600; }
   else if (diffToRegularS < (wrap_border * -1)) { diffToRegularS += 3600; }
   #if DEBUG_LEVEL > 0
-  if ((diffToRegularS >= -SLEEP_MAX_SHIFT_S) && (diffToRegularS <= SLEEP_MAX_SHIFT_S)) {
-    _D(DebugPrintln("InTime: target: " + String(target) + "; current: " + String(current) + "; diff: " + String(diffToRegularS) + "; max_diff: " + String(SLEEP_MAX_SHIFT_S), DEBUG_LEVEL_1));
+  if ((diffToRegularS >= (sleep_max_shift * -1)) && (diffToRegularS <= sleep_max_shift)) {
+    _D(DebugPrintln("InTime: target: " + String(target) + "; current: " + String(current) + "; diff: " + String(diffToRegularS) + "; max_diff: " + String(sleep_max_shift), DEBUG_LEVEL_1));
   }
   #endif
-  return ((diffToRegularS >= -SLEEP_MAX_SHIFT_S) && (diffToRegularS <= SLEEP_MAX_SHIFT_S));
+  return ((diffToRegularS >= (sleep_max_shift * -1)) && (diffToRegularS <= sleep_max_shift));
 }
 
-void SetBootTimeFromMs(int timeStampMs){
-  int bootms = timeStampMs;
-  if (bootms < 0) { bootms += MS_PER_DAY; }
-  bootTimeStampMs = bootms;
-  bootTime.tm_hour = (int)(bootms / 3600000);
-  bootms -= bootTime.tm_hour * 3600000;
-  bootTime.tm_min = (int)(bootms / 60000);
-  bootms -= bootTime.tm_min * 60000;
-  bootTime.tm_sec = bootms / 1000;
+void setBootTimeFromCurrentTime(tm* sysTime, tm* bootTime){
+  int sysMs = sysTime->tm_hour * 3600 + sysTime->tm_min * 60 + sysTime->tm_sec;
+  sysMs *= 1000;
+  int bootMs = sysMs - millis();
+  _copyDate(sysTime, bootTime);
+  _copyTime(sysTime, bootTime);
+  if (bootMs < 0) {
+    bootMs += MS_PER_DAY;
+    bootTime->tm_mday -= 1;
+    mktime(bootTime);
+  }
+  _DD(DebugPrintln("Set boot time ms to: " + String(bootMs), DEBUG_LEVEL_3);)
+  bootTimeStampMs = bootMs;
+  bootTime->tm_hour = (int)(bootMs / 3600000);
+  bootMs -= bootTime->tm_hour * 3600000;
+  bootTime->tm_min = (int)(bootMs / 60000);
+  bootMs -= bootTime->tm_min * 60000;
+  bootTime->tm_sec = bootMs / 1000;
+  mktime(bootTime);
 }
 
-int8_t  GetLocalTimeHourShift(){
-  /*
-  tm cur, summer, winter;
-  if (!GetSysTime(&cur)){ return 0; }
-  summer.tm_year = cur.tm_year;
-  summer.tm_mon  = 3;
-  summer.tm_mday = 31;
-  */
-  return 2;
+void initSysTimeMS(void){
+  bootTimeStampMs     = INVALID_TIME_VALUE;
+  expectedBootTimeMs  = INVALID_TIME_VALUE;
 }
-bool GetSysTime(tm *info){
+
+bool getSysTime(tm *info){
   uint32_t count = 500;
   time_t now;
   do{
@@ -157,7 +307,8 @@ bool GetSysTime(tm *info){
   }while(count--);
   return false;
 }
-String GetCSVvalue(String line, int no)
+
+String getCSVvalue(String line, int no)
 {
   int pos;
   int end = -1;
@@ -170,8 +321,55 @@ String GetCSVvalue(String line, int no)
   return line.substring(pos, end);
 }
 bool _night(void) {
-  return ((bootTime.tm_hour >= heidiConfig->nightHourStart) | (bootTime.tm_hour < heidiConfig->nightHourEnd));
+  return __night(bootTime.tm_hour);
 }
+bool __night(uint8_t hour) {
+  if (heidiConfig->nightHourStart == heidiConfig->nightHourEnd) { return false; }
+  if (heidiConfig->nightHourStart < heidiConfig->nightHourEnd){
+    return ((hour >= heidiConfig->nightHourStart) && (hour < heidiConfig->nightHourEnd));
+  }
+  if (heidiConfig->nightHourStart > heidiConfig->nightHourEnd){
+    return ((hour >= heidiConfig->nightHourStart) || (hour < heidiConfig->nightHourEnd));
+  }
+  return false;
+}
+
+uint8_t _currentCyleLen_m(){ //minutes (max 60)
+  if (_night()) { return heidiConfig->nightSleepMin; }
+  else { return heidiConfig->sleepMinutes; }
+}
+uint8_t  _currentCyleMaxDiff_s(){ //seconds (max 180 = 5% from 3600)
+  if (_night()) { return heidiConfig->nightSleepMin * 3; } //(*60 / 20 -> *3)
+  else { return heidiConfig->sleepMinutes * 3; }
+}
+uint8_t  _cyleMaxDiff_s(uint8_t hour){ //seconds (max 180 = 5% from 3600)
+  if (__night(hour)) { return heidiConfig->nightSleepMin * 3; } //(*60 / 20 -> *3)
+  else { return heidiConfig->sleepMinutes * 3; }
+}
+uint8_t _currentCycles(){
+  return __currentCycles(_night());
+}
+uint8_t __currentCycles(bool isNight){
+  uint8_t result = heidiConfig->bootCycles;
+  if(isNight){ result = heidiConfig->nightBootCycles;}
+  if (getState(POWER_SAVE_1)) {result *= 2;}
+  return result;
+}
+_D(
+  uint8_t __currentCyclesD(bool isNight){
+    uint8_t result = heidiConfig->bootCycles;
+    if(isNight){
+      result = heidiConfig->nightBootCycles;
+      _DD(DebugPrint(" __curCyc: night", DEBUG_LEVEL_3); } else { DebugPrint(" __curCyc: day", DEBUG_LEVEL_3);)
+    }
+    if (getState(POWER_SAVE_1)) {
+      result *= 2;
+      _DD(DebugPrintln(", powerSave", DEBUG_LEVEL_3); } else { DebugPrintln(", no powerSave", DEBUG_LEVEL_3);)
+    }
+    return result;
+  }
+)
+
 void _copyTime(tm *from, tm *to){
   to->tm_hour = from->tm_hour;
   to->tm_min  = from->tm_min;

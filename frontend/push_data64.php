@@ -41,7 +41,7 @@
         if ($herde < 10) { $herde = '000' . $herde; }
         elseif ($herde < 100) { $herde = '00' . $herde; }
         elseif ($herde < 1000) { $herde = '0' . $herde; }
-        if ($herdeID === '') { $herdeID = $herde; }
+        if ($herdeID == '') { $herdeID = $herde; }
         //echo $herde . ", " . $pos . "<br>";
         //uint_8
         $animal = $data[$pos++];
@@ -155,6 +155,7 @@
         echo "OK";
         tellFence($conn, $herdeID);
         tellSettings($conn, $herdeID);
+        tellTelNo($conn, $herdeID);
       } else {
         echo "Error: " . $sql . "<br>" . $conn->error;
       }
@@ -164,10 +165,12 @@
         $herdeID = substr($_POST["ID"],0,4);
         tellFence($conn, $herdeID);
         tellSettings($conn, $herdeID);
+        tellTelNo($conn, $herdeID);
       } else if (isset($_GET['ID'])) {
         $herdeID = substr($_GET['ID'],0,4);
         tellFence($conn, $herdeID);
         tellSettings($conn, $herdeID);
+        tellTelNo($conn, $herdeID);
       }
       else { echo " - no valid Data"; }
     }
@@ -176,12 +179,16 @@
 function tellFence($conn, $herdeID)
 {
   $sql0 = "SELECT Longitude, Latitude FROM Fence WHERE HerdeID = '{$herdeID}' AND Active = 1;";
+  error_log($sql0);
   if ($sqlres = $conn->query($sql0)){ 
     $fence_data = pack('C', (integer)$sqlres->num_rows);
+    $i = 0;
     while ($row = $sqlres->fetch_row()){
       $fence_data .= pack('i', (integer)($row[0]*1000000)); 
-      $fence_data .= pack('i', (integer)($row[1]*1000000)); 
+      $fence_data .= pack('i', (integer)($row[1]*1000000));
+      $i++;
     }
+    error_log("poles: " . $i);
     $sqlres->close();
     $b64n = base64_encode($fence_data);
     $b64n = strtr($b64n, '+/', '-_');
@@ -192,12 +199,11 @@ function tellFence($conn, $herdeID)
 
 function tellSettings($conn, $herdeID)
 {
-  $sql0 = "SELECT * FROM Settings WHERE HerdeID = '{$herdeID}';";
+  $sql0 = "SELECT CyclesDay, CyclesNight, CycleLenDay, CycleLenNight, NightStartHour, NightEndHour, DistAlarmThr, AccThreshold1, AccThr1AlarmCnt, AccThreshold2, AccThr2AlarmCnt, accNightFactor FROM Settings WHERE HerdeID = '{$herdeID}';";
   if ($sqlres = $conn->query($sql0)){ 
-    $row = $sqlres->fetch_row();
-    $count = $sqlres->field_count;
+    if ($row = $sqlres->fetch_row()){ $count = $sqlres->field_count; } else { $count = 0; }
     $settings_data = pack('C', (integer)$count);
-    $i = 1; //1st [0] is ID
+    $i = 0; 
     while ($i < $count){
       $settings_data .= pack('S', (integer)($row[$i])); 
       $i++;
@@ -207,6 +213,53 @@ function tellSettings($conn, $herdeID)
     $b64n = strtr($b64n, '+/', '-_');
     $b64n = preg_replace("/[^a-zA-Z0-9-_]/", "", $b64n);
     echo ';' . $b64n . ';' . dechex(crc16F($b64n));
+  }
+}
+function tellTelNo($conn, $herdeID)
+{
+  $sql0 = "SELECT TelNo1, TelNo2 FROM Settings WHERE HerdeID = '{$herdeID}';";
+  if ($sqlres = $conn->query($sql0)){ 
+    $tel1 = '';
+    $tel2 = '';
+    $count = 0;
+    if ($row = $sqlres->fetch_row()){
+      $count = $sqlres->field_count;
+      $tel1 = $row[0];
+      if ($count >= 2) { $tel2 = $row[1]; } 
+    }
+    if($tel2 == '') {$count = 1;} 
+    if($tel1 == '') {$count = 0;} 
+    $settings_data = pack('C', (integer)$count);
+    if  ($count >= 1) {
+      for ($i = 0; $i < 12; $i++){
+        if (strlen($tel1) >= ($i*2+1)){
+          $a = char2int(substr($tel1, $i*2, 1));
+        } else { $a = 11; }
+        if (strlen($tel1) >= ($i*2+2)){
+          $b = char2int(substr($tel1, $i*2+1, 1));
+        } else { $b = 11; }
+        $x = $a | ($b << 4);
+        $settings_data .= pack('C',(integer)($x));
+      }
+    }
+    if  ($count >= 2) {
+      for ($i = 0; $i < 12; $i++){
+         if (strlen($tel2) >= ($i*2+1)){
+           $a = char2int(substr($tel2, $i*2, 1));
+         } else { $a = 11; }
+         if (strlen($tel2) >= ($i*2+2)){
+           $b = char2int(substr($tel2, $i*2+1, 1));
+         } else { $b = 11; }
+        $x = $a | ($b << 4);
+        $settings_data .= pack('C',(integer)($x));
+      }
+    }
+    $b64n = base64_encode($settings_data);
+    $b64n = strtr($b64n, '+/', '-_');
+    $b64n = preg_replace("/[^a-zA-Z0-9-_]/", "", $b64n);
+    echo ';' . $b64n . ';' . dechex(crc16F($b64n));
+
+    $sqlres->close();
   }
 }
 
@@ -222,5 +275,32 @@ function crc16F($data) //CRC-16/CCITT-FALSE
   }
   return $crc;
 }
+
+
+function char2int($char) 
+{
+  $ret = 11;
+  if ($char == '0') {$ret =  0;}
+  if ($char == '1') {$ret =  1;}
+  if ($char == '2') {$ret =  2;}
+  if ($char == '3') {$ret =  3;}
+  if ($char == '4') {$ret =  4;}
+  if ($char == '5') {$ret =  5;}
+  if ($char == '6') {$ret =  6;}
+  if ($char == '7') {$ret =  7;}
+  if ($char == '8') {$ret =  8;}
+  if ($char == '9') {$ret =  9;}
+  if ($char == '+') {$ret = 10;}
+  return $ret;
+}
+
+function console_log($output, $with_script_tags = true) {
+    $js_code = 'console.log(' . json_encode($output, JSON_HEX_TAG) . ');';
+    if ($with_script_tags) {
+        $js_code = '<script>' . $js_code . '</script>';
+    }
+    echo $js_code;
+}
+
 ?>
 

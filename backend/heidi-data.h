@@ -20,28 +20,32 @@
 #define RTC_DATA_SPACE_OFFSET 0
 #endif
 
+#define TEL_NO_LEN 12
+#define TEL_NO_CNT 2
 #define HEX_BUFFER_OFFSET 3
 #define HEX_BUFFER_VALUES 14 //_t_SendData values + ID
 #define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 2 + 4 + 4 + (2 * (HEX_BUFFER_VALUES - 3)))
 
 typedef __attribute__((__packed__)) struct _t_ConfigData{
    int8_t bootCount;
-   int8_t bootCycles; //(before transmit Data)
-  uint8_t sleepMinutes;
-  uint8_t nightHourStart;
-  uint8_t nightHourEnd;
+   int8_t bootCycles; //...cycles between data transmission
+   int8_t sleepMinutes;
+   int8_t nightHourStart;
+   int8_t nightHourEnd;
    int8_t nightBootCycles;
   uint8_t nightSleepMin;
-  uint8_t dummy8;
-  uint8_t accThres1;
-  uint8_t accThres2;
+  uint8_t accNightFactor; //percent
+ uint16_t accThres1;
+ uint16_t accThres2;
  uint16_t accAlertThres1;
  uint16_t accAlertThres2;
  uint16_t distAlertThres;
+ uint16_t status;
   int32_t lastTimeDiffMs;
+  uint8_t telNo[TEL_NO_CNT][TEL_NO_LEN]; // BCD coded (A='+'; B=empty; C-F=not allowed)
 }t_ConfigData;
 
-#define HEIDI_CONFIG_LENGTH 20 //must be a multiple of 4
+#define HEIDI_CONFIG_LENGTH (24+(TEL_NO_LEN*TEL_NO_CNT)) //must be a multiple of 4
 #define HEIDI_CONFIG_LENGTH_RTC (HEIDI_CONFIG_LENGTH >> 2)
 
 typedef __attribute__((__packed__)) struct _t_SendData{
@@ -89,23 +93,29 @@ extern t_ConfigData* heidiConfig;
 extern t_SendData*   availableDataSet[MAX_DATA_SETS];
 extern t_FenceData*  FenceDataSet[FENCE_MAX_POS];
 
+void     initConfig(bool reset);
 void     initRTCData(bool reset);
 void     initDataSet(t_SendData* DataSet);
 bool     emptyDataSet(t_SendData* DataSet);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
 void     cleanUpDataSets(bool TransmissionFailed);
 void     freeFirstDataSet(void);
+String   getTelNo(int which);
+
+bool     getState(uint32_t which);
+void     setState(uint32_t which);
+void     clrState(uint32_t which);
 
 String   generateSendLine(t_SendData* DataSet);
 String   generateMultiSendLine(int first, int last, int* setsDone);
 String   generateMulti64SendLine(int first, int last);
 
 bool     setSettingsFromHTTPresponse(String response);
+bool     setTelNoFromHTTPresponse(String response);
 bool     newSettingsB64(String b64);
+bool     newTelNoB64(String b64);
 
 void     getRTCDataSpace(uint8_t**);
-
-int8_t   getBootCycles(void);
 int32_t  getCycleTimeMS(void);
 
 int32_t  GeoToInt(double geo);
@@ -115,8 +125,8 @@ int      b64Decode(String Base64Str, uint8_t* Buffer);
 
 void     testData(void);
 
-String   DateString(tm timestamp);
-String   TimeString(tm timestamp);
+String   DateString(tm* timestamp);
+String   TimeString(tm* timestamp);
 String   LenTwo(const String No);
 
 uint16_t dosDate(const uint8_t year, const uint8_t month, const uint8_t day);

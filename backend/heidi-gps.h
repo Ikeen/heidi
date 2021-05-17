@@ -18,15 +18,12 @@
 #define GPS_RXD   GPIO_NUM_16
 #define GPS_TXD   GPIO_NUM_17
 #define GPS_UART_NO 1
-//#define GPS_RX   GPIO_NUM_23
-//#define GPS_TX   GPIO_NUM_21
-//#define GPS_UART_NO 2
 #define GPS_BAUD 9600
 
 #define WAIT_FOR_GPS_TIME 180000
 
-int  GPSGetPosition(t_SendData* DataSet, int averages, int timeoutms);
-bool SetSysToGPSTime();
+int  GPSGetPosition(t_SendData* DataSet, int averages, int timeOut);
+bool setSysTimeToGPSTime(int timeOut);
 bool SetSysToGPS();
 bool openGPS();
 void closeGPS();
