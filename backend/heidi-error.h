@@ -24,6 +24,11 @@
 #define E_POWER_SAVE_1             0x0400
 #define E_POWER_SAVE_2             0x0800
 
+#define E_TRANSMIT_REGULAR         0x1000
+#define E_TRANSMIT_ALERT           0x2000
+#define E_TRANSMIT_ALERT_NO_GPS    0x4000
+#define E_RECEIVE_DATA_ERROR       0x8000
+
 //    case 1 : Serial.println ("POWERON_RESET");break;          /**<1, Vbat power on reset*/
 //    case 3 : Serial.println ("SW_RESET");break;               /**<3, Software reset digital core*/
 //    case 4 : Serial.println ("OWDT_RESET");break;             /**<4, Legacy watch dog reset digital core*/

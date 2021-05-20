@@ -130,7 +130,7 @@ void copyDataSet(t_SendData* _from, t_SendData* _to){
   _to->accThres2  = _from->accThres2 ;
 
  }
-
+/* this function is deprecated */
 String generateSendLine(t_SendData* DataSet){
   //"TrackerID=0002.1235&Longitude=-13.344855&Latitude=51.006709&Altitude=305&Date=2019-06-09&Time=17:20:00&Battery=4.02",
   String result = "";
@@ -157,6 +157,7 @@ String generateSendLine(t_SendData* DataSet){
   }
   return result;
 }
+/* this function is deprecated */
 String generateMultiSendLine(int first, int last, int* setsDone){
   //short notation with multiple data sets
   //php.ini: max_input_var = 1000 by default (1 data set = 7..12 vars) -> up to 83 data sets possible
@@ -196,8 +197,7 @@ String generateMultiSendLine(int first, int last, int* setsDone){
   *setsDone = k;
   return result;
 }
-String generateMulti64SendLine(int first, int last)
-{
+String generateMulti64SendLine(int first, int last){
   //php.ini: max_input_var = 1000 by default (1 data set = 1 var) -> max 100 datasets -> no problem
   //php.ini: post_max_size = 8M by default - SIM800 312k only! (1 data set = 50 byte) -> no problem
   //don't forget to increase timeouts on web server side
@@ -250,6 +250,7 @@ bool setSettingsFromHTTPresponse(String response)
   String settingsData = getCSVvalue(response, 4);
   String settingsCRC = getCSVvalue(response, 5);
   uint16_t c_crc = crc16F(settingsData);
+  clrState(NEW_SETTINGS);
   if ((settingsData.length() == 0) && (settingsCRC.length() == 0)) { return true; }
   if (settingsData.length() > 3){
     uint16_t t_crc = (uint16_t)hex2int(settingsCRC);
@@ -286,12 +287,55 @@ bool newSettingsB64(String b64){
   unsigned char buffer[256];
   int dataLen = b64Decode(b64, buffer);
   if (dataLen < 3) { return false; };
-  if ( buffer[0] >= 1 ) { heidiConfig->bootCycles       = _copyBufferToUInt16(buffer, 1); _DD( DebugPrintln("settings bootCycles       " + String(heidiConfig->bootCycles), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 2 ) { heidiConfig->nightBootCycles  = _copyBufferToUInt16(buffer, 3); _DD( DebugPrintln("settings nightBootCycles  " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 3 ) { heidiConfig->sleepMinutes     = _copyBufferToUInt16(buffer, 5); _DD( DebugPrintln("settings sleepMinutes     " + String(heidiConfig->sleepMinutes), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 4 ) { heidiConfig->nightSleepMin    = _copyBufferToUInt16(buffer, 7); _DD( DebugPrintln("settings nightSleepMin    " + String(heidiConfig->nightSleepMin), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 5 ) { heidiConfig->nightHourStart   = _copyBufferToUInt16(buffer, 9); _DD( DebugPrintln("settings nightHourStart   " + String(heidiConfig->nightHourStart), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 6 ) { heidiConfig->nightHourEnd     = _copyBufferToUInt16(buffer,11); _DD( DebugPrintln("settings nightHourEnd     " + String(heidiConfig->nightHourEnd), DEBUG_LEVEL_3); )}
+  if ( buffer[0] >= 1 ) {
+    uint8_t dummy = _copyBufferToUInt16(buffer, 1);
+    if(dummy != heidiConfig->bootCycles){
+      heidiConfig->bootCycles = dummy;
+      setState(NEW_SETTINGS);
+      _DD( DebugPrintln("settings bootCycles       " + String(heidiConfig->bootCycles), DEBUG_LEVEL_3); )
+    } _DD( else { DebugPrintln("settings bootCycles keeps the same", DEBUG_LEVEL_3); } )
+  }
+  if ( buffer[0] >= 2 ) {
+    uint8_t dummy = _copyBufferToUInt16(buffer, 3);
+    if(dummy != heidiConfig->nightBootCycles){
+      heidiConfig->nightBootCycles = dummy;
+      setState(NEW_SETTINGS);
+      _DD( DebugPrintln("settings nightBootCycles  " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
+    } _DD( else { DebugPrintln("settings nightBootCycles keeps the same", DEBUG_LEVEL_3); } )
+  }
+  if ( buffer[0] >= 3 ) {
+    uint8_t dummy = _copyBufferToUInt16(buffer, 5);
+    if(dummy != heidiConfig->sleepMinutes){
+      heidiConfig->sleepMinutes = dummy;
+      setState(NEW_SETTINGS);
+      _DD( DebugPrintln("settings sleepMinutes     " + String(heidiConfig->sleepMinutes), DEBUG_LEVEL_3); )
+    } _DD( else { DebugPrintln("settings sleepMinutes keeps the same", DEBUG_LEVEL_3); } )
+    heidiConfig->sleepMinutes     = _copyBufferToUInt16(buffer, 5);
+  }
+  if ( buffer[0] >= 4 ) {
+    uint8_t dummy = _copyBufferToUInt16(buffer, 7);
+    if(dummy != heidiConfig->nightSleepMin){
+      heidiConfig->nightSleepMin = dummy;
+      setState(NEW_SETTINGS);
+      _DD( DebugPrintln("settings nightSleepMin    " + String(heidiConfig->nightSleepMin), DEBUG_LEVEL_3); )
+    } _DD( else { DebugPrintln("settings nightSleepMin keeps the same", DEBUG_LEVEL_3); } )
+  }
+  if ( buffer[0] >= 5 ) {
+    uint8_t dummy = _copyBufferToUInt16(buffer, 9);
+    if(dummy != heidiConfig->nightHourStart){
+      heidiConfig->nightHourStart = dummy;
+      setState(NEW_SETTINGS);
+      _DD( DebugPrintln("settings nightHourStart   " + String(heidiConfig->nightHourStart), DEBUG_LEVEL_3); )
+    } _DD( else { DebugPrintln("settings nightHourStart keeps the same", DEBUG_LEVEL_3); } )
+  }
+  if ( buffer[0] >= 6 ) {
+    uint8_t dummy = _copyBufferToUInt16(buffer, 11);
+    if(dummy != heidiConfig->nightHourEnd){
+      heidiConfig->nightHourEnd = dummy;
+      setState(NEW_SETTINGS);
+      _DD( DebugPrintln("settings nightHourEnd     " + String(heidiConfig->nightHourEnd), DEBUG_LEVEL_3); )
+    } _DD( else { DebugPrintln("settings nightHourEnd keeps the same", DEBUG_LEVEL_3); } )
+  }
   if ( buffer[0] >= 7 ) { heidiConfig->distAlertThres   = _copyBufferToUInt16(buffer,13); _DD( DebugPrintln("settings distAlertThres   " + String(heidiConfig->distAlertThres), DEBUG_LEVEL_3); )}
   if ( buffer[0] >= 8 ) { heidiConfig->accThres1        = _copyBufferToUInt16(buffer,15); _DD( DebugPrintln("settings accThres1        " + String(heidiConfig->accThres1), DEBUG_LEVEL_3); )}
   if ( buffer[0] >= 9 ) { heidiConfig->accAlertThres1   = _copyBufferToUInt16(buffer,17); _DD( DebugPrintln("settings accAlertThres1   " + String(heidiConfig->accAlertThres1), DEBUG_LEVEL_3); )}

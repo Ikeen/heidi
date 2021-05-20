@@ -41,8 +41,8 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
   int      gps_sat  = 0;
   bool     gotTime  = false;
 
-  setError(DataSet, E_COULD_NOT_FETCH_GPS);
-  setError(DataSet, E_WRONG_GPS_VALUES);
+  setError(E_COULD_NOT_FETCH_GPS);
+  setError(E_WRONG_GPS_VALUES);
 
   _D(DebugPrintln("GPS: Acquire position", DEBUG_LEVEL_1));
   while((measures < averages) && (millis() < timeOut)){
@@ -78,7 +78,7 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
     a_alt /= measures;
     a_hdop /= measures;
     a_hdop /= 10;
-	  rmError(DataSet, E_COULD_NOT_FETCH_GPS);
+	  rmError(E_COULD_NOT_FETCH_GPS);
   }
   DataSet->latitude = GeoToInt(a_lat);
   DataSet->longitude = GeoToInt(a_lng);
@@ -86,10 +86,10 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
   //DataSet->secGPS = (int8_t)((millis() - startMs)/1000);
   DataSet->GPShdop  = (uint8_t)a_hdop;
   if (!((measures > 0) && (DataSet->latitude == 0) && (DataSet->longitude == 0))){ //0.0, 0.0 must be wrong (or a fish)
-    rmError(DataSet, E_WRONG_GPS_VALUES);
+    rmError(E_WRONG_GPS_VALUES);
   }
   DataSet->metersOut = 0;
-  if(!(getError(DataSet, E_COULD_NOT_FETCH_GPS) || getError(DataSet, E_WRONG_GPS_VALUES))){
+  if(!(getError(E_COULD_NOT_FETCH_GPS) || getError(E_WRONG_GPS_VALUES))){
     t_PointData position;
     position.latitude = a_lat;
     position.longitude = a_lng;

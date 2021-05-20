@@ -20,6 +20,7 @@ static int bootTimeStampMs;
 static int expectedBootTimeMs;
 static int currentBootTableEntry = NO_TABLE_ENTRY;
 static int nextBootTableEntry = NO_TABLE_ENTRY;
+static int prevBootCycle = REFETCH_SYS_TIME;
 static uint8_t bootTimeTable[MAX_CYCLES_PER_DAY][4];
 
 uint8_t herdeID(){
@@ -165,12 +166,16 @@ bool isInCycle(int8_t* bootCount){
     }
     nextBootTableEntry = currentBootTableEntry + 1;
     if (nextBootTableEntry >= MAX_CYCLES_PER_DAY) { nextBootTableEntry = 0; }
+    prevBootCycle = bootTimeTable[currentBootTableEntry][0] - 1;
+    if (prevBootCycle <= 0) { prevBootCycle = _currentCycles(); }
     expBootTime.tm_hour = bootTimeTable[currentBootTableEntry][2];
     expBootTime.tm_min  = bootTimeTable[currentBootTableEntry][1];
     expBootTime.tm_sec  = 0;
   } else {
     nextBootTableEntry = cnt;
     if (nextBootTableEntry >= MAX_CYCLES_PER_DAY) { nextBootTableEntry = 0; }
+    prevBootCycle = bootTimeTable[nextBootTableEntry][0] - 1;
+    if (prevBootCycle <= 0) { prevBootCycle = _currentCycles(); }
     expBootTime.tm_hour = bootTimeTable[nextBootTableEntry][2];
     expBootTime.tm_min  = bootTimeTable[nextBootTableEntry][1];
     expBootTime.tm_sec  = 0;
@@ -223,14 +228,34 @@ int  timeToNextBootMS(){
 
 bool doDataTransmission(){
   bool result = (heidiConfig->bootCount >= _currentCycles());
-  result &= !getState(POWER_SAVE_2);
-  result |= GPSalert();
+  /* not "==" due to a weird night-cycles setting it's possible to start a day with values >= _currentCycles() */
   result |= getState(RESET_INITS);
+  /* after power up we need settings... */
+  result &= !getState(POWER_SAVE_2);
+  /* ...but do get or not transmit data on very low battery - that may fail and lead us to a endless boot loop ... */
+
+  if (result) { setError(E_TRANSMIT_REGULAR); } //!!!!!!!!!!!!!!!
+
+  result |= (GPSalert() && !getError(E_COULD_NOT_FETCH_GPS));
+  /* ...but we definitely give a try if we have an alert
+   * On PRE_GPS_ALERT state we want to check for new fence data - that should work, because PRE_GPS_ALERT state could not be reached
+   * without GPS data. But in case while stepping through alert states we cannot fetch position one time, it is senseless to send a
+   * SMS without transferring current position data. Therefore:  && !getError(E_COULD_NOT_FETCH_GPS)
+   */
+
+  if(GPSalert()) {
+    setError(E_TRANSMIT_ALERT);  //!!!!!!!!!!!!!!!
+    if(getError(E_COULD_NOT_FETCH_GPS)) { setError(E_TRANSMIT_ALERT_NO_GPS); } //!!!!!!!!!!!!!!!
+  }
   return result;
 }
 
 bool GPSalert(){
   return (getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 ) && !getState(GPS_ALERT_PSD));
+}
+
+int prevBootCycleNo(void){
+  return(prevBootCycle);
 }
 
 bool calcCurrentTimeDiff(){

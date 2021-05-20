@@ -19,8 +19,8 @@ typedef enum {
 
 #define DEBUG_LEVEL 0 //0 (no prints) .. 3 (all prints)
 #if (DEBUG_LEVEL > 0 )
-//#define MEAS_ACQUIRNG_TIME
-//#define TRACK_HEIDI_STATE
+#define MEAS_ACQUIRNG_TIME
+#define TRACK_HEIDI_STATE
 #endif
 //#define TEST_ON_BOOT
 //#define TEST_RTC

@@ -233,10 +233,14 @@ function tellTelNo($conn, $herdeID)
     if  ($count >= 1) {
       for ($i = 0; $i < 12; $i++){
         if (strlen($tel1) >= ($i*2+1)){
-          $a = char2int(substr($tel1, $i*2, 1));
+          $s1 = substr($tel1, $i*2, 1);
+          if ($s1 != ' ') { $a = intval($s1); }
+          else { $a = 11; }
         } else { $a = 11; }
         if (strlen($tel1) >= ($i*2+2)){
-          $b = char2int(substr($tel1, $i*2+1, 1));
+          $s2 = substr($tel1, $i*2+1, 1);
+          if ($s2 != ' ') { $b = intval($s2); }
+          else { $b = 11; }
         } else { $b = 11; }
         $x = $a | ($b << 4);
         $settings_data .= pack('C',(integer)($x));
@@ -245,20 +249,25 @@ function tellTelNo($conn, $herdeID)
     if  ($count >= 2) {
       for ($i = 0; $i < 12; $i++){
          if (strlen($tel2) >= ($i*2+1)){
-           $a = char2int(substr($tel2, $i*2, 1));
+           $s1 = substr($tel2, $i*2, 1);
+           if ($s1 != ' ') { $a = intval($s1); }
+           else { $a = 11; }
          } else { $a = 11; }
          if (strlen($tel2) >= ($i*2+2)){
-           $b = char2int(substr($tel2, $i*2+1, 1));
+           $s2 = substr($tel2, $i*2+1, 1);
+           if ($s2 != ' ') { $b = intval($s2); }
+           else { $b = 11; }
          } else { $b = 11; }
         $x = $a | ($b << 4);
         $settings_data .= pack('C',(integer)($x));
       }
     }
-    $b64n = base64_encode($settings_data);
-    $b64n = strtr($b64n, '+/', '-_');
-    $b64n = preg_replace("/[^a-zA-Z0-9-_]/", "", $b64n);
-    echo ';' . $b64n . ';' . dechex(crc16F($b64n));
-
+    if ($count > 0) {
+      $b64n = base64_encode($settings_data);
+      $b64n = strtr($b64n, '+/', '-_');
+      $b64n = preg_replace("/[^a-zA-Z0-9-_]/", "", $b64n);
+      echo ';' . $b64n . ';' . dechex(crc16F($b64n));
+    }
     $sqlres->close();
   }
 }

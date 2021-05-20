@@ -20,7 +20,7 @@
 #define TEMP_SENSOR
 #define CHECK_BATTERY
 #define USE_GPS_ALERT
-#define SEND_ALERT_SMS
+//#define SEND_ALERT_SMS
 //#define PRE_MEASURE_HANDLING
 #endif
 #ifdef HEIDI_CONFIG_2
@@ -90,9 +90,9 @@
 #define DEFALUT_NIGHT_HOUR_END_UTC      5
 
 #define GSM_POWER_SAVE_1_VOLTAGE    3.65  //double transmission time
-#define GSM_POWER_SAVE_2_VOLTAGE    3.55  //no more regular transmissions
-#define GSM_POWER_SAVE_3_VOLTAGE    3.3   //do nothing just deep sleep
-#define GSM_POWER_SAVE_4_VOLTAGE    3.0   //do nothing deep sleep for 1 hour
+#define GSM_POWER_SAVE_2_VOLTAGE    3.5   //no more transmissions
+#define GSM_POWER_SAVE_3_VOLTAGE    3.4   //do nothing just deep sleep
+#define GSM_POWER_SAVE_4_VOLTAGE    3.3   //do nothing deep sleep for 1 hour
 
 #define PRE_MEAS_STATE     0x0001
 #define PRE_GPS_ALERT      0x0002
@@ -107,7 +107,9 @@
 #define POWER_SAVE_2       0x0400
 #define NOT_IN_CYCLE       0x0800
 #define NEW_FENCE          0x1000
-#define RESET_INITS        0x2000
+#define NEW_SETTINGS       0x2000
+#define RESET_INITS        0x4000
+#define TRSMT_DATA_ERROR   0x8000
 //#define GOOD_NIGHT         0x2000
 
 #ifdef HEIDI_CONFIG_1

@@ -153,7 +153,10 @@ void setup()
 
   if(heidiConfig->bootCount <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER; }
   /*setupSystemDateTime opens / checks GPS*/
-  if (!setupSystemDateTime(&sysTime, timeOut)) { heidiConfig->bootCount = REFETCH_SYS_TIME; goto_sleep(SLEEP_DUR_NOTIME); }
+  if (!setupSystemDateTime(&sysTime, timeOut)) {
+    heidiConfig->bootCount = REFETCH_SYS_TIME;
+    if(GPSalert()){ goto_sleep(SLEEP_DUR_ALERT); } else { goto_sleep(SLEEP_DUR_NOTIME); }
+  }
   _D(DebugPrintln("Current system time: " + DateString(&sysTime) + " " + TimeString(&sysTime), DEBUG_LEVEL_1);)
   setBootTimeFromCurrentTime(&sysTime, &bootTime);
 
@@ -166,13 +169,11 @@ void setup()
     if (getState(POWER_SAVE_1)) {DebugPrintln("POWER_SAVE_1 = true", DEBUG_LEVEL_2);} else {DebugPrintln("POWER_SAVE_1 = false", DEBUG_LEVEL_3);}
   )
 
-  //_D(if(_night()) { setState(GOOD_NIGHT); } )
+  #ifdef TEST_RTC
+    _D(testRTC(currentDataSet, &bootTime);)
+  #endif
 
-#ifdef TEST_RTC
-  _D(testRTC(currentDataSet, &bootTime);)
-#endif
-
-  if (!GPSalert()){
+  if(!GPSalert()){
     //find expected boot time
     if(!isInCycle(&(heidiConfig->bootCount))){ //calculates expected boot time
       setState(NOT_IN_CYCLE);
@@ -192,11 +193,9 @@ void setup()
     } else {
       if (currentDataSet->metersOut > heidiConfig->distAlertThres) {
         if (!getState(NEW_FENCE)){
-          if (GPSalert() && getState(GPS_ALERT_PSD)) { clrState(GPS_ALERT_PSD); } //stop pausing alerts
-          if (getState(GPS_ALERT_2)){ clrState(GPS_ALERT_2); setState(GPS_ALERT_PSD); _D(DebugPrintln("GPS ALERT: silent", DEBUG_LEVEL_2);)}
-          else if (getState(GPS_ALERT_1)){ clrState(GPS_ALERT_1); setState(GPS_ALERT_2); _D(DebugPrintln("GPS ALERT: 2", DEBUG_LEVEL_2);)}
-          else if (getState(PRE_GPS_ALERT)){ clrState(PRE_GPS_ALERT); setState(GPS_ALERT_1); _D(DebugPrintln("GPS ALERT: 1", DEBUG_LEVEL_2);)}
-          else if (!getState(GPS_ALERT_PSD)){ setState(PRE_GPS_ALERT); _D(DebugPrintln("GPS ALERT: pre", DEBUG_LEVEL_2);)}
+          if (getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 ) && getState(GPS_ALERT_PSD)) { clrState(GPS_ALERT_PSD); } //stop pausing alerts
+          if (getState(PRE_GPS_ALERT)){ clrState(PRE_GPS_ALERT); setState(GPS_ALERT_1); _D(DebugPrintln("GPS ALERT: 1", DEBUG_LEVEL_2);)}
+          if (!getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 | GPS_ALERT_PSD)){ setState(PRE_GPS_ALERT); _D(DebugPrintln("GPS ALERT: pre", DEBUG_LEVEL_2);)}
         } else { currentDataSet->errCode |= E_NEW_FENCE_STATE; _D(DebugPrintln("GPS ALERT: distance too big, but new fence.", DEBUG_LEVEL_2);)}
       } else { if (!getState(NEW_FENCE) && GPSalert()){ setState(GPS_ALERT_PSD); } } //pause alerting
 
@@ -207,35 +206,33 @@ void setup()
         )
         clrState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 | GPS_ALERT_PSD | NEW_FENCE);
       }
-
     }
     if(getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 | GPS_ALERT_PSD)) {
-      currentDataSet->errCode |= E_GPS_ALERT;
+      setError(E_GPS_ALERT);
     };
     if(getState( GPS_ALERT_1 | GPS_ALERT_2 ) && !getState(GPS_ALERT_PSD)) {
-      currentDataSet->errCode |= E_GPS_ALERT_SMS;
+      setError(E_GPS_ALERT_SMS);
     };
 #else
-    currentDataSet->errCode |= COULD_NOT_FETCH_GPS;
-    currentDataSet->errCode |= COULD_NOT_FETCH_GPS_TIME;
+    setError(E_COULD_NOT_FETCH_GPS);
+    setError(E_COULD_NOT_FETCH_GPS_TIME);
 #endif
     //finalize data set
     currentDataSet->date     = dosDate(bootTime.tm_year, bootTime.tm_mon, bootTime.tm_mday);
     currentDataSet->time     = dosTime(bootTime.tm_hour, bootTime.tm_min, bootTime.tm_sec);
     currentDataSet->battery  = (uint16_t)(round(volt * 1000));
-    currentDataSet->errCode |= getErrorCode(); //add system errors
+    currentDataSet->errCode |= getErrorCode();
     _D(
       #ifdef MEAS_ACQUIRNG_TIME
       currentDataSet->GPShdop = (uint8_t)(millis() / 1000);
-      DebugPrintln("set GPShdop to acquiring time: " + String(currentDataSet->GPShdop) + " ms", DEBUG_LEVEL_2);
+      _D(DebugPrintln("set GPShdop to acquiring time: " + String(currentDataSet->GPShdop) + " ms", DEBUG_LEVEL_2);)
       #endif
       #ifdef TRACK_HEIDI_STATE
       currentDataSet->accThres2 = heidiConfig->status;
-      DebugPrintln("set accThres2 to heidi status: 0x" + String(currentDataSet->accThres2, HEX), DEBUG_LEVEL_2);
+      _D(DebugPrintln("set accThres2 to heidi status: 0x" + String(currentDataSet->accThres2, HEX), DEBUG_LEVEL_2);)
       #endif
     )
     _DD(_PrintDataSet(currentDataSet, DEBUG_LEVEL_3);)
-
   } else {
     initDataSet(currentDataSet);
   }
@@ -257,9 +254,15 @@ void setup()
     if (getState(GPS_ALERT_2)) {DebugPrintln("GPS_ALERT_2 = true", DEBUG_LEVEL_3);} else {DebugPrintln("GPS_ALERT_2 = false", DEBUG_LEVEL_3);}
     if (getState(POWER_SAVE_2)) {DebugPrintln("POWER_SAVE_2 = true", DEBUG_LEVEL_3);} else {DebugPrintln("POWER_SAVE_2 = false", DEBUG_LEVEL_3);}
   )
+  if (getState(TRSMT_DATA_ERROR)){ //there was an error on last received data
+    currentDataSet->errCode |= E_RECEIVE_DATA_ERROR;
+    clrState(TRSMT_DATA_ERROR);
+  }
+
   if (doDataTransmission()){
 	  int HTTPrc = 0;
 	  bool GSMfailure = true;
+	  currentDataSet->errCode |= getErrorCode(); //error codes from doDataTransmission !!!!!!!!!!!!!!!!!!
 	  _DD(_PrintShortSummary(DEBUG_LEVEL_3));
     String sendLine = "";
     if ((heidiConfig->bootCount >= _currentCycles()) || GPSalert()) { sendLine = generateMulti64SendLine(0, (MAX_DATA_SETS-1)); }
@@ -278,9 +281,11 @@ void setup()
           _D(DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_1);)
           _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_2);)
           GSMfailure = false;
-          setFenceFromHTTPresponse(hGSMGetLastResponse());
-          setSettingsFromHTTPresponse(hGSMGetLastResponse());
-          setTelNoFromHTTPresponse(hGSMGetLastResponse());
+          if (    !setFenceFromHTTPresponse(hGSMGetLastResponse())
+               || !setSettingsFromHTTPresponse(hGSMGetLastResponse())
+               || !setTelNoFromHTTPresponse(hGSMGetLastResponse())){
+            setState(TRSMT_DATA_ERROR);
+          }
           clrState(RESET_INITS);
         }
       }
@@ -290,18 +295,11 @@ void setup()
     cleanUpDataSets(GSMfailure);
     _D(
       DebugPrintln("GPRS send done: " + String(millis()), DEBUG_LEVEL_2);
-      if (GSMfailure){
-	      if(!getState(POWER_SAVE_2)){
-	        DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1);
-	      } else {
-          DebugPrintln("GSM result: " + String(HTTPrc), DEBUG_LEVEL_1);
-	      }
-      }
+      if (GSMfailure){ DebugPrintln("GSM result: " + String(HTTPrc), DEBUG_LEVEL_1); }
     )
-    if (GSMfailure && GPSalert()){
-      if (getState(GPS_ALERT_1)) { clrState(GPS_ALERT_1); setState(PRE_GPS_ALERT); }
-      if (getState(GPS_ALERT_2)) { clrState(GPS_ALERT_2); setState(GPS_ALERT_1); }
-    }
+  } else {
+    currentDataSet->errCode |= getErrorCode(); //error codes from doDataTransmission !!!!!!!!!!!!!!!!!!
+    _D( if(getState(POWER_SAVE_2)){ DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1); })
   }
 #endif
 
@@ -311,17 +309,27 @@ void setup()
   LoRa.sleep();
   delay(100);
 #endif
-
+  if (getState(NEW_SETTINGS)){ //NEW_SETTINGS state is set only when cycle data has changed
+    _D( DebugPrintln("calculate new cycle table due to changed cycle data.", DEBUG_LEVEL_1); )
+    calcCycleTable();
+    if(!isInCycle(&(heidiConfig->bootCount))){ setState(NOT_IN_CYCLE); }
+    clrState(NEW_SETTINGS);
+  }
+  if (GPSalert() && getState(NOT_IN_CYCLE)){
+    heidiConfig->bootCount = prevBootCycleNo();
+  }
   heidiConfig->bootCount++;
   if (heidiConfig->bootCount >= _currentCycles()) { heidiConfig->bootCount = 0; }
 
-  _DD(DebugPrintln("Last diff: " + String(heidiConfig->lastTimeDiffMs) + " / current diff : " + String(currentTimeDiffMs), DEBUG_LEVEL_3);)
-  _D(DebugPrintln("SLEEP: heidi state: " + String(heidiConfig->status) ,DEBUG_LEVEL_1);)
   if (getState(NOT_IN_CYCLE)){
-    clrState(NOT_IN_CYCLE);
     heidiConfig->lastTimeDiffMs = 0;       //not useful out of regular cycles
     currentTimeDiffMs = 0;
+    clrState(NOT_IN_CYCLE);
   }
+
+  _DD(DebugPrintln("Last diff: " + String(heidiConfig->lastTimeDiffMs) + " / current diff : " + String(currentTimeDiffMs), DEBUG_LEVEL_3);)
+  _D(DebugPrintln("SLEEP: heidi state: " + String(heidiConfig->status) ,DEBUG_LEVEL_1);)
+
   int diffTimeFinalMs = heidiConfig->lastTimeDiffMs + currentTimeDiffMs;
   heidiConfig->lastTimeDiffMs = diffTimeFinalMs;
   goto_sleep(timeToNextBootMS() + diffTimeFinalMs - millis());

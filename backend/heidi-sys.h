@@ -20,8 +20,9 @@ String _herdeID();
 uint8_t animalID();
 
 bool isInCycle(int8_t* bootCount);
-int  getNextBootMS();
-int  timeToNextBootMS();
+int  getNextBootMS(void);
+int  timeToNextBootMS(void);
+int  prevBootCycleNo(void);
 bool doDataTransmission();
 bool GPSalert();
 void calcCycleTable();

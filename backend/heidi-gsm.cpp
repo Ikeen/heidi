@@ -111,7 +111,6 @@ bool hGSMsetup()
     }
     _D(DebugPrintln("Modem network OK", DEBUG_LEVEL_2);)
 
-    #ifdef SEND_ALERT_SMS
     //alerts
     if (getState(GPS_ALERT_1 | GPS_ALERT_2) && !getState(GPS_ALERT_PSD)) {
       bool fail = true;
@@ -119,21 +118,21 @@ bool hGSMsetup()
       for(int i=0; i<TEL_NO_CNT; i++){
         String TelNo = getTelNo(i);
         if (TelNo != ""){
-          if (modemGSM.sendSMS(TelNo, "Heidi-Tracker: Positionsalarm Herde " + _herdeID())){
+          #ifdef SEND_ALERT_SMS
+          if (modemGSM.sendSMS(TelNo, "Heidi-Tracker: Positionsalarm Herde " + _herdeID()))
+          #endif
+          {
             fail = false;
             _D(DebugPrintln("GPS_ALERT sent to " + TelNo, DEBUG_LEVEL_2));
           }
         } else { emptyTelNo++; }
       }
       if (emptyTelNo == TEL_NO_CNT) { fail = false; }
-      if(fail){
-        _D(DebugPrintln("Failed to send SMS", DEBUG_LEVEL_1);)
-        clrState(GPS_ALERT_1 | GPS_ALERT_2);
-        setState(PRE_GPS_ALERT);
+      if(fail){ continue; } else {
+        if (getState(GPS_ALERT_2)){ clrState(GPS_ALERT_2 | GPS_ALERT_1 | PRE_GPS_ALERT); setState(GPS_ALERT_PSD); _D(DebugPrintln("GPS ALERT: silent", DEBUG_LEVEL_2);)}
+        if (getState(GPS_ALERT_1)){ clrState(GPS_ALERT_1 | PRE_GPS_ALERT); setState(GPS_ALERT_2); _D(DebugPrintln("GPS ALERT: 2", DEBUG_LEVEL_2);)}
       }
-      if (fail) { continue; }
     }
-    #endif
     // connect GPRS
     //  modemGSM.gprsConnect(APN,USER,PASSWORD))
 
