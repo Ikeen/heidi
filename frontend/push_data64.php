@@ -5,7 +5,7 @@
     //Connect to database
     $servername = "localhost";
     $username   = "HeidiTracker";
-    $password   = "12wanderfalke34!";
+    $password   = "";
     $dbname     = "Heidi";
     $herdeID    = '';
 
