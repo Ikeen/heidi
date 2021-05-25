@@ -45,7 +45,7 @@ void setup()
   t_SendData* currentDataSet;
   int  startMS = millis();
   int  timeOut = MAX_AWAKE_TIME_TIMER;
-  _D(Serial.begin(115200); checkWakeUpReason(); )
+  _D(Serial.begin(115200); checkWakeUpReason(); DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1);)
   bool powerOnReset = wasPowerOnReset();
   _D(if(powerOnReset){ delay(3000); }) //enable COM terminal
   _D(DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);)

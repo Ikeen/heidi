@@ -52,11 +52,6 @@ div.a {
         echo "Database Connection failed: " . $conn->connect_error;
         die("Database Connection failed: " . $conn->connect_error);
     }
-?>
-
-<div id="cards" class="cards"> 
-
-<?php
 
     $TrackerID = $_GET['ID'];
     if (isset($_GET['StartDate'])) {$StartDate = $_GET['StartDate']; } 
@@ -67,11 +62,27 @@ div.a {
     if (isset($_GET['ShowData'])) { $Action = $_GET['ShowData']; } 
     else { $Action = "TAB"; } 
 
-    $LocalDate = date_create_from_format('Y-m-d H:i:s', $StartDate);
-    $StartDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalDate));
-    $LocalDate = date_create_from_format('Y-m-d H:i:s', $EndDate);
-    $EndDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalDate));
+    $LocalStartDate = date_create_from_format('Y-m-d H:i:s', $StartDate);
+    $StartDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalStartDate));
+    $LocalEndDate = date_create_from_format('Y-m-d H:i:s', $EndDate);
+    $EndDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalEndDate));
     
+?>
+
+<div id="cards" class="cards"> 
+<?php 
+  echo "Tracker: "; 
+  echo "<input id=\"NewTrackerID\" type=\"text\" size=\"10\" onclick=\"\" value=\"" . $TrackerID . "\">";
+  echo " von "; 
+  echo "<input id=\"NewStartDate\" type=\"date\" onclick=\"\" value=\"" . date_format($LocalStartDate, "Y-m-d") . "\">";
+  echo " bis "; 
+  echo "<input id=\"NewEndDate\" type=\"date\" onclick=\"\" value=\"" . date_format($LocalEndDate, "Y-m-d") . "\"> ";
+  echo "<input id=\"ReLoad\" type=\"button\" onclick=\"ReloadPage()\" value=\"reload\"> ";
+  echo "<button onclick=\"exportToExcel()\">Export To Excel</button>";
+  echo "<br><br>"; 
+?>
+
+<?php
     
     //          row    0         1          2         3         4          5            6           7            8          9          10         11 
     //                                                                                             Sats       GPShdop     acc1        acc2        Mout 
@@ -88,9 +99,8 @@ div.a {
         echo "&emsp;&lt;name&gt;Heidi track&lt;/name&gt;<br>";
         echo "&emsp;&lt;trk&gt;&lt;name&gt;{$TrackerID}&lt;/name&gt;&lt;trkseg&gt;<br>";
       } else {
-        echo "<b> Tracker: ". $TrackerID . "</b>  von " . $StartDate . " bis " . $EndDate . "<br><br>";
         echo "<table id='c4ytable'>";
-        echo "<tr><th>Zeit</th><th>L&auml;nge</th><th>Breite</th><th>Entfernung</th><th>BWidx1</th><th>BWidx2</th><th>Batterie</th><th>Temp.</th><th>Sats</th><th>GPShdop</th><th>ErrorCode</th></tr>";
+        echo "<tr><th>Zeit</th><th>Laenge</th><th>Breite</th><th>Entfernung</th><th>BWidx1</th><th>BWidx2</th><th>Batterie</th><th>Temp.</th><th>Sats</th><th>GPShdop</th><th>ErrorCode</th></tr>";
       }
       // Fetch one and one row
       $tz = new DateTimeZone( "UTC" );
@@ -125,6 +135,40 @@ div.a {
 
     mysqli_close($conn);
 ?>
+<script>
 
+  function ReloadPage(){
+    //console.log("redirect : show_data2.phtml?ID=" + document.getElementById("NewTrackerID").value + "&StartDate=" + document.getElementById("NewStartDate").value + " 00:00:00&EndDate=" + document.getElementById("NewEndDate").value + " 23:59:59");
+    window.location.replace("show_data2.phtml?ID=" + document.getElementById("NewTrackerID").value + "&StartDate=" + document.getElementById("NewStartDate").value + " 00:00:00&EndDate=" + document.getElementById("NewEndDate").value + " 23:59:59");
+  }
+  
+  function exportToExcel(){  
+    var downloadurl;  
+    var dataFileType = 'application/vnd.ms-excel';  
+    var tableSelect = document.getElementById('c4ytable');  
+    var tableHTMLData = tableSelect.outerHTML.replace(/ /g, '%20');  
+    // Specify file name  
+    filename = 'HeidiData.xls';  
+    // Create download link element  
+    downloadurl = document.createElement("a");  
+    document.body.appendChild(downloadurl);  
+    if(navigator.msSaveOrOpenBlob){  
+      var blob = new Blob(['\ufeff', tableHTMLData], {  
+        type: dataFileType  
+      });  
+      navigator.msSaveOrOpenBlob( blob, filename);  
+    }else{  
+      // Create a link to the file  
+      downloadurl.href = 'data:' + dataFileType + ', ' + tableHTMLData;  
+      // Setting the file name  
+      downloadurl.download = filename;  
+      //triggering the function  
+      downloadurl.click();  
+   }
+  }
+   
+
+
+</script>
 </body>
 </html>
