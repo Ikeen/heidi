@@ -6,6 +6,7 @@ GPS tracking system for alpine pasture
 * [Project](#project)
 * [Milestones](#milestones)
 * [Solutions](#solutions)
+* [News](#news)
 
 ## Licence info
 
@@ -43,4 +44,8 @@ some solutions to various problems
 
 * sending data via GSM cause Arduino to crash: Try another orientation of GSM-antenna. Sometimes a piece of copper acts like a receiving antenna, what may have an impact on the Arduino board.
 * sending / getting data via GSM is unreliable: Check power connection to battery, MOSFET, DC-DC-Converter - they should be strong. In my case I soldered wires directly to IC-pins.
-* serial communication between components produces strange characters: internally pullup RX-wire with "pinMode(_RXD, INPUT_PULLUP);". The HardwareSerial library seems to not do that. Most time it works without dedicated pullup - sometimes it doesn't.
+* serial communication between components produces strange characters: internally pullup RX-wire with "pinMode(_RXD, INPUT_PULLUP);". The HardwareSerial library seems not to do that. Most time it works without dedicated pullup - sometimes it doesn't.
+
+##News
+
+* the fixing via belt clip turned out to be not reliable. We went back to the first intended fixing by screwing the hard plastic parts directly to a belt. Descrition and pictures coming soon.
