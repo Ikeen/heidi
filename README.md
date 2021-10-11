@@ -1,5 +1,5 @@
 # heidi
-GPS tracking system for alpine pasture
+GPS tracking system for alpine pasture - or simply sheeps :-)
 
 ## Table of contents
 * [Licence info](#licence-info)
