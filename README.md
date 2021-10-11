@@ -48,4 +48,4 @@ some solutions to various problems
 
 ## News
 
-* the fixing via belt clip turned out to be not reliable. We went back to the first intended fixing by screwing the hard plastic parts directly to a belt. Descrition and pictures coming soon.
+* the fixing via belt clip turned out to be not reliable. We went back to the first intended fixing by screwing the hard plastic parts directly to a belt. Description and pictures coming soon on this channel.
