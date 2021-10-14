@@ -1,4 +1,0 @@
-http://robojax.com/learn/arduino/?vid=robojax_GPS_TinyGPSPlus
-https://www.arduinolibraries.info/architectures/esp32
-https://hackaday.io/project/27791-esp32-lora-oled-module
-
