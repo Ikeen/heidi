@@ -17,14 +17,15 @@ typedef enum {
   DEBUG_LEVEL_3
 };
 
-#define DEBUG_LEVEL 0 //0 (no prints) .. 3 (all prints)
+#define DEBUG_LEVEL 1 //0 (no prints) .. 3 (all prints)
 #if (DEBUG_LEVEL > 0 )
-#define MEAS_ACQUIRNG_TIME
-#define TRACK_HEIDI_STATE
-#endif
+//#define DEBUG_SERIAL_GPS
+//#define MEAS_ACQUIRNG_TIME
+//#define TRACK_HEIDI_STATE
 //#define TEST_ON_BOOT
 //#define TEST_RTC
 //#define TEST_ACC
+#endif
 
 
 #if (DEBUG_LEVEL > 0 )

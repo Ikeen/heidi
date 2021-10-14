@@ -282,42 +282,34 @@ void testGeoFencing()
   _D(
   t_PointData poi;
   clearFence();
+
+
   /*
-  [12:43:10:012] HTTP response: OK;Bc6XywAsVgoDH5jLAFBVCgOsmcsAhlUKAwWZywDvVQoDVJjLAB5WCgM;647a␍␊
-  [12:43:10:020] set lat: 51.009068, lng: 13.342670␍␊
-  [12:43:10:028] set lat: 51.008848, lng: 13.342751␍␊
-  [12:43:10:028] set lat: 51.008902, lng: 13.343148␍␊
-  [12:43:10:028] set lat: 51.009007, lng: 13.342981␍␊
-  [12:43:10:038] set lat: 51.009054, lng: 13.342804␍␊
+[16:01:42:779] new fence by more than: -1 poles␍␊
+[16:01:42:779] set lat: 51.009199, lng: 13.342415␍␊
+[16:01:42:789] set lat: 51.008855, lng: 13.342501␍␊
+[16:01:42:794] set lat: 51.008831, lng: 13.342844␍␊
+[16:01:42:799] set lat: 51.008909, lng: 13.343155␍␊
+[16:01:42:804] Fence: 4 poles set␍␊
   */
 
-  addFencePoint(51.009068, 13.342670);
-  addFencePoint(51.008848, 13.342751);
-  addFencePoint(51.008902, 13.343148);
-  addFencePoint(51.009007, 13.342981);
-  int cnt = addFencePoint(51.009054, 13.342804);
-  /*
-  addFencePoint(1.0, 1.0);
-  addFencePoint(3.0, 1.0);
-  addFencePoint(3.0, 3.0);
-  int cnt = addFencePoint(1.0, 3.0);
-  */
+  addFencePoint(51.009199, 13.342415);
+  addFencePoint(51.008855, 13.342501);
+  addFencePoint(51.008831, 13.342844);
+  addFencePoint(51.008909, 13.343155);
 
-  _D(DebugPrintln(String(cnt) + " poles added.", DEBUG_LEVEL_1));
-  poi.latitude = 51.008908;
-  poi.longitude = 13.342482;
-  /*
-  poi.latitude = 2.0;
-  poi.longitude = 2.0;
-  */
+  //13.342487 51.009025
+
+  poi.latitude = 51.009025;
+  poi.longitude = 13.342487;
 
   if (pointIn(&poi)){
-    _D(DebugPrintln("Point IN.", DEBUG_LEVEL_1));
+    DebugPrintln("Point IN.", DEBUG_LEVEL_1);
   } else {
-    _D(DebugPrintln("Point OUT.", DEBUG_LEVEL_1));
+    DebugPrintln("Point OUT.", DEBUG_LEVEL_1);
   }
   int32_t meter = meterDistFromFence(&poi);
-  _D(DebugPrintln(String(meter) + "m distance to fence", DEBUG_LEVEL_1));
+  DebugPrintln(String(meter) + "m distance to fence", DEBUG_LEVEL_1);
   )
 }
 

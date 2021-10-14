@@ -34,10 +34,10 @@
 #define PCA_9536_VOLT_BIT        0x02
 
 #ifndef I2C_SWITCH
-#ifdef HEIDI_CONFIG_2
-#define GSM_ENABLE_PIN        GPIO_NUM_23
-#else
+#ifdef HEIDI_CONFIG_1
 #define GSM_ENABLE_PIN        GPIO_NUM_13
+#else
+#define GSM_ENABLE_PIN        GPIO_NUM_23
 #endif
 #define MEASURES_ENABLE_PIN   GPIO_NUM_25
 #endif
@@ -64,9 +64,18 @@
 #endif
 
 #ifdef HEIDI_CONFIG_2
-#define ANALOG_MEASURE_OFFSET  -75
-#define ANALOG_MEASURE_DIVIDER 567
+#define ANALOG_MEASURE_OFFSET  302
+#define ANALOG_MEASURE_DIVIDER 650
 #endif
+
+#ifdef HEIDI_CONFIG_TEST
+#define ANALOG_MEASURE_OFFSET  303
+#define ANALOG_MEASURE_DIVIDER 659
+
+//#define ANALOG_MEASURE_OFFSET  315
+//#define ANALOG_MEASURE_DIVIDER 633
+#endif
+
 /*
  * Temperature measuring
  */
@@ -79,19 +88,22 @@
 float MeasureTemperature();
 #endif
 
-bool enableControls(void);
+bool enableControls(bool enable_iic);
 void disableControls(bool);
 bool openMeasures(void);
 void closeMeasures(void);
 void stopULP(void);
 void enableULP(void);
+void EnableHoldPin(gpio_num_t which);
+void DisableHoldPin(gpio_num_t which);
+
 void VoltOn(void);
 void VoltOff(void);
 void GSMOn(void);
 void GSMOff(void);
 void LED_off(void);
 
-double MeasureVoltage(uint8_t pin);
+int MeasureVoltage(uint8_t pin);
 
 #ifdef I2C_SWITCH
 bool init_PCA9536(void);

@@ -42,7 +42,6 @@ bool openGSM(){
   if (!GSMenabled){
     GSMenabled = true;
     GSMOn();
-    //SerialGSM.begin(19200, SERIAL_8N1, GSM_RXD, GSM_TXD, false);
     SerialGSM.begin(GSM_BAUD, SERIAL_8N1, GSM_RXD, GSM_TXD, false);
     pinMode(GSM_RXD, INPUT_PULLUP);
     SerialGSM.flush();
@@ -88,8 +87,7 @@ bool hGSMsetup()
     response = hGSMsendCommand("AT+CPIN?");
     _DD(DebugPrintln(response, DEBUG_LEVEL_3));
     if(response.indexOf("+CPIN: SIM PIN") != -1) {
-      if (!modemGSM.simUnlock("0354"))
-      //if (!modemGSM.simUnlock("0041"))
+      if (!modemGSM.simUnlock(SIM_PIN))
       {
         _D(DebugPrintln("Failed to SIM unlock", DEBUG_LEVEL_1);)
         continue;
@@ -128,9 +126,20 @@ bool hGSMsetup()
         } else { emptyTelNo++; }
       }
       if (emptyTelNo == TEL_NO_CNT) { fail = false; }
-      if(fail){ continue; } else {
+      if(fail){
+        heidiConfig->alertFailCount++;
+        if (heidiConfig->alertFailCount >= MAX_FAILED_ALERTS) {
+          clrState(GPS_ALERT_2 | GPS_ALERT_1 | PRE_GPS_ALERT);
+          setState(GPS_ALERT_PSD);
+          heidiConfig->alertFailCount = 0;
+          _D(DebugPrintln("abort GPS ALERT", DEBUG_LEVEL_2);)
+        }
+        continue;
+      }
+      else {
         if (getState(GPS_ALERT_2)){ clrState(GPS_ALERT_2 | GPS_ALERT_1 | PRE_GPS_ALERT); setState(GPS_ALERT_PSD); _D(DebugPrintln("GPS ALERT: silent", DEBUG_LEVEL_2);)}
         if (getState(GPS_ALERT_1)){ clrState(GPS_ALERT_1 | PRE_GPS_ALERT); setState(GPS_ALERT_2); _D(DebugPrintln("GPS ALERT: 2", DEBUG_LEVEL_2);)}
+        heidiConfig->alertFailCount = 0;
       }
     }
     // connect GPRS
@@ -598,7 +607,7 @@ void hGSMCheckSignalStrength(){
 	  int HTTPtimeOut = ShortLine.length() * 5 + 10000;
     _DD(DebugPrintln("HTTP Line Length: " + String(ShortLine.length()), DEBUG_LEVEL_3));
     _DD(DebugPrintln("HTTP TimeOut    : " + String(HTTPtimeOut), DEBUG_LEVEL_3));
-    int HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
+    int HTTPrc = hGSMdoPost(HEIDI_SERVER_PUSH_URL,
 	                          "application/x-www-form-urlencoded",
 	                           b64Line, //b64Line,
 	  	                       HTTPtimeOut,

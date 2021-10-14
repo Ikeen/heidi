@@ -42,10 +42,13 @@ typedef __attribute__((__packed__)) struct _t_ConfigData{
  uint16_t distAlertThres;
  uint16_t status;
   int32_t lastTimeDiffMs;
+  uint8_t alertFailCount;
+  uint8_t dummy8;
+ uint16_t dummy16;
   uint8_t telNo[TEL_NO_CNT][TEL_NO_LEN]; // BCD coded (A='+'; B=empty; C-F=not allowed)
 }t_ConfigData;
 
-#define HEIDI_CONFIG_LENGTH (24+(TEL_NO_LEN*TEL_NO_CNT)) //must be a multiple of 4
+#define HEIDI_CONFIG_LENGTH (22+(TEL_NO_LEN*TEL_NO_CNT)) //must be a multiple of 4
 #define HEIDI_CONFIG_LENGTH_RTC (HEIDI_CONFIG_LENGTH >> 2)
 
 typedef __attribute__((__packed__)) struct _t_SendData{
@@ -67,8 +70,8 @@ typedef __attribute__((__packed__)) struct _t_SendData{
 
 #define DATA_SET_LEN     28 //must be a multiple of 4
 
-//#define DATA_SET_BACKUPS 24
-#define MAX_DATA_SETS 64
+#define MAX_DATA_SETS 96
+
 #define DATA_SET_MEM_SPACE (DATA_SET_LEN * MAX_DATA_SETS)
 #define DATA_SET_MEM_SPACE_RTC (DATA_SET_MEM_SPACE >> 2)
 
@@ -84,6 +87,7 @@ typedef __attribute__((__packed__)) struct _t_FenceData{
 
 
 #define RTC_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + DATA_SET_MEM_SPACE + FENCE_MEM_SPACE)
+
 #if (RTC_DATA_SPACE > 3840)
   #error 'Too much RTC space for data sets\n'
 #endif

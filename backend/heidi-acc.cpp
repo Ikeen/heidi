@@ -39,6 +39,7 @@
 #ifdef ACCELEROMETER
 
 bool _ADXL345_status = false;
+bool _ADXL345_sleep  = false;
 
 bool init_ADXL345(){
   byte _ID;
@@ -61,15 +62,16 @@ bool init_ADXL345(){
 }
 
 bool wake_config_ADXL345(void){
-  _D(DebugPrint("Wake ADXL345.. ", DEBUG_LEVEL_2));
+  _D(DebugPrint("Wake ADXL345.. ", DEBUG_LEVEL_2);)
   // wake up sensor
+  if(_ADXL345_sleep) { Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ); }
   if(iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x08) != I2C_ERROR_OK) { setError(E_IIC_ERROR); return false; }
   _ADXL345_status = true;
   // Set the range to whatever is appropriate for your project
-  if (!_ADXL345_setRange(ADXL345_RANGE_16_G)) { setError(E_IIC_ERROR); }
-  if (!_ADXL345_setDataRate(ADXL345_DATARATE_12_5_HZ)) { setError(E_IIC_ERROR); }
-  if (!_ADXL345_setFullResBit(false)) { setError(E_IIC_ERROR); }
-  _D(DebugPrintln("successful", DEBUG_LEVEL_2));
+  if (!_ADXL345_setRange(ADXL345_RANGE_16_G)) { setError(E_IIC_ERROR); _D(DebugPrint (" (_ADXL345_setRange failed) ", DEBUG_LEVEL_1);)}
+  if (!_ADXL345_setDataRate(ADXL345_DATARATE_12_5_HZ)) { setError(E_IIC_ERROR); _D(DebugPrint (" (_ADXL345_setDataRate failed) ", DEBUG_LEVEL_1);)}
+  if (!_ADXL345_setFullResBit(false)) { setError(E_IIC_ERROR); _D(DebugPrint (" (_ADXL345_setDataRate failed) ", DEBUG_LEVEL_1);) }
+  _D(DebugPrintln("successful", DEBUG_LEVEL_2);)
   return true;
 }
 
@@ -77,6 +79,11 @@ bool sleep_ADXL345(){
   // wake up sensor
   if(iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x00) != I2C_ERROR_OK) { setError(E_IIC_ERROR); return false; }
   _ADXL345_status = false;
+  #ifndef I2C_SWITCH
+  _ADXL345_sleep = true;
+  pinMode(I2C_SDA, INPUT_PULLDOWN);
+  pinMode(I2C_SCL, INPUT_PULLDOWN);
+  #endif
   return true;
 }
 /*************************** BANDWIDTH ******************************/

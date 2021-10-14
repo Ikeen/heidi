@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html>
 <head>
+<title>Heidi Data</title>
+
 <!-- 
 <meta http-equiv="refresh" content="5"> 
 -->
@@ -43,7 +45,7 @@ div.a {
 
     $servername = "localhost";
     $username   = "HeidiTracker";
-    $password   = "";
+    $password   = "jETh4dBShgwFawQ";
     $dbname     = "Heidi";
     // Create connection
     $conn = new mysqli($servername, $username, $password, $dbname);
@@ -86,10 +88,15 @@ div.a {
     
     //          row    0         1          2         3         4          5            6           7            8          9          10         11 
     //                                                                                             Sats       GPShdop     acc1        acc2        Mout 
-    $sql  = "SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5 FROM TrackerData ";
-    $sql .= "WHERE TrackerID = '{$TrackerID}' AND TimeStamp >= '{$StartDateUTC }' AND TimeStamp <= '{$EndDateUTC}' ";
-    $sql .= "ORDER BY TimeStamp DESC";
-
+    if (isset($_GET['StartDate']) && isset($_GET['EndDate'])){
+      $sql  = "SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5 FROM TrackerData ";
+      $sql .= "WHERE TrackerID = '{$TrackerID}' AND TimeStamp >= '{$StartDateUTC }' AND TimeStamp <= '{$EndDateUTC}' ";
+      $sql .= "ORDER BY TimeStamp DESC";
+    } else {
+      $sql  = "SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5 FROM TrackerData ";
+      $sql .= "WHERE TrackerID = '{$TrackerID}' ORDER BY idx DESC LIMIT 0,100";
+    }
+    
     if ($result=mysqli_query($conn,$sql))
       {
       if ($Action == "GPX") {
@@ -100,7 +107,7 @@ div.a {
         echo "&emsp;&lt;trk&gt;&lt;name&gt;{$TrackerID}&lt;/name&gt;&lt;trkseg&gt;<br>";
       } else {
         echo "<table id='c4ytable'>";
-        echo "<tr><th>Zeit</th><th>Laenge</th><th>Breite</th><th>Entfernung</th><th>BWidx1</th><th>BWidx2</th><th>Batterie</th><th>Temp.</th><th>Sats</th><th>GPShdop</th><th>ErrorCode</th></tr>";
+        echo "<tr><th>Datum</th><th>Zeit</th><th>L&auml;nge</th><th>Breite</th><th>Entfernung</th><th>BWcnt1</th><th>BWcnt2</th><th>Batterie</th><th>Temp.</th><th>Sats</th><th>GPShdop</th><th>ErrorCode</th></tr>";
       }
       // Fetch one and one row
       $tz = new DateTimeZone( "UTC" );
@@ -114,8 +121,9 @@ div.a {
         } else {
           
           $MeasDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
-          $MeasDate = date('Y-m-d H:i:s', date_timestamp_get($MeasDateUTC));
-          echo "<tr><td>".$MeasDate."</td><td>".$row[0]."</td><td>".$row[1]."</td><td>".$row[11]."</td><td>".$row[9]."</td><td>".$row[10];
+          $MeasDate = date('Y-m-d', date_timestamp_get($MeasDateUTC));
+          $MeasTime = date('H:i:s', date_timestamp_get($MeasDateUTC));
+          echo "<tr><td>".$MeasDate."</td><td>".$MeasTime."</td><td>".$row[0]."</td><td>".$row[1]."</td><td>".$row[11]."</td><td>".$row[9]."</td><td>".$row[10];
           echo "</td><td>".$row[4]."</td><td>".$row[5]."</td><td>".$row[7]."</td><td>".$row[8]."</td><td>".$row[6]."</td></tr>";
         }
       }

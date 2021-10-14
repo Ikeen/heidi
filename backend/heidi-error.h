@@ -22,7 +22,7 @@
 #define E_GPS_ALERT_SMS            0x0100
 #define E_IIC_ERROR                0x0200
 #define E_POWER_SAVE_1             0x0400
-#define E_POWER_SAVE_2             0x0800
+#define E_GPS_LATE_LOCK            0x0800
 
 #define E_TRANSMIT_REGULAR         0x1000
 #define E_TRANSMIT_ALERT           0x2000

@@ -28,9 +28,18 @@ Hot start  : B5 62 06 04 04 00 00 00 02 00 10 68
 // The TinyGPS++ object
 HardwareSerial SerialGPS(GPS_UART_NO);
 TinyGPSPlus gps;
-uint8_t gpsColdStart[] = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0xFF, 0xB9, 0x02, 0x00, 0xC8, 0x8F};
-uint8_t gpsWarmStart[] = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x11, 0x6C};
-uint8_t gpsHotStart[] = { 0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x10, 0x68};
+//on
+uint8_t gpsColdStart[]  = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0xFF, 0xB9, 0x02, 0x00, 0xC8, 0x8F};
+uint8_t gpsWarmStart[]  = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x11, 0x6C};
+uint8_t gpsHotStart[]   = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x10, 0x68};
+
+//Backup
+uint8_t gpsToBakup[]   = {0xB5, 0x62, 0x02, 0x41, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x4D, 0x3B}; //off
+uint8_t gpsFromBakup[] = {0xB5, 0x62, 0x02, 0x41, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x4C, 0x37}; //on
+
+//Sleep
+uint8_t gpsToSleep[]   = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00,0x08, 0x00, 0x16, 0x74}; //off
+uint8_t gpsFromSleep[] = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00,0x09, 0x00, 0x17, 0x76}; //on
 
 int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
   int      measures = 0;
@@ -46,10 +55,27 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
 
   _D(DebugPrintln("GPS: Acquire position", DEBUG_LEVEL_1));
   while((measures < averages) && (millis() < timeOut)){
-    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(10); }
+    #ifdef DEBUG_SERIAL_GPS
+    int i = 0;
+    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(1000); _DD(Serial.print('.'));
+      i++; if (i >= 60) { i = 0;  _DD(DebugPrintln("", DEBUG_LEVEL_3)); }
+    }
+    _DD(DebugPrintln("", DEBUG_LEVEL_3));
+    #else
+    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(10);}
+    #endif
     while ((SerialGPS.available() > 0) && (measures < averages) && (millis() < timeOut)) {
+      #ifdef DEBUG_SERIAL_GPS
+      char r = SerialGPS.read();
+      _DD(Serial.print(r));
+      gps.encode(r);
+      #else
       gps.encode(SerialGPS.read());
+      #endif
       if (gps.location.isUpdated() && gps.location.isValid() && gps.altitude.isUpdated()){
+        #ifdef DEBUG_SERIAL_GPS
+        _DD(DebugPrintln("", DEBUG_LEVEL_3));
+        #endif
         measures++;
         if (gps_sat < gps.satellites.value()) { gps_sat = gps.satellites.value(); }
         _D(_PrintDataGPS());
@@ -105,6 +131,7 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
   }
   DataSet->satellites = gps_sat;
   _D(DebugPrintln("GPS done: " + String((int)(millis() / 1000)), DEBUG_LEVEL_2));
+  if (millis() >= ONE_MINUTE) { setError(E_GPS_LATE_LOCK); }
   return measures;
 }
 
@@ -117,16 +144,27 @@ bool setSysTimeToGPSTime(int timeOut)
   setError(E_COULD_NOT_FETCH_GPS_TIME);
   //_DD(DebugPrint("GPS raw data: ", DEBUG_LEVEL_3));
   while(((year <= 2000) || (mon == 0) || (day == 0)) && (millis() < timeOut)){
-    while ((SerialGPS.available() == 0) && (millis() < timeOut)) {
-      delay(10);
+    #ifdef DEBUG_SERIAL_GPS
+    int i = 0;
+    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(1000); _DD(Serial.print('.'));
+      i++; if (i >= 60) { i = 0;  _DD(DebugPrintln("", DEBUG_LEVEL_3)); }
     }
+    _DD(DebugPrintln("", DEBUG_LEVEL_3));
+    #else
+    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(10);}
+    #endif
     while ((SerialGPS.available() > 0)  && (millis()  < timeOut)){
-     int y = SerialGPS.read();
-     //_DD(DebugPrint(String((char)y), DEBUG_LEVEL_3));
-     gps.encode(y);
-     //gps.encode(SerialGPS.read());
-     if (gps.date.isUpdated() && gps.date.isValid() && gps.time.isUpdated() && gps.time.isValid()){
-        //_DD(DebugPrintln("", DEBUG_LEVEL_3));
+      #ifdef DEBUG_SERIAL_GPS
+      char r = SerialGPS.read();
+      _DD(Serial.print(r));
+      gps.encode(r);
+      #else
+      gps.encode(SerialGPS.read());
+      #endif
+      if (gps.date.isUpdated() && gps.date.isValid() && gps.time.isUpdated() && gps.time.isValid()){
+        #ifdef DEBUG_SERIAL_GPS
+        _DD(DebugPrintln("", DEBUG_LEVEL_3));
+        #endif
         year = gps.date.year();
         mon  = gps.date.month();
         day  = gps.date.day();
@@ -170,7 +208,8 @@ bool openGPS(){
   if (!GPSenabled){
     GPSenabled = true;
     SerialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RXD, GPS_TXD, false);
-    pinMode(GPS_RXD, INPUT_PULLUP);
+    pinMode(GPS_RXD, INPUT_PULLDOWN);
+    pinMode(GPS_TXD, OUTPUT);
     SerialGPS.flush();
     _D(DebugPrintln("GPS open", DEBUG_LEVEL_2));
   } _D(else { DebugPrintln("GPS already open", DEBUG_LEVEL_2); delay(50); })

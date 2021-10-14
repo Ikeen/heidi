@@ -26,22 +26,24 @@ OneWire oneWire(TEMP_SENSOR_PIN);
 DallasTemperature tempSensor(&oneWire);
 #endif
 
-bool enableControls(){
+bool enableControls(bool enable_iic){
   bool success = true;
   if(!CTLenabled){
-    #ifdef I2C_BUS
-    #ifdef USE_ULP
-    rtc_gpio_hold_dis(I2C_SDA);
-    rtc_gpio_hold_dis(I2C_SCL);
-    #endif
-    Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
-    #endif
-    #ifdef ACCELEROMETER
-    if (!init_ADXL345()){
-      success = false;
-      setError(E_IIC_ERROR);
+    if(enable_iic){
+      #ifdef I2C_BUS
+      #ifdef USE_ULP
+      rtc_gpio_hold_dis(I2C_SDA);
+      rtc_gpio_hold_dis(I2C_SCL);
+      #endif
+      Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
+      #endif
+      #ifdef ACCELEROMETER
+      if (!init_ADXL345()){
+        success = false;
+        setError(E_IIC_ERROR);
+      }
+      #endif
     }
-    #endif
     #ifdef I2C_SWITCH
     if (!init_PCA9536()){
       success = false;
@@ -125,6 +127,14 @@ void enableULP(void){
   rtc_gpio_set_direction(I2C_SCL, RTC_GPIO_MODE_INPUT_OUTPUT);
   SET_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN);
 }
+void EnableHoldPin(gpio_num_t which){
+  gpio_hold_en(which);
+  //gpio_deep_sleep_hold_en();
+}
+void DisableHoldPin(gpio_num_t which){
+  gpio_hold_dis(which);
+  //gpio_deep_sleep_hold_dis();
+}
 
 #ifdef TEMP_SENSOR
 float MeasureTemperature(){
@@ -142,7 +152,7 @@ float MeasureTemperature(){
 }
 #endif
 
-double MeasureVoltage(uint8_t pin){
+int MeasureVoltage(uint8_t pin){
   int analog_value = 0;
   #ifdef USE_VOLTAGE_MEAS_PIN
   VoltOn();
@@ -152,7 +162,7 @@ double MeasureVoltage(uint8_t pin){
   VoltOff();
   #endif
   analog_value /= 1000;
-  return((double)(analog_value + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER);
+  return(analog_value);
 }
 
 bool openMeasures(){
@@ -169,9 +179,9 @@ bool openMeasures(){
      * ...probably... there is a nervous short circuit detection in loader modules and we have cabs ...
      */
     #ifdef I2C_SWITCH
-    if (iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_ON) != I2C_ERROR_OK){
-      delay(10);
-      if (iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_ON) != I2C_ERROR_OK) { setError(E_IIC_ERROR); }
+    int i = 0;
+    while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_ON) != I2C_ERROR_OK) && (i < 100)){
+      delay(10); i++;
     }
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
@@ -194,9 +204,9 @@ void closeMeasures(){
   running_measures--;
   if (running_measures == 0){
     #ifdef I2C_SWITCH
-    if (iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_OFF) != I2C_ERROR_OK){
-      delay(10);
-      if (iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_OFF) != I2C_ERROR_OK) { setError(E_IIC_ERROR); }
+    int i = 0;
+    while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_OFF) != I2C_ERROR_OK) && (i < 100)){
+      delay(10); i++;
     }
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
@@ -229,10 +239,11 @@ void GSMOn(){
    * ...probably... there is a nervous short circuit detection in loader modules and we have huge cabs ...
    */
   #ifdef I2C_SWITCH
-  if (iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_ON) != I2C_ERROR_OK){
-    delay(10);
-    if (iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_ON) != I2C_ERROR_OK) { setError(E_IIC_ERROR); }
+  int i = 0;
+  while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_ON) != I2C_ERROR_OK) && (i < 100)){
+    delay(10); i++;
   }
+
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
   for(int i=0; i<2000; i++){
@@ -251,7 +262,10 @@ void GSMOn(){
 }
 void GSMOff(){
   #ifdef I2C_SWITCH
-  iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_OFF);
+  int i = 0;
+  while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_OFF) != I2C_ERROR_OK) && (i < 100)){
+    delay(10); i++;
+  }
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
   digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);

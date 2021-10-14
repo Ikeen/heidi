@@ -118,7 +118,7 @@ tr:nth-child(even) {
         if (($ErrorCode & 0x2000) != 0)  { if ($e > 0) { echo ', '; } echo 'TRANSMIT_BY_ALERT'; $e++; }
         if (($ErrorCode & 0x4000) != 0)  { if ($e > 0) { echo ', '; } echo 'NOT_TRANSMIT_ALERT_NO_GPS'; $e++; }
         if (($ErrorCode & 0x0400) != 0)  { if ($e > 0) { echo ', '; } echo 'POWER_SAVE_1'; $e++; }
-        if (($ErrorCode & 0x0800) != 0)  { if ($e > 0) { echo ', '; } echo 'POWER_SAVE_2'; $e++; }
+        if (($ErrorCode & 0x0800) != 0)  { if ($e > 0) { echo ', '; } echo 'GPS_LATE_LOCK'; $e++; }
         
       }
       $result->close();

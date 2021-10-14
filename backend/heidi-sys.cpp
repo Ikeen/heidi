@@ -115,11 +115,11 @@ void calcCycleTable(void){
   }
   //print
   /*
-  _DD(
+  _D(
     for(int i=0; i<counter; i++){
       cycleHour = bootTimeTable[i][2];
-      DebugPrint("Boot table [" + String(i)+ "]: " + String(bootTimeTable[i][0]) + ", " +  LenTwo(String(cycleHour)) + ", " +  LenTwo(String(bootTimeTable[i][1])) , DEBUG_LEVEL_3);
-      if (__night(cycleHour)) { DebugPrintln(" night", DEBUG_LEVEL_3); } else { DebugPrintln(" day", DEBUG_LEVEL_3); }
+      DebugPrint("Boot table [" + String(i)+ "]: " + String(bootTimeTable[i][0]) + ", " +  LenTwo(String(cycleHour)) + ", " +  LenTwo(String(bootTimeTable[i][1])) , DEBUG_LEVEL_1);
+      if (__night(cycleHour)) { DebugPrintln(" night", DEBUG_LEVEL_1); } else { DebugPrintln(" day", DEBUG_LEVEL_1); }
     }
   )
   */
@@ -378,6 +378,7 @@ uint8_t __currentCycles(bool isNight){
   uint8_t result = heidiConfig->bootCycles;
   if(isNight){ result = heidiConfig->nightBootCycles;}
   if (getState(POWER_SAVE_1)) {result *= 2;}
+  if (result > MAX_BOOT_CYCLES) { result = MAX_BOOT_CYCLES; }
   return result;
 }
 _D(

@@ -5,6 +5,7 @@
  *  Created on: 22.06.2020
  *      Author: frank
  */
+#include "heidi-secrets.h"
 
 #ifndef HEIDI_DEFINES_H_
 #define HEIDI_DEFINES_H_
@@ -20,7 +21,7 @@
 #define TEMP_SENSOR
 #define CHECK_BATTERY
 #define USE_GPS_ALERT
-//#define SEND_ALERT_SMS
+#define SEND_ALERT_SMS
 //#define PRE_MEASURE_HANDLING
 #endif
 #ifdef HEIDI_CONFIG_2
@@ -39,6 +40,23 @@
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
 #endif
+#ifdef HEIDI_CONFIG_TEST
+//#define GSM_MODULE
+#define GPS_MODULE
+#define COMMON_SERIAL
+//#define TEMP_SENSOR
+#define CHECK_BATTERY
+#define USE_VOLTAGE_MEAS_PIN
+#define I2C_BUS
+#define ACCELEROMETER
+//#define I2C_SWITCH
+#define USE_ULP
+//#define USE_GPS_ALERT
+//#define SEND_ALERT_SMS
+//#define USE_ACC_ALERT
+//#define PRE_MEASURE_HANDLING
+#endif
+
 
 /*
  * software configuration
@@ -53,22 +71,29 @@
 #define HEIDI_HERDE         1
 #define HEIDI_ANIMAL        1
 #endif
+#ifdef HEIDI_CONFIG_TEST
+#define HEIDI_GATE_WAY
+#define HEIDI_HERDE         0
+#define HEIDI_ANIMAL        1
+#endif
 
 
-#define DEFAULT_BOOT_CYCLES         4         // ..until transferring data
+#define DEFAULT_BOOT_CYCLES         3//4         // ..until transferring data
 
-#define DEFAULT_CYCLE_DURATION_MSEC 900000    // 15 minutes
-#define DEFAULT_CYCLE_DURATION      15        // 15 minutes
+#define DEFAULT_CYCLE_DURATION_MSEC 600000//900000    // 15 minutes
+#define DEFAULT_CYCLE_DURATION      10//15        // 15 minutes
 #define MIN_CYCLE_DURATION_MSEC     300000    //  5 minutes
 #define MIN_CYCLE_DURATION          5         //  5 minutes
 #define MAX_CYCLE_DURATION_MSEC     3600000   //  1 hour
 #define MAX_CYCLE_DURATION          60        //  1 hour
 #define MAX_CYCLES_PER_DAY          288       //  5 minutes each
-#define PRE_CYCLE_TIME              60000     //  wake GPS 1 minute before measuring
-#define MAX_BOOT_CYCLES             12        // ..until transferring data
-#define MAX_AWAKE_TIME_TIMER        120000    //  2 minutes !!!!
+#define PRE_CYCLE_TIME              30000     //  wake GPS 30 seconds before measuring
+#define MAX_BOOT_CYCLES             (MAX_DATA_SETS >> 1) // ..until transferring data = half count of data sets
+#define MAX_AWAKE_TIME_TIMER        120000    //  2 minutes
 #define MAX_AWAKE_TIME_POWER        180000    //  3 minutes
 #define MAX_MEAS_TIME               5000      //  5 seconds
+#define MAX_FAILED_ALERTS           10        //  abort alerting after 10 fails
+
 
 #define START_FROM_RESET   -2
 #define REFETCH_SYS_TIME   -1
@@ -80,7 +105,9 @@
 #define SLEEP_DUR_NOTIME    300000    /* 5 minutes if systime could not be set*/
 #define SLEEP_DUR_ALERT     300000    /* 5 minutes */
 
-#define MIN_SLEEP_TIME_MS   1000
+#define MIN_SLEEP_TIME_MS   1000      /* 1 second */
+#define MAX_SLEEP_TIME_MS   3600000   /* 1 hour */
+#define ONE_MINUTE          60000
 #define MS_PER_DAY          86400000
 
 #define DEFALUT_ACCELERATION_THRESHOLD  10000 /* never ever do an alert */
@@ -89,7 +116,7 @@
 #define DEFALUT_NIGHT_HOUR_START_UTC    18
 #define DEFALUT_NIGHT_HOUR_END_UTC      5
 
-#define GSM_POWER_SAVE_1_VOLTAGE    3.65  //double transmission time
+#define GSM_POWER_SAVE_1_VOLTAGE    3.6   //double transmission time
 #define GSM_POWER_SAVE_2_VOLTAGE    3.5   //no more transmissions
 #define GSM_POWER_SAVE_3_VOLTAGE    3.4   //do nothing just deep sleep
 #define GSM_POWER_SAVE_4_VOLTAGE    3.3   //do nothing deep sleep for 1 hour
@@ -114,12 +141,26 @@
 
 #ifdef HEIDI_CONFIG_1
 #ifdef HEIDI_CONFIG_2
-#error "HEIDI_CIRCUIT_2 and HEIDI_CIRCUIT_1 enabled"
+#error "HEIDI_2 and HEIDI_1 enabled"
 #endif
 #endif
+#ifdef HEIDI_CONFIG_1
+#ifdef HEIDI_CONFIG_TEST
+#error "HEIDI_TEST and HEIDI_1 enabled"
+#endif
+#endif
+#ifdef HEIDI_CONFIG_2
+#ifdef HEIDI_CONFIG_TEST
+#error "HEIDI_TEST and HEIDI_2 enabled"
+#endif
+#endif
+
+
 #ifndef HEIDI_CONFIG_1
 #ifndef HEIDI_CONFIG_2
+#ifndef HEIDI_CONFIG_TEST
 #error "no hardware configuration set"
+#endif
 #endif
 #endif
 

@@ -36,6 +36,7 @@ void initConfig(bool reset){
     heidiConfig->accThres2       = DEFALUT_ACCELERATION_THRESHOLD;
     heidiConfig->accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT;
     heidiConfig->accNightFactor  = 100;  //equals to 1
+    heidiConfig->alertFailCount  = 0;
     heidiConfig->telNo[0][0]     = 0xBB; //empty
     heidiConfig->telNo[1][0]     = 0xBB; //empty
   }
@@ -85,10 +86,10 @@ void initRTCData(bool reset){
     RTC_SLOW_MEM[ACCEL_Z_VALUES + CUR_DIFF_VAL] = 0;
     set_accel_meas_cnt_ULP(0);
     set_accel_avrerage_ULP(0);
-    set_accel_excnt1_ULP(1);
+    set_accel_excnt1_ULP(0);
     set_accel_exthr1_ULP(ACCEL_LO_THRESHOLD);
     set_accel_wake1_ULP(ACCEL_LO_CNT_WAKE);
-    set_accel_excnt2_ULP(2);
+    set_accel_excnt2_ULP(0);
     set_accel_exthr2_ULP(ACCEL_HI_THRESHOLD);
     set_accel_wake2_ULP(ACCEL_HI_CNT_WAKE);
   }

@@ -42,36 +42,54 @@ static double volt;
 
 void setup()
 {
+
   t_SendData* currentDataSet;
   int  startMS = millis();
   int  timeOut = MAX_AWAKE_TIME_TIMER;
-  _D(Serial.begin(115200); checkWakeUpReason(); DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1);)
   bool powerOnReset = wasPowerOnReset();
+  initError();
+  initGlobalVar(powerOnReset);
+  if (wasbrownOut()) {
+    disableControls(true);
+    setState(RESET_INITS);
+    doSleepRTCon(MAX_CYCLE_DURATION_MSEC);
+  }
+
+  _D(Serial.begin(115200); checkWakeUpReason(); DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1);)
   _D(if(powerOnReset){ delay(3000); }) //enable COM terminal
   _D(DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);)
 
-  #ifdef USE_ULP
-  stopULP(); //anyway
-  #endif
-
-  initError();
-  initGlobalVar(powerOnReset);
-
-  /* enable controls before brown-out check because disabling them also disables GPS- and GSM-power */
-  enableControls(); // !!!!! may fail
-  #ifdef USE_ULP
-  sleep_ADXL345(); //keep silence during measuring, or sleep is was brown-out or we have low battery
-  #endif
   /* this is for testing purposes - comment it out... */
   //_D(if (powerOnReset) { volt = 4.0; getSystemSettings(); }) //!!!!!
 
-  if (wasbrownOut()) {
-    _D(DebugPrintln("BOOT: was brown-out reset",DEBUG_LEVEL_1); delay(100);)
-    /* usually this should not happen - if so, we need to avoid endless booting */
-    disableControls(true);
-    setState(RESET_INITS);
-    doSleepRTCon(900000);
+  #ifdef PRE_MEASURE_HANDLING
+  if(!powerOnReset){
+    initConfig(false);
+    if(getState(PRE_MEAS_STATE)){
+      clrState(PRE_MEAS_STATE);
+      _D(DebugPrintln("Pre-Measure running.", DEBUG_LEVEL_1); delay(50);)
+      #ifdef I2C_SWITCH
+      enableControls(true);
+      #else
+      enableControls(false);
+      #endif
+      #ifdef GPS_MODULE
+      openGPS();
+      #endif
+      EnableHoldPin(MEASURES_ENABLE_PIN);
+      _D(DebugPrintln("Sleep for : " + String(uint32_t((PRE_CYCLE_TIME - millis())/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
+      doSleepRTCon(PRE_CYCLE_TIME - millis());
+    }
   }
+_D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
+#endif
+
+  enableControls(true);
+#ifdef USE_ULP
+  stopULP(); //anyway
+  sleep_ADXL345(); //keep silence during measuring, or sleep if we have low battery
+#endif
+
   /*check battery status and goto sleep, if too low (disables measuring and controls too)*/
   #ifndef USE_VOLTAGE_MEAS_PIN
   /*if we need to enable measures for voltage measuring we do it first ...*/
@@ -85,22 +103,6 @@ void setup()
   openMeasures();
   _D(DebugPrintln("Open Measures takes " + String(millis() - t)+ "ms", DEBUG_LEVEL_3); )
   }
-  #endif
-
-  #ifdef PRE_MEASURE_HANDLING
-  initConfig(false);
-  if(!powerOnReset){
-    if(getState(PRE_MEAS_STATE)){
-      clrState(PRE_MEAS_STATE);
-      _D(DebugPrintln("Pre-Measure running.", DEBUG_LEVEL_1); delay(50);)
-      #ifdef USE_ULP
-      enableULP();
-      esp_sleep_enable_ulp_wakeup();
-      #endif
-      doSleepRTCon(PRE_CYCLE_TIME - millis());
-    }
-  }
-  _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
   #endif
 
   calcCycleTable();
@@ -142,6 +144,7 @@ void setup()
   currentDataSet->accThres2 = get_accel_excnt2_ULP();
   _D(DebugPrintln("accel threshold 1 count: " + String(currentDataSet->accThres1), DEBUG_LEVEL_2);)
   _D(DebugPrintln("accel threshold 2 count: " + String(currentDataSet->accThres2), DEBUG_LEVEL_2);)
+  /*if there are no other IIC components, we may enable acc-measurement here otherwise we should wait */
 #else
 #ifdef TRACK_HEIDI_STATE
   _D(
@@ -157,6 +160,12 @@ void setup()
     heidiConfig->bootCount = REFETCH_SYS_TIME;
     if(GPSalert()){ goto_sleep(SLEEP_DUR_ALERT); } else { goto_sleep(SLEEP_DUR_NOTIME); }
   }
+  #ifdef DEBUG_SERIAL_GPS
+  GPSGetPosition(currentDataSet, 10, 3600000);
+  closeGPS();
+  closeMeasures();
+  goto_sleep(DEFAULT_CYCLE_DURATION_MSEC);
+  #endif
   _D(DebugPrintln("Current system time: " + DateString(&sysTime) + " " + TimeString(&sysTime), DEBUG_LEVEL_1);)
   setBootTimeFromCurrentTime(&sysTime, &bootTime);
 
@@ -272,7 +281,7 @@ void setup()
         _DD(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3);)
         int HTTPtimeOut = sendLine.length() * 20 + 1000;
         if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-        HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
+        HTTPrc = hGSMdoPost(HEIDI_SERVER_PUSH_URL,
                             "application/x-www-form-urlencoded",
                              sendLine,
                              HTTPtimeOut,
@@ -336,7 +345,11 @@ void setup()
 }
 
 void loop()
-{}
+{
+  /* usually this should never happen */
+  heidiConfig->bootCount = REFETCH_SYS_TIME;
+  doSleepRTCon(DEFAULT_CYCLE_DURATION_MSEC);
+}
 
 #ifdef USE_LORA
 void SetupLoRa(){
@@ -435,19 +448,23 @@ void goto_sleep(int32_t mseconds){
     setState(PRE_MEAS_STATE);
     _D(DebugPrintln("Pre-Measure on.", DEBUG_LEVEL_1); delay(50);)
     sleeptime -= PRE_CYCLE_TIME;
+    DisableHoldPin(MEASURES_ENABLE_PIN);
   }
   #endif
-  _D(DebugPrintln("Sleep for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
   #ifdef USE_ULP
   init_accel_ULP(ULP_INTERVALL_US);
-  esp_sleep_enable_ulp_wakeup();
   #endif
+  _D(DebugPrintln("Sleep for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
   doSleepRTCon(sleeptime);
 }
 void doSleepRTCon(int32_t ms){
   int32_t mSeconds = ms;
   if (mSeconds < MIN_SLEEP_TIME_MS) { mSeconds = MIN_SLEEP_TIME_MS; }
+  if (mSeconds > MAX_SLEEP_TIME_MS) { mSeconds = MAX_SLEEP_TIME_MS; }
   esp_sleep_enable_timer_wakeup(uint64_t(mSeconds) * uint64_t(uS_TO_mS_FACTOR));
+  #ifdef USE_ULP
+  esp_sleep_enable_ulp_wakeup();
+  #endif
   esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_ON);
   esp_deep_sleep_start();
 }
@@ -488,10 +505,9 @@ bool wasULPWakeUp(void){
 }
 static void watchDog(void* arg)
 {
-	_D(DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1);)
-	delay(10);
+	_D(DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1); delay(10); )
 	heidiConfig->bootCount = REFETCH_SYS_TIME;
-    goto_sleep(10000);
+  goto_sleep(10000);
 }
 
 void setupWatchDog(void){
@@ -520,10 +536,12 @@ void doResetTests(){
 
 double CheckBattery(void){
   double val;
+  int   _dval;
   /**** check voltage does not need any inits ****/
   #ifdef CHECK_BATTERY
-  val = MeasureVoltage(BATTERY_MEASURE_PIN);
-  _D(DebugPrintln("Battery: " + String(val, 2), DEBUG_LEVEL_1); delay(100);)
+  _dval = MeasureVoltage(BATTERY_MEASURE_PIN);
+  val = (double)(_dval + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER;
+  _D(DebugPrintln("Battery: " + String(val, 2) + "V [" + String(_dval) + "]", DEBUG_LEVEL_1); delay(50);)
   if (val <= GSM_POWER_SAVE_4_VOLTAGE){ // low Battery?
     _D(DebugPrintln("Battery much too low.", DEBUG_LEVEL_1); delay(100);)
     disableControls(true);
@@ -533,13 +551,11 @@ double CheckBattery(void){
     _D(DebugPrintln("Battery too low.", DEBUG_LEVEL_1); delay(100);)
     //esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ULP);
     int32_t sleeptime = getCycleTimeMS();
-    if (sleeptime > MAX_CYCLE_DURATION_MSEC) { sleeptime = MAX_CYCLE_DURATION_MSEC; }
     disableControls(true);
     doSleepRTCon(sleeptime - millis());
   }
   if (val <= GSM_POWER_SAVE_2_VOLTAGE){
     setState(POWER_SAVE_2);
-    setError(E_POWER_SAVE_2);
     _DD(DebugPrintln("Battery: POWER_SAVE_2", DEBUG_LEVEL_3);)
   } else if (val <= GSM_POWER_SAVE_1_VOLTAGE){
     setState(POWER_SAVE_1);
@@ -578,16 +594,16 @@ void testMeasure(){
 	  measures     = 0;
   }
 }
-
 byte hexbuffer[35] = { 0x0e, 0x01, 0x01, 0xa7, 0x55, 0x0a, 0x03, 0xe5, 0x97, 0xcb, 0x00, 0x1c, 0x01, 0xa7, 0x52, 0x7d, 0x8a, 0x4b, 0x0f, 0xdd, 0x09, 0x00, 0x00, 0x05, 0x00, 0x44, 0x00, 0x9c, 0x01, 0x20, 0x01, 0x00, 0x00, 0x2b, 0x40 };
 void CheckGSM(void){
+  #ifdef GSM_MODULE
   if(openGSM()){
     if (hGSMsetup()){
       String sendLine = "X01=" + b64Encode(hexbuffer, 35);
       _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_1);)
       int HTTPtimeOut = sendLine.length() * 20 + 1000;
       if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-      int HTTPrc = hGSMdoPost("https://sx8y7j2yhsg2vejk.myfritz.net:1083/push_data64.php",
+      int HTTPrc = hGSMdoPost(HEIDI_SERVER_PUSH_URL,
                           "application/x-www-form-urlencoded",
                            sendLine,
                            HTTPtimeOut,
@@ -603,6 +619,7 @@ void CheckGSM(void){
     hGSMshutDown();
     closeGSM();
   }
+  #endif
 }
 
 #endif
