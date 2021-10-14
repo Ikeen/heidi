@@ -8,7 +8,7 @@
 #ifndef HEIDI_SECRETS_H_
 #define HEIDI_SECRETS_H_
 
-//#define HEIDI_SERVER_PUSH_URL put your URL here like: "https://1234567890.myfritz.net:1083/push_data64.php"
+//#define HEIDI_SERVER_PUSH_URL put your URL here like: "https://1234567890.myfritz.net:123/push_data64.php"
 #ifndef HEIDI_SERVER_PUSH_URL
 #error "no push URL set"
 #endif
