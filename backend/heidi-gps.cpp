@@ -49,22 +49,30 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
   int      a_hdop   = 0;
   int      gps_sat  = 0;
   bool     gotTime  = false;
-
+  #ifdef HEIDI_CONFIG_TEST
+  int      cnt      = 0;
+  int      i        = 0;
+  #endif
   setError(E_COULD_NOT_FETCH_GPS);
   setError(E_WRONG_GPS_VALUES);
 
   _D(DebugPrintln("GPS: Acquire position", DEBUG_LEVEL_1));
-  while((measures < averages) && (millis() < timeOut)){
+  while((measures < averages) && ((millis() < timeOut) || (timeOut == 0))){
     #ifdef DEBUG_SERIAL_GPS
     int i = 0;
-    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(1000); _DD(Serial.print('.'));
+    while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) { delay(1000); _DD(Serial.print('.'));
       i++; if (i >= 60) { i = 0;  _DD(DebugPrintln("", DEBUG_LEVEL_3)); }
     }
     _DD(DebugPrintln("", DEBUG_LEVEL_3));
     #else
-    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(10);}
+    while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) {
+      delay(10);
+      #ifdef HEIDI_CONFIG_TEST
+      _D(if (timeOut == 0) { cnt++; if (cnt == 1000) { cnt = 0; i++; Serial.print("."); }})
+      #endif
+    }
     #endif
-    while ((SerialGPS.available() > 0) && (measures < averages) && (millis() < timeOut)) {
+    while ((SerialGPS.available() > 0) && (measures < averages) && ((millis() < timeOut) || (timeOut == 0))) {
       #ifdef DEBUG_SERIAL_GPS
       char r = SerialGPS.read();
       _DD(Serial.print(r));
@@ -141,9 +149,13 @@ bool setSysTimeToGPSTime(int timeOut)
   uint8_t  mon  = 0;
   uint8_t  day  = 0;
   bool result   = false;
+  #ifdef HEIDI_CONFIG_TEST
+  uint16_t cnt  = 0;
+  int      i    = 0;
+  #endif
   setError(E_COULD_NOT_FETCH_GPS_TIME);
   //_DD(DebugPrint("GPS raw data: ", DEBUG_LEVEL_3));
-  while(((year <= 2000) || (mon == 0) || (day == 0)) && (millis() < timeOut)){
+  while(((year <= 2000) || (mon == 0) || (day == 0)) && ((millis() < timeOut) || (timeOut == 0))){
     #ifdef DEBUG_SERIAL_GPS
     int i = 0;
     while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(1000); _DD(Serial.print('.'));
@@ -151,9 +163,14 @@ bool setSysTimeToGPSTime(int timeOut)
     }
     _DD(DebugPrintln("", DEBUG_LEVEL_3));
     #else
-    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(10);}
+    while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) {
+      delay(10);
+      #ifdef HEIDI_CONFIG_TEST
+      _D(if (timeOut == 0) { cnt++; if (cnt == 1000) { cnt = 0; i++; Serial.print("."); }})
+      #endif
+    }
     #endif
-    while ((SerialGPS.available() > 0)  && (millis()  < timeOut)){
+    while ((SerialGPS.available() > 0)  && ((millis() < timeOut) || (timeOut == 0))){
       #ifdef DEBUG_SERIAL_GPS
       char r = SerialGPS.read();
       _DD(Serial.print(r));

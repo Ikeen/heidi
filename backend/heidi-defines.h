@@ -23,6 +23,11 @@
 #define USE_GPS_ALERT
 #define SEND_ALERT_SMS
 //#define PRE_MEASURE_HANDLING
+#define DEFAULT_BOOT_CYCLES         4         // ..until transferring data
+#define DEFAULT_CYCLE_DURATION_MSEC 900000    // 15 minutes
+#define DEFAULT_CYCLE_DURATION      15        // 15 minutes
+#define MAX_AWAKE_TIME_POWER        300000    //  5 minutes
+#define MAX_AWAKE_TIME_TIMER        120000    //  2 minutes
 #endif
 #ifdef HEIDI_CONFIG_2
 #define GSM_MODULE
@@ -39,22 +44,32 @@
 #define SEND_ALERT_SMS
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
+#define DEFAULT_BOOT_CYCLES         4         // ..until transferring data
+#define DEFAULT_CYCLE_DURATION_MSEC 900000    // 15 minutes
+#define DEFAULT_CYCLE_DURATION      15        // 15 minutes
+#define MAX_AWAKE_TIME_POWER        300000    //  5 minutes
+#define MAX_AWAKE_TIME_TIMER        120000    //  2 minutes
 #endif
 #ifdef HEIDI_CONFIG_TEST
 //#define GSM_MODULE
 #define GPS_MODULE
 #define COMMON_SERIAL
 //#define TEMP_SENSOR
-#define CHECK_BATTERY
-#define USE_VOLTAGE_MEAS_PIN
-#define I2C_BUS
-#define ACCELEROMETER
+//#define CHECK_BATTERY
+//#define USE_VOLTAGE_MEAS_PIN
+//#define I2C_BUS
+//#define ACCELEROMETER
 //#define I2C_SWITCH
-#define USE_ULP
+//#define USE_ULP
 //#define USE_GPS_ALERT
 //#define SEND_ALERT_SMS
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
+#define DEFAULT_BOOT_CYCLES         3         // ..until transferring data
+#define DEFAULT_CYCLE_DURATION_MSEC 600000    // 10 minutes
+#define DEFAULT_CYCLE_DURATION      10        // 10 minutes
+#define MAX_AWAKE_TIME_POWER        0         //    infinite
+#define MAX_AWAKE_TIME_TIMER        0         //    infinite
 #endif
 
 
@@ -76,21 +91,13 @@
 #define HEIDI_HERDE         0
 #define HEIDI_ANIMAL        1
 #endif
-
-
-#define DEFAULT_BOOT_CYCLES         3//4         // ..until transferring data
-
-#define DEFAULT_CYCLE_DURATION_MSEC 600000//900000    // 15 minutes
-#define DEFAULT_CYCLE_DURATION      10//15        // 15 minutes
 #define MIN_CYCLE_DURATION_MSEC     300000    //  5 minutes
 #define MIN_CYCLE_DURATION          5         //  5 minutes
 #define MAX_CYCLE_DURATION_MSEC     3600000   //  1 hour
 #define MAX_CYCLE_DURATION          60        //  1 hour
 #define MAX_CYCLES_PER_DAY          288       //  5 minutes each
-#define PRE_CYCLE_TIME              30000     //  wake GPS 30 seconds before measuring
+#define PRE_CYCLE_TIME              30000     //  wake GPS 30 seconds before measuring (PRE_MEASURE_HANDLINg)
 #define MAX_BOOT_CYCLES             (MAX_DATA_SETS >> 1) // ..until transferring data = half count of data sets
-#define MAX_AWAKE_TIME_TIMER        120000    //  2 minutes
-#define MAX_AWAKE_TIME_POWER        180000    //  3 minutes
 #define MAX_MEAS_TIME               5000      //  5 seconds
 #define MAX_FAILED_ALERTS           10        //  abort alerting after 10 fails
 
@@ -216,6 +223,11 @@
 #endif
 #endif
 
+#if (MAX_AWAKE_TIME_POWER == 0) || (MAX_AWAKE_TIME_TIMER == 0)
+#ifndef HEIDI_CONFIG_TEST
+#error "Timeout disabled!"
+#endif
+#endif
 
 extern bool GPSenabled;
 extern bool GSMenabled;

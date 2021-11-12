@@ -59,12 +59,12 @@ void SetupLoRa(){
 
 uint8_t herdeID();
 uint8_t animalID();
-double   GetVoltage();
+double  GetVoltage();
 
 double CheckBattery(void);
 void initGlobalVar(bool powerOnReset);
 bool setupSystemDateTime(tm* systime, int timeOut);
-void setupWatchDog(void);
+void setupWatchDog(uint32_t timeOutMS);
 static void watchDog(void* arg);
 
 void restartCycling();

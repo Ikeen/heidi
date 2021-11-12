@@ -29,18 +29,29 @@
 bool openGSM();
 void closeGSM();
 
-bool hGSMsetup();
-bool hGSMshutDown();
-bool hGSMsetupGPRS(const String apn, const String user, const String pwd);
-int  hGSMinitiateHTTP(String url);
-int  hGSMdoPost(String url, String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs);
-int  hGSMdoGet(const char* url, unsigned int serverReadTimeoutMs);
-int  hGSMterminateHTTP();
-String hGSMGetLastResponse(void);
-String hGSMsendCommand(const String command, int timeoutMs);
-String hGSMsendCommand(const String command);
-bool  hGSMsendCommand2(const String command, String response, int timeoutMs = 5000);
-void  hGSMCheckSignalStrength();
+bool GSMsetup();
+bool GSMshutDown();
+int  GSMdoPost(String url, String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs);
+bool GSMhandleAlerts(void);
+bool GSMsendSMS(String TelNo, String Message);
+
+bool   GSMwaitForModem(uint32_t timeOutMS = 5000);
+bool   GSMwaitForNetwork(uint32_t timeOutMS);
+bool   GSMsimUnlock(String pin);
+int    GSMinitiateHTTP(String url);
+int    GSMterminateHTTP();
+bool   GSMsetupGPRS(const String apn, const String user, const String pwd);
+bool   GSMopenGPRS();
+int    GSMterminateGPRS();
+String GSMGetLastResponse(void);
+String GSMsendCommand(const String command, int timeoutMs);
+bool   GSMsendCommand(const String command, const String okPhrase = "OK", int timeOutMs = 5000);
+bool   GSMwriteDown(const String payload);
+
+int  _responseGetInt(int position, int errValue = -1);
+int  _responseGetInt(int position, String response, int errValue);
+
+_D(void   GSMCheckSignalStrength();)
 
 #endif /*GSM_MODULE*/
 #endif /* HEIDI_GSM_H_ */

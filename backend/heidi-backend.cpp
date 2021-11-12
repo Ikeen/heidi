@@ -1,9 +1,5 @@
 /*
  * nächste Aufgaben:
- *   - 2 Verbindungsversuche = doppelte Werte-Übertragung, wenn es beim 2. mal klappt?
- *   - Energiesparmodi - Tiefschlaf bei U < 3,4 - Diode von Stützakku durch Draht ersetzen?
- *   - Datenmenge begrenzen - base64 Übertragung
- *   - Nacht - weniger Werte / Übertragungen
  *   - Providermanagement
  *   - Hook beim Reset oder Power-Cut
  *   - einstellbarer Vorzugsprovider
@@ -11,8 +7,8 @@
  *   - Neue Karten-Daten
  *   - Provider - Scans
  *   -
- * - Erweitertes Powermanagement (kein Durchbooten bei < 3.6V)
- * - Dichtere Übertragungsversuche (RTC-Memory? 4*32*50 = 6400 Bytes)
+ *   - Erweitertes Powermanagement (kein Durchbooten bei < 3.6V)
+ *   - Dichtere Übertragungsversuche (RTC-Memory? 4*32*50 = 6400 Bytes)
  *
  */
 
@@ -49,15 +45,23 @@ void setup()
   bool powerOnReset = wasPowerOnReset();
   initError();
   initGlobalVar(powerOnReset);
+  calcCycleTable();
+  if(heidiConfig->bootCount <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER; }
+  setupWatchDog(timeOut);
   if (wasbrownOut()) {
     disableControls(true);
     setState(RESET_INITS);
     doSleepRTCon(MAX_CYCLE_DURATION_MSEC);
   }
 
-  _D(Serial.begin(115200); checkWakeUpReason(); DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1);)
-  _D(if(powerOnReset){ delay(3000); }) //enable COM terminal
-  _D(DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);)
+  _D(
+    Serial.begin(115200); checkWakeUpReason();
+    if(powerOnReset){ delay(3000); } //enable COM terminal
+    DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1); DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);
+    if(powerOnReset) { DebugPrintln("BOOT: was power on reset", DEBUG_LEVEL_1); }
+    else { DebugPrintln("BOOT: cycle number: " + String(heidiConfig->bootCount), DEBUG_LEVEL_1); }
+    DebugPrintln("BOOT: Heidi state: 0x" + String(heidiConfig->status, HEX) ,DEBUG_LEVEL_2);
+  )
 
   /* this is for testing purposes - comment it out... */
   //_D(if (powerOnReset) { volt = 4.0; getSystemSettings(); }) //!!!!!
@@ -105,15 +109,6 @@ _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
   }
   #endif
 
-  calcCycleTable();
-  setupWatchDog();
-
-  _D(
-    if(powerOnReset) { DebugPrintln("BOOT: was power on reset", DEBUG_LEVEL_1); }
-    else { DebugPrintln("BOOT: cycle number: " + String(heidiConfig->bootCount), DEBUG_LEVEL_1); }
-    DebugPrintln("BOOT: Heidi state: 0x" + String(heidiConfig->status, HEX) ,DEBUG_LEVEL_2);
-  )
-
 #ifdef USE_ULP
 #ifdef TEST_ACC
   _D(DebugPrintln("accel measurement count: " + String(get_accel_meas_cnt_ULP()), DEBUG_LEVEL_2);
@@ -154,7 +149,6 @@ _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
 #endif
 #endif
 
-  if(heidiConfig->bootCount <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER; }
   /*setupSystemDateTime opens / checks GPS*/
   if (!setupSystemDateTime(&sysTime, timeOut)) {
     heidiConfig->bootCount = REFETCH_SYS_TIME;
@@ -196,7 +190,7 @@ _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
 #ifdef GPS_MODULE
   //test alerts
   //_D(clrState(NEW_FENCE); DebugPrintln("!!!!!! NEW FENCE off !!!!!", DEBUG_LEVEL_1);) //!!!!!!!!
-  if (!getState(NOT_IN_CYCLE) || GPSalert()){
+  if (!getState(NOT_IN_CYCLE) || GPSalert() || (timeOut == 0)){
     if (GPSGetPosition(currentDataSet, 10, timeOut) == 0){
       _D(DebugPrintln("GPS: Unable to fetch position.", DEBUG_LEVEL_1);)
     } else {
@@ -233,7 +227,8 @@ _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
     currentDataSet->errCode |= getErrorCode();
     _D(
       #ifdef MEAS_ACQUIRNG_TIME
-      currentDataSet->GPShdop = (uint8_t)(millis() / 1000);
+      if (millis() > 254500) { currentDataSet->GPShdop = 255; }
+      else { currentDataSet->GPShdop = (uint8_t)(millis() / 1000); }
       _D(DebugPrintln("set GPShdop to acquiring time: " + String(currentDataSet->GPShdop) + " ms", DEBUG_LEVEL_2);)
       #endif
       #ifdef TRACK_HEIDI_STATE
@@ -277,28 +272,28 @@ _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
     if ((heidiConfig->bootCount >= _currentCycles()) || GPSalert()) { sendLine = generateMulti64SendLine(0, (MAX_DATA_SETS-1)); }
     if ((sendLine.length() == 0)){ sendLine = "ID=" + _herdeID(); } //just get settings
     if(openGSM()){
-      if (hGSMsetup()){
+      if (GSMsetup()){
         _DD(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3);)
         int HTTPtimeOut = sendLine.length() * 20 + 1000;
         if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-        HTTPrc = hGSMdoPost(HEIDI_SERVER_PUSH_URL,
+        HTTPrc = GSMdoPost(HEIDI_SERVER_PUSH_URL,
                             "application/x-www-form-urlencoded",
                              sendLine,
                              HTTPtimeOut,
                              HTTPtimeOut);
         if (HTTPrc == 200){
           _D(DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_1);)
-          _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_2);)
+          _D(DebugPrintln("HTTP response: " + GSMGetLastResponse(), DEBUG_LEVEL_2);)
           GSMfailure = false;
-          if (    !setFenceFromHTTPresponse(hGSMGetLastResponse())
-               || !setSettingsFromHTTPresponse(hGSMGetLastResponse())
-               || !setTelNoFromHTTPresponse(hGSMGetLastResponse())){
+          if (    !setFenceFromHTTPresponse(GSMGetLastResponse())
+               || !setSettingsFromHTTPresponse(GSMGetLastResponse())
+               || !setTelNoFromHTTPresponse(GSMGetLastResponse())){
             setState(TRSMT_DATA_ERROR);
           }
           clrState(RESET_INITS);
         }
       }
-      hGSMshutDown();
+      GSMshutDown();
       closeGSM();
     }
     cleanUpDataSets(GSMfailure);
@@ -412,9 +407,11 @@ bool setupSystemDateTime(tm* systime, int timeOut){
   }
   if (!setSysTimeToGPSTime(timeOut)){
     closeGPS();
+    _D(DebugPrintln("Unable to get time from GPS", DEBUG_LEVEL_1);)
     if (heidiConfig->bootCount <= REFETCH_SYS_TIME){ return false; }
   }
   #endif
+  _D(DebugPrintln("Got Time after: " + String(millis() / 1000) + "s", DEBUG_LEVEL_2);)
   return getSysTime(systime);
 }
 
@@ -510,13 +507,15 @@ static void watchDog(void* arg)
   goto_sleep(10000);
 }
 
-void setupWatchDog(void){
+void setupWatchDog(uint32_t timeOutMs){
+  if (timeOutMs >= 0){
     const esp_timer_create_args_t timargs = {
             .callback = &watchDog
     //        .name = "takecare"
     };
     esp_timer_create(&timargs, &watchd);
-    esp_timer_start_once(watchd, 300000000); //cut all after 5 minutes
+    esp_timer_start_once(watchd, (timeOutMs + 60000) * 1000); //cut 1 minute after timeout
+  }
 }
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1
 void doResetTests(){
@@ -524,7 +523,7 @@ void doResetTests(){
   //testGeoFencing();
   //testData();
   #ifdef GSM_MODULE
-  //if (volt >= GSM_MINIMUM_VOLTAGE){ hGSMCheckSignalStrength(); }
+  //if (volt >= GSM_MINIMUM_VOLTAGE){ GSMCheckSignalStrength(); }
   #endif
   #ifdef GPS_MODULE
   //testGPS();
@@ -598,25 +597,25 @@ byte hexbuffer[35] = { 0x0e, 0x01, 0x01, 0xa7, 0x55, 0x0a, 0x03, 0xe5, 0x97, 0xc
 void CheckGSM(void){
   #ifdef GSM_MODULE
   if(openGSM()){
-    if (hGSMsetup()){
+    if (GSMsetup()){
       String sendLine = "X01=" + b64Encode(hexbuffer, 35);
       _D(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_1);)
       int HTTPtimeOut = sendLine.length() * 20 + 1000;
       if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-      int HTTPrc = hGSMdoPost(HEIDI_SERVER_PUSH_URL,
+      int HTTPrc = GSMdoPost(HEIDI_SERVER_PUSH_URL,
                           "application/x-www-form-urlencoded",
                            sendLine,
                            HTTPtimeOut,
                            HTTPtimeOut);
       if (HTTPrc == 200){
         _D(DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_1);)
-        _D(DebugPrintln("HTTP response: " + hGSMGetLastResponse(), DEBUG_LEVEL_1);)
-        setFenceFromHTTPresponse(hGSMGetLastResponse());
-        setSettingsFromHTTPresponse(hGSMGetLastResponse());
-        setTelNoFromHTTPresponse(hGSMGetLastResponse());
+        _D(DebugPrintln("HTTP response: " + GSMGetLastResponse(), DEBUG_LEVEL_1);)
+        setFenceFromHTTPresponse(GSMGetLastResponse());
+        setSettingsFromHTTPresponse(GSMGetLastResponse());
+        setTelNoFromHTTPresponse(GSMGetLastResponse());
       }
     }
-    hGSMshutDown();
+    GSMshutDown();
     closeGSM();
   }
   #endif
