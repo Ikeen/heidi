@@ -86,7 +86,7 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
         #endif
         measures++;
         if (gps_sat < gps.satellites.value()) { gps_sat = gps.satellites.value(); }
-        _D(_PrintDataGPS());
+        _DD(_PrintDataGPS();)
         a_lng += gps.location.lng();
         a_lat += gps.location.lat();
         a_alt += gps.altitude.meters();

@@ -20,6 +20,23 @@ void DebugPrintln(int number, int level){ if (level <= DEBUG_LEVEL){ Serial.prin
 void DebugPrint(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ Serial.print(number); }}
 void DebugPrintln(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ Serial.println(number); }}
 
+void setupDebug(int startMS, bool powerOnReset){
+  Serial.begin(115200);
+  Serial.println("Up and running...!");
+  if(powerOnReset){ delay(3000); }
+  DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1); DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);
+  checkWakeUpReason();
+  #if (MAX_AWAKE_TIME_POWER == 0) || (MAX_AWAKE_TIME_TIMER == 0)
+  DebugPrintln("!!!! timeouts disabled !!!!!", DEBUG_LEVEL_1);
+  #endif
+}
+void debugHeidiState(bool powerOnReset){
+
+  if(powerOnReset) { DebugPrintln("BOOT: was power on reset", DEBUG_LEVEL_1); }
+  else { DebugPrintln("BOOT: cycle number: " + String(heidiConfig->bootCount), DEBUG_LEVEL_1); }
+  DebugPrintln("BOOT: Heidi state: 0x" + String(heidiConfig->status, HEX) ,DEBUG_LEVEL_2);
+}
+
 void _PrintDataSet(t_SendData* DataSet, int dLevel){
   _D(DebugPrint("DataSet Lat= ", dLevel));
   _D(DebugPrint(DataSet->latitude, dLevel));
@@ -39,7 +56,7 @@ void _PrintDataSet(t_SendData* DataSet, int dLevel){
   _D(DebugPrint(" Sat= ", dLevel));
   _D(DebugPrint(DataSet->satellites, dLevel));
   _D(DebugPrint(" accTh1= ", dLevel));
-  _D(DebugPrintln(DataSet->accThres1, dLevel));
+  _D(DebugPrintln(DataSet->accThresCnt1, dLevel));
 }
 void _PrintShortSummary(int dLevel){
   for(int i=0; i<MAX_DATA_SETS; i++){
@@ -73,6 +90,22 @@ void _PrintHeidiConfig(int dLevel){
   _D(DebugPrintln("nightSleepMin:   " + String(heidiConfig->nightSleepMin), dLevel);)
   _D(DebugPrintln("lastTimeDiffMs:  " + String(heidiConfig->lastTimeDiffMs), dLevel);)
 }
+
+void checkWakeUpReason(){
+  esp_sleep_wakeup_cause_t wakeup_reason;
+  wakeup_reason = esp_sleep_get_wakeup_cause();
+  switch(wakeup_reason)
+  {
+    case ESP_SLEEP_WAKEUP_EXT0 : _D(DebugPrintln("Wakeup caused by external signal using RTC_IO", DEBUG_LEVEL_1);) break;
+    case ESP_SLEEP_WAKEUP_EXT1 : _D(DebugPrintln("Wakeup caused by external signal using RTC_CNTL", DEBUG_LEVEL_1);) break;
+    case ESP_SLEEP_WAKEUP_TIMER : _D(DebugPrintln("Wakeup caused by timer", DEBUG_LEVEL_1);) break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD : _D(DebugPrintln("Wakeup caused by touchpad", DEBUG_LEVEL_1);) break;
+    case ESP_SLEEP_WAKEUP_ULP : _D(DebugPrintln("Wakeup caused by ULP program", DEBUG_LEVEL_1);) break;
+    default : _D(DebugPrint("Wakeup was not caused by deep sleep: ", DEBUG_LEVEL_1);) _D(DebugPrintln(String(wakeup_reason), DEBUG_LEVEL_1);) break;
+
+  }
+}
+
 #ifdef ACCELEROMETER
 void _PrintHeidiAccParams(int dLevel){
   _D(DebugPrintln("", dLevel);)

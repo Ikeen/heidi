@@ -59,16 +59,27 @@ void SetupLoRa(){
 
 uint8_t herdeID();
 uint8_t animalID();
-double  GetVoltage();
 
-double CheckBattery(void);
-void initGlobalVar(bool powerOnReset);
+void setupData(bool powerOnReset);
 bool setupSystemDateTime(tm* systime, int timeOut);
 void setupWatchDog(uint32_t timeOutMS);
-static void watchDog(void* arg);
+
+#ifdef PRE_MEASURE_HANDLING
+void   handlePreMeasuring(void);
+#endif
+#ifdef GSM_MODULE
+void   transmitData(t_SendData* currentDataSet);
+#endif
+void   checkGPSalert(t_SendData* currentDataSet);
+void   checkGPSposition(t_SendData* currentDataSet, int timeOut);
+double checkBattery(void);
+void   checkCycle(void);
+
+void   finalizeDataSet(t_SendData* currentDataSet);
+void   finalizeHeidiStatus(bool powerOnReset);
 
 void restartCycling();
-void goto_sleep(int32_t mseconds);
+void gotoSleep(int32_t mseconds);
 void doSleepRTCon(int32_t ms);
 
 bool wasPowerOnReset(void);
@@ -76,12 +87,12 @@ bool wasbrownOut(void);
 bool wasRegularWakeUp(void);
 bool wasULPWakeUp(void);
 
+static void watchDog(void* arg);
 
 _D(
-void doResetTests();
-void testMeasure();
-void checkWakeUpReason();
-void CheckGSM(void);
+void reesetTests(void);
+void testMeasure(void);
+void testGSM(void);
 #ifdef TEST_RTC
 void testRTC(t_SendData*);
 #endif

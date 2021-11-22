@@ -18,46 +18,45 @@
 #endif
 
 int  running_measures = 0;
-bool MEASenabled = false;
-bool CTLenabled  = false;
+bool MEASenabled   = false;
+bool CTLenabled    = false;
 
 #ifdef TEMP_SENSOR
 OneWire oneWire(TEMP_SENSOR_PIN);
 DallasTemperature tempSensor(&oneWire);
 #endif
 
-bool enableControls(bool enable_iic){
+bool enableControls(void){
   bool success = true;
   if(!CTLenabled){
-    if(enable_iic){
-      #ifdef I2C_BUS
-      #ifdef USE_ULP
-      rtc_gpio_hold_dis(I2C_SDA);
-      rtc_gpio_hold_dis(I2C_SCL);
-      #endif
-      Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
-      #endif
+    #ifdef I2C_BUS
+    if (getIIC()){
       #ifdef ACCELEROMETER
       if (!init_ADXL345()){
-        success = false;
         setError(E_IIC_ERROR);
       }
       #endif
-    }
+    } else { success = false; setError(E_IIC_ERROR);}
+    #endif
     #ifdef I2C_SWITCH
-    if (!init_PCA9536()){
-      success = false;
-      setError(E_IIC_ERROR);
+    if (gotIIC()){
+      if (!init_PCA9536()){
+        success = false;
+        setError(E_IIC_ERROR);
+      }
     }
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
     digitalWrite(MEASURES_ENABLE_PIN, MEASURES_OFF);
+    #ifdef I2C_BUS
+    freeIIC();
+    #endif
     #ifdef GSM_MODULE
     pinMode(GSM_ENABLE_PIN,OUTPUT);
     digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
     #endif
     #endif
-    _D(if(!success){ DebugPrintln("open Measures failed", DEBUG_LEVEL_1); delay(59);})
+    _D(if(!success){ DebugPrintln("open Measures failed", DEBUG_LEVEL_1); delay(10);})
     CTLenabled = success;
     _D(DebugPrintln("Controls enabled", DEBUG_LEVEL_1); )
   } _D(else { DebugPrintln("Controls already enabled", DEBUG_LEVEL_2); })
@@ -67,16 +66,11 @@ bool enableControls(bool enable_iic){
 void disableControls(bool force){
   if(CTLenabled || force){
     #ifdef I2C_SWITCH
-    if(force) { Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ); }
+    getIIC();
     //configure all pins as input
-    if (iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, 0xff) != I2C_ERROR_OK){
-      iic_clockFree();
-      iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, 0xff);
-    }
-    if (iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_CONFIG_REG, 0xff) != I2C_ERROR_OK){
-      iic_clockFree();
-      iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_CONFIG_REG, 0xff);
-    }
+    iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, 0xff);
+    iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_CONFIG_REG, 0xff);
+    freeIIC();
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
     digitalWrite(MEASURES_ENABLE_PIN, MEASURES_OFF);
@@ -101,13 +95,12 @@ void disableControls(bool force){
 
 #ifdef I2C_SWITCH
 bool init_PCA9536(void){
+  //getIIC() is done in the init-function above
+  if (!gotIIC()) { return false; }
   // set all pins to HIGH
   if (iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, 0xff) != I2C_ERROR_OK){
-    iic_clockFree();
-    if (iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, 0xff) != I2C_ERROR_OK){
-      _D(DebugPrintln("No PCA9536 detected - Measures disabled", DEBUG_LEVEL_1);)
-      return false;
-    }
+    _D(DebugPrintln("No PCA9536 detected - Measures disabled", DEBUG_LEVEL_1);)
+    return false;
   }
   // configure pin 0-2 as output
   return (iic_writeRegister(PCA_9536_DEFAULT_ADDRESS, PCA_9536_CONFIG_REG, 0xf8) == I2C_ERROR_OK);
@@ -119,6 +112,7 @@ void stopULP(void){
   #if ULP_LED_BLINK
   rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_DISABLED);
   #endif
+  clrState(ULP_RUNNING);
 }
 void enableULP(void){
   rtc_gpio_init(I2C_SDA);
@@ -180,9 +174,11 @@ bool openMeasures(){
      */
     #ifdef I2C_SWITCH
     int i = 0;
+    getIIC();
     while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_ON) != I2C_ERROR_OK) && (i < 100)){
       delay(10); i++;
     }
+    freeIIC();
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
     for(int i=0; i<5; i++){
@@ -205,9 +201,11 @@ void closeMeasures(){
   if (running_measures == 0){
     #ifdef I2C_SWITCH
     int i = 0;
+    getIIC();
     while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_OFF) != I2C_ERROR_OK) && (i < 100)){
       delay(10); i++;
     }
+    freeIIC();
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
     digitalWrite(MEASURES_ENABLE_PIN, MEASURES_OFF);
@@ -240,10 +238,11 @@ void GSMOn(){
    */
   #ifdef I2C_SWITCH
   int i = 0;
+  getIIC();
   while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_ON) != I2C_ERROR_OK) && (i < 100)){
     delay(10); i++;
   }
-
+  freeIIC();
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
   for(int i=0; i<2000; i++){
@@ -263,9 +262,11 @@ void GSMOn(){
 void GSMOff(){
   #ifdef I2C_SWITCH
   int i = 0;
+  getIIC();
   while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_OFF) != I2C_ERROR_OK) && (i < 100)){
     delay(10); i++;
   }
+  freeIIC();
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
   digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
@@ -278,8 +279,32 @@ void LED_off(){
   digitalWrite(LED_ENABLE_PIN, LED_OFF);
 }
 #ifdef I2C_BUS
+bool getIIC(void){
+  set_IIC_request(1);
+  //wait a short time - maybe ULP was just on the way to lock...
+  delay(1);
+  int i = 0;
+  while(IICisLocked()){
+    delay(1); i++;
+    if(i >= 20){ set_IIC_request(0); _D(DebugPrintln("Can't get IIC.", DEBUG_LEVEL_1);) return false; }
+  }
+  if (i>0) { _DD(DebugPrintln("Got IIC after " + String(i) + " wait-loops.", DEBUG_LEVEL_3);) }
+  //ULP just checks the request, no need to set LOCK here
+  rtc_gpio_hold_dis(I2C_SCL);
+  rtc_gpio_hold_dis(I2C_SDA);
+  Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
+  return true;
+}
+void freeIIC(void){
+  rtc_gpio_init(I2C_SCL);
+  rtc_gpio_set_direction(I2C_SCL, RTC_GPIO_MODE_INPUT_OUTPUT);
+  rtc_gpio_hold_en(I2C_SCL);
+  rtc_gpio_init(I2C_SDA);
+  rtc_gpio_set_direction(I2C_SDA, RTC_GPIO_MODE_INPUT_OUTPUT);
+  rtc_gpio_hold_en(I2C_SDA);
+  set_IIC_request(0);
 
-i2c_err_t iic_setRegisterBit(uint8_t devAdress, byte regAdress, int bitPos, bool state) {
+}i2c_err_t iic_setRegisterBit(uint8_t devAdress, byte regAdress, int bitPos, bool state) {
   byte _b;
   i2c_err_t rc = iic_readRegister(devAdress, regAdress, &_b);
   if (rc != I2C_ERROR_OK) { return rc; }
@@ -301,58 +326,63 @@ i2c_err_t iic_getRegisterBit(uint8_t devAdress, uint8_t regAdress, int bitPos, b
 
 i2c_err_t iic_readRegister(uint8_t devAdress, uint8_t regAdress, uint8_t *value) {
   byte cnt;
-  Wire.beginTransmission(devAdress);  //begin does not touch device
-  Wire.write(regAdress);            //write does not touch device
-  if(Wire.endTransmission() != I2C_ERROR_OK){
-    _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + " error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
-    return (i2c_err_t)Wire.lastError();
-  } //endTransmission writes to device and returns an error code
-  if((cnt = Wire.requestFrom(devAdress, (uint8_t)1)) != 1){
-    _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + " count: " + String(cnt) + " error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
-    return (i2c_err_t)I2C_ERROR_READ_COUNT;
-  } //requestFrom returns count of bytes read from device
-  *value =(uint8_t)Wire.read(); //read does not touch device
+  if (!gotIIC) { return I2C_ERROR_BUSY; }
+  for(int i=0; i<2; i++){
+    if(i == 1) { iic_clockFree(); delay(10); }
+    Wire.beginTransmission(devAdress);  //begin does not touch device
+    Wire.write(regAdress);            //write does not touch device
+    if(Wire.endTransmission() != I2C_ERROR_OK){
+      _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + " error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
+      if(i == 0){ continue; } else { return (i2c_err_t)Wire.lastError(); }
+    } //endTransmission writes to device and returns an error code
+    if((cnt = Wire.requestFrom(devAdress, (uint8_t)1)) != 1){
+      _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + " count: " + String(cnt) + " error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
+      if(i == 0){ continue; } else { return (i2c_err_t)I2C_ERROR_READ_COUNT; }
+    } //requestFrom returns count of bytes read from device
+    *value =(uint8_t)Wire.read(); //read does not touch device
+    break;
+  }
   _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + ": 0x" + String(*value, HEX), DEBUG_LEVEL_3));
-
   return I2C_ERROR_OK;
 }
-uint8_t iic_x_readRegister(uint8_t devAdress, uint8_t regAdress) {
-  Wire.beginTransmission(devAdress);
-  Wire.write(regAdress);
-  Wire.endTransmission();
-  Wire.requestFrom(devAdress, (uint8_t)1);
-  uint8_t value = Wire.read();
-  Serial.println("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + ": 0x" + String(value, HEX));
-  return (value);
-}
-
 i2c_err_t iic_writeRegister(uint8_t devAdress, uint8_t regAdress, uint8_t value) {
-  Wire.beginTransmission(devAdress); //begin does not touch device
-  Wire.write(regAdress);  //write does not touch device
-  Wire.write(value);      //write does not touch device
-  return (i2c_err_t)Wire.endTransmission(); //endTransmission writes to device and returns an error code
+  i2c_err_t rc = (i2c_err_t)I2C_ERROR_UNDEFINED;
+  if (!gotIIC) { return I2C_ERROR_BUSY; }
+  for(int i=0; i<2; i++){
+    if(i == 1) { iic_clockFree(); delay(10); }
+    Wire.beginTransmission(devAdress); //begin does not touch device
+    Wire.write(regAdress);  //write does not touch device
+    Wire.write(value);      //write does not touch device
+    rc = (i2c_err_t)Wire.endTransmission(); //endTransmission writes to device and returns an error code
+    if(rc == I2C_ERROR_OK) { break; }
+  }
+  return rc;
 }
 
 i2c_err_t iic_readRegister16(uint8_t devAdress, uint8_t regAdress, int16_t *value) {
   byte cnt;
   i2c_err_t err;
-  Wire.beginTransmission(devAdress); //begin does not touch device
-  Wire.write(regAdress);             //write does not touch device
-  if(Wire.endTransmission() != I2C_ERROR_OK){
-    _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + "error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
-    return (i2c_err_t)Wire.lastError();
-  }//endTransmission writes to device and returns an error code
-  if((cnt = Wire.requestFrom(devAdress, regAdress, (uint8_t)2)) != 2){
-    _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + " count: " + String(cnt) + "error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
-    return (i2c_err_t)I2C_ERROR_READ_COUNT;
-  } //requestFrom returns count of bytes read from device
-  *value =(int16_t)(Wire.read() | (Wire.read() << 8)); //read does not touch device
+  if (!gotIIC) { return I2C_ERROR_BUSY; }
+  for(int i=0; i<2; i++){
+    if(i == 1) { iic_clockFree(); delay(10); }
+    Wire.beginTransmission(devAdress); //begin does not touch device
+    Wire.write(regAdress);             //write does not touch device
+    if(Wire.endTransmission() != I2C_ERROR_OK){
+      _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + "error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
+      if(i == 0){ continue; } else { return (i2c_err_t)Wire.lastError(); }
+    }//endTransmission writes to device and returns an error code
+    if((cnt = Wire.requestFrom(devAdress, regAdress, (uint8_t)2)) != 2){
+      _DD(DebugPrintln("i2c read device 0x" + String(devAdress, HEX) + " register 0x" + String(regAdress, HEX) + " count: " + String(cnt) + "error: " + String(Wire.lastError()), DEBUG_LEVEL_3));
+      if(i == 0){ continue; } else { return (i2c_err_t)I2C_ERROR_READ_COUNT; }
+    } //requestFrom returns count of bytes read from device
+    *value =(int16_t)(Wire.read() | (Wire.read() << 8)); //read does not touch device
+    break;
+  }
   return I2C_ERROR_OK;
 }
-#endif
-#ifdef I2C_BUS
 void iic_clockFree(void) {
-  _DD(DebugPrint("I2C clocking SDA:", DEBUG_LEVEL_3));
+  _DD(DebugPrint("I2C clocking SDA:", DEBUG_LEVEL_3);)
+  if (!gotIIC) { return; }
   pinMode(I2C_SDA,INPUT);
   pinMode(I2C_SCL,OUTPUT);
   digitalWrite(I2C_SCL, LOW);
@@ -368,6 +398,5 @@ void iic_clockFree(void) {
   delay(10);
   pinMode(I2C_SCL,INPUT);
   delay(10);
-  Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
 }
 #endif

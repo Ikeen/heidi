@@ -45,7 +45,7 @@
 //    case 15 : Serial.println ("RTCWDT_BROWN_OUT_RESET");break;/**<15, Reset when the vdd voltage is not stable*/
 //    case 16 : Serial.println ("RTCWDT_RTC_RESET");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
 
-void initError();
+void setupError();
 void setError(uint16_t code);
 void rmError(uint16_t code);
 bool getError(uint16_t code);

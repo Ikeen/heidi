@@ -40,43 +40,47 @@
 
 bool _ADXL345_status = false;
 bool _ADXL345_sleep  = false;
+bool _ADXL345_avail  = false;
 
 bool init_ADXL345(){
   byte _ID;
+  //getIIC is done in the init-function above
+  if (!gotIIC()) { return false; }
   _D(DebugPrint("Init ADXL345.. ", DEBUG_LEVEL_2));
   //check sensor
   if(iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DEVID, &_ID) != I2C_ERROR_OK){
-    iic_clockFree();
-    if(iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DEVID, &_ID)!= I2C_ERROR_OK) {
-      _D(DebugPrintln("ADXL345 read ID register failed." , DEBUG_LEVEL_1));
-      return false;
-    }
-    _D(DebugPrintln("successful", DEBUG_LEVEL_2));
+    _D(DebugPrintln("ADXL345 read ID register failed." , DEBUG_LEVEL_1));
+    return false;
   }
   if (_ID != 0xE5){
     _D(DebugPrintln("ADXL345 not found, read 0x" + String(_ID, HEX) + " instead 0xe5." , DEBUG_LEVEL_1));
     return false;
   }
   _D(DebugPrintln("successful", DEBUG_LEVEL_2));
+  _ADXL345_avail = true;
   return true;
 }
 
 bool wake_config_ADXL345(void){
+  if (!_ADXL345_avail) { return false; }
+  if (!getIIC()) { return false; } //do  not combine these 2 if's - compiler optimizations will cut second condition if first is true
   _D(DebugPrint("Wake ADXL345.. ", DEBUG_LEVEL_2);)
   // wake up sensor
-  if(_ADXL345_sleep) { Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ); }
-  if(iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x08) != I2C_ERROR_OK) { setError(E_IIC_ERROR); return false; }
+  if(iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x08) != I2C_ERROR_OK) { setError(E_IIC_ERROR); _D(DebugPrintln(" _ADXL345_wake up failed", DEBUG_LEVEL_1);) return false; }
   _ADXL345_status = true;
   // Set the range to whatever is appropriate for your project
   if (!_ADXL345_setRange(ADXL345_RANGE_16_G)) { setError(E_IIC_ERROR); _D(DebugPrint (" (_ADXL345_setRange failed) ", DEBUG_LEVEL_1);)}
   if (!_ADXL345_setDataRate(ADXL345_DATARATE_12_5_HZ)) { setError(E_IIC_ERROR); _D(DebugPrint (" (_ADXL345_setDataRate failed) ", DEBUG_LEVEL_1);)}
   if (!_ADXL345_setFullResBit(false)) { setError(E_IIC_ERROR); _D(DebugPrint (" (_ADXL345_setDataRate failed) ", DEBUG_LEVEL_1);) }
-  _D(DebugPrintln("successful", DEBUG_LEVEL_2);)
+  _D(if (getError(E_IIC_ERROR)) { DebugPrintln("failed", DEBUG_LEVEL_2); } else { DebugPrintln("successful", DEBUG_LEVEL_2);})
+  freeIIC();
   return true;
 }
 
 bool sleep_ADXL345(){
-  // wake up sensor
+  // knock out sensor
+  if (!_ADXL345_avail) { return false; }
+  if (!getIIC()) { return false; } //do  not combine these 2 if's - compiler optimizations will cut second condition if first is true
   if(iic_writeRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_POWER_CTL, 0x00) != I2C_ERROR_OK) { setError(E_IIC_ERROR); return false; }
   _ADXL345_status = false;
   #ifndef I2C_SWITCH
@@ -84,6 +88,7 @@ bool sleep_ADXL345(){
   pinMode(I2C_SDA, INPUT_PULLDOWN);
   pinMode(I2C_SCL, INPUT_PULLDOWN);
   #endif
+  freeIIC();
   return true;
 }
 /*************************** BANDWIDTH ******************************/
@@ -193,18 +198,27 @@ void init_accel_ULP(uint32_t intervall_us) {
   ulp_set_wakeup_period(0, intervall_us);
   const ulp_insn_t ulp_accel[] = {
 
+  //check if iic is available
+  I_MOVI(R3,IIC_STATUS),
+  I_LD(R0,R3,IIC_REQUESTED),
+  M_BL(15,1),                             // R0 < 1?
+  I_HALT(),                               // iic requested by CPU
+  M_LABEL(15),
+  I_MOVI(R0,1),
+  I_ST(R0,R3,IIC_LOCKED),                 // set IIC_LOCKED to true
+
 #if ULP_LED_BLINK
   //LED flashing in debug mode for check "ULP is running"
   I_WR_REG_BIT(RTC_IO_TOUCH_PAD2_REG, RTC_IO_TOUCH_PAD2_HOLD_S, 0), // HOLD off GPIO 2
   I_MOVI(R3,DEBUG_LED_MEM),               // #mem -> R3
   I_LD(R0,R3,0),                          // R0 = mem]
   I_ADDI(R0,R0,1),
-  M_BGE(91,10),                           //R0 >= 10?
+  M_BGE(91,2),                            // on?
   I_WR_REG_BIT(RTC_GPIO_OUT_W1TC_REG,RTC_GPIO_BIT_LED,1),
   M_BX(92),
   M_LABEL(91),
   I_WR_REG_BIT(RTC_GPIO_OUT_W1TS_REG,RTC_GPIO_BIT_LED,1),
-  M_BL(92,11),                            //R0 < 20?
+  M_BL(92,3),                             // off next turn?
   I_MOVI(R0,0),
   M_LABEL(92),
   I_ST(R0,R3,0),                          // mem = R0
@@ -381,7 +395,14 @@ void init_accel_ULP(uint32_t intervall_us) {
 
     //end of transmissions
     M_LABEL(84),
-    //count measures (R3 holds still ACCEL_DATA_HEADER);
+
+    I_MOVI(R3,IIC_STATUS),
+    I_MOVI(R0,0),
+    I_ST(R0,R3,IIC_LOCKED),                 // set IIC_LOCKED to false
+
+    I_MOVI(R3,ACCEL_DATA_HEADER),
+
+    //count measures;
     I_LD(R0,R3,ACCEL_MEAS_CNT),
     I_ADDI(R0,R0,1),
     I_ST(R0,R3,ACCEL_MEAS_CNT),
@@ -459,8 +480,8 @@ void init_accel_ULP(uint32_t intervall_us) {
 
     I_HALT()                                // HALT COPROCESSOR
   };
-  _D(static_assert(sizeof(ulp_accel) <= (ACCEL_ULP_CODE_SIZE * 4), "ACCEL_ULP_CODE_SIZE TOO SMALL");)
-
+  _D( static_assert(sizeof(ulp_accel) <= (ACCEL_ULP_CODE_SIZE * 4), "ACCEL_ULP_CODE_SIZE TOO SMALL"); )
+  getIIC();
   rtc_gpio_init(I2C_SDA);
   rtc_gpio_set_direction(I2C_SDA, RTC_GPIO_MODE_INPUT_OUTPUT);
   rtc_gpio_init(I2C_SCL);
@@ -484,6 +505,8 @@ void init_accel_ULP(uint32_t intervall_us) {
   RTC_SLOW_MEM[ACCEL_X_REGISTER] = ADXL345_DATAX0;
   RTC_SLOW_MEM[ACCEL_Y_REGISTER] = ADXL345_DATAY0;
   RTC_SLOW_MEM[ACCEL_Z_REGISTER] = ADXL345_DATAZ0;
+  RTC_SLOW_MEM[IIC_STATUS + IIC_REQUESTED] = 0;
+  RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED]    = 0;
 
   size_t size = sizeof(ulp_accel) / sizeof(ulp_insn_t);
   _D(DebugPrintln("ULP code length: " + String(sizeof(ulp_accel) / sizeof(ulp_insn_t)), DEBUG_LEVEL_1); delay(50);)
@@ -492,6 +515,7 @@ void init_accel_ULP(uint32_t intervall_us) {
 #else
   ulp_process_macros_and_load(0, ulp_accel, &size);
 #endif
+  setState(ULP_RUNNING);
   ulp_run(0);
 
 }
@@ -533,6 +557,24 @@ uint16_t _getAccThresCnt(uint16_t dayThres){
   }
   return dayThres;
 }
+
+void set_IIC_request(uint16_t value){
+  RTC_SLOW_MEM[IIC_STATUS + IIC_REQUESTED] = value;
+}
+
+void set_IIC_lock(uint16_t value){
+  RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED]    = value;
+}
+
+bool IICisLocked(void){
+  _D(DebugPrintln("IIC Lock Status : " + String((uint16_t)RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED]), DEBUG_LEVEL_1);)
+  return ((uint16_t)RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED] != 0);
+}
+
+bool gotIIC(void){
+  return ((uint16_t)RTC_SLOW_MEM[IIC_STATUS + IIC_REQUESTED] != 0);
+}
+
 #if USE_MORE_THAN_128_INSN
 /*
  *  need to use a copy of ulp_process_macros_and_load to avoid code too big error - which seems useless

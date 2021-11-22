@@ -8,7 +8,7 @@
 
 static uint16_t errorCode;
 
-void initError(){
+void setupError(){
   errorCode = 0;
 }
 void setError(uint16_t code){

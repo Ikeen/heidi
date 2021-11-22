@@ -37,7 +37,7 @@ String _herdeID(){
   return String(herdeID());
 }
 
-void calcCycleTable(void){
+void setupCycleTable(void){
   bool wrap = false;
   bool daywrap = false;
   uint8_t cycleNo;
@@ -57,9 +57,7 @@ void calcCycleTable(void){
     cycleMinute = (herdeID() % 12) * 5; //1st cycle is odd to avoid LoRa jamming each other
     turnbase = counter;
     while ((counter < MAX_CYCLES_PER_DAY) && __night(cycleHour) ){
-      //_DD(DebugPrint("Boot table night: " + String(cycleNo) + ", " +  LenTwo(String(cycleHour)) + ", " +  LenTwo(String(cycleMinute)) , DEBUG_LEVEL_3));
-      //_DD(if (__night(cycleHour)) { DebugPrintln(" night", DEBUG_LEVEL_3); } else { DebugPrintln(" day", DEBUG_LEVEL_3); } )
-      bootTimeTable[counter][0] = cycleNo;
+       bootTimeTable[counter][0] = cycleNo;
       bootTimeTable[counter][1] = cycleMinute;
       bootTimeTable[counter][2] = cycleHour;
       counter++;
@@ -113,17 +111,6 @@ void calcCycleTable(void){
       }
     }
   }
-  //print
-  /*
-  _D(
-    for(int i=0; i<counter; i++){
-      cycleHour = bootTimeTable[i][2];
-      DebugPrint("Boot table [" + String(i)+ "]: " + String(bootTimeTable[i][0]) + ", " +  LenTwo(String(cycleHour)) + ", " +  LenTwo(String(bootTimeTable[i][1])) , DEBUG_LEVEL_1);
-      if (__night(cycleHour)) { DebugPrintln(" night", DEBUG_LEVEL_1); } else { DebugPrintln(" day", DEBUG_LEVEL_1); }
-    }
-  )
-  */
-
 }
 
 bool isInCycle(int8_t* bootCount){
@@ -251,7 +238,11 @@ bool doDataTransmission(){
 }
 
 bool GPSalert(){
+  #ifdef GPS_MODULE
   return (getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 ) && !getState(GPS_ALERT_PSD));
+  #else
+  return false;
+  #endif
 }
 
 int prevBootCycleNo(void){

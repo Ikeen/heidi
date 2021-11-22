@@ -26,10 +26,6 @@
 extern bool _ADXL345_status;
 
 #define ULP_INTERVALL_US  200000
-#define ACCEL_HI_THRESHOLD   100  //high activity threshold
-#define ACCEL_LO_THRESHOLD    50  //medium activity threshold
-#define ACCEL_HI_CNT_WAKE   3000  //max high activity counts before wake SOC
-#define ACCEL_LO_CNT_WAKE   6000  //max lo activity counts before wake SOC
 /*
  * consider these values refer to a moving average that is determined 5 times per second.
  * a value of 3000 for ACCEL_HI_CNT_WAKE means: wake SOC if moving average of acceleration
@@ -261,18 +257,21 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
 #define ACCEL_DT_LEN 5
 #define ACCEL_Y_VALUES (ACCEL_X_VALUES + ACCEL_DT_LEN)
 #define ACCEL_Z_VALUES (ACCEL_Y_VALUES + ACCEL_DT_LEN)
+#define EXTRA_RTC_DATA (ACCEL_Z_VALUES + ACCEL_DT_LEN)
+#define EXTRA_RTC_DATA_LEN 3
+
+#define IIC_STATUS     EXTRA_RTC_DATA
+#define IIC_REQUESTED  0
+#define IIC_LOCKED     1
+#define IIC_STATUS_LEN 2
+#define DEBUG_LED_MEM  (EXTRA_RTC_DATA + IIC_STATUS_LEN)    //one store place for LED flashing
+
+#define ACCEL_ULP_DATA_SIZE (ACCEL_HD_LEN + ACCEL_DT_LEN + ACCEL_DT_LEN + ACCEL_DT_LEN + EXTRA_RTC_DATA_LEN)
+#define ACCEL_ULP_MEM_SIZE (ACCEL_ULP_CODE_SIZE + ACCEL_ULP_DATA_SIZE)
 
 #define ACCEL_X_REGISTER (ACCEL_X_VALUES + I2C_DATA_REG)
 #define ACCEL_Y_REGISTER (ACCEL_Y_VALUES + I2C_DATA_REG)
 #define ACCEL_Z_REGISTER (ACCEL_Z_VALUES + I2C_DATA_REG)
-
-#define EXTRA_RTC_DATA (ACCEL_Z_VALUES + ACCEL_DT_LEN)
-#define EXTRA_RTC_DATA_LEN 1
-
-#define DEBUG_LED_MEM EXTRA_RTC_DATA     //one store place for LED flashing
-
-#define ACCEL_ULP_DATA_SIZE (ACCEL_HD_LEN + ACCEL_DT_LEN + ACCEL_DT_LEN + ACCEL_DT_LEN + EXTRA_RTC_DATA_LEN)
-#define ACCEL_ULP_MEM_SIZE (ACCEL_ULP_CODE_SIZE + ACCEL_ULP_DATA_SIZE)
 
 /*
  * accelerator data
@@ -312,6 +311,8 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
 #define SCL_L SCL_OUTPUT
 #define SCL_READ    I_RD_REG(RTC_GPIO_IN_REG, RTC_GPIO_BIT_SCL, RTC_GPIO_BIT_SCL)
 
+extern bool CTLenabled;
+
 void init_accel_ULP(uint32_t intervall_us);
 /* get / set measure count value */
 uint16_t get_accel_meas_cnt_ULP();
@@ -339,6 +340,11 @@ uint16_t get_accel_wake2_ULP();
 void set_accel_wake2_ULP(uint16_t val);
 
 uint16_t _getAccThresCnt(uint16_t dayThres);
+
+void set_IIC_request(uint16_t value);
+void set_IIC_lock(uint16_t value);
+bool IICisLocked(void);
+bool gotIIC(void);
 
 #if USE_MORE_THAN_128_INSN
 

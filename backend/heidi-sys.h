@@ -19,13 +19,14 @@ uint8_t herdeID();
 String _herdeID();
 uint8_t animalID();
 
+void setupCycleTable();
+
 bool isInCycle(int8_t* bootCount);
 int  getNextBootMS(void);
 int  timeToNextBootMS(void);
 int  prevBootCycleNo(void);
 bool doDataTransmission();
 bool GPSalert();
-void calcCycleTable();
 bool calcCurrentTimeDiff();
 bool isInTime(const int target_m, const int current_m, const int current_s);
 void setBootTimeFromCurrentTime(tm* sysTime, tm* bootTime);

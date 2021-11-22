@@ -14,6 +14,7 @@
 #endif
 #ifdef I2C_BUS
 #define I2C_ERROR_READ_COUNT (I2C_ERROR_NO_BEGIN + 1)
+#define I2C_ERROR_UNDEFINED (I2C_ERROR_NO_BEGIN + 2)
 #endif
 #ifdef I2C_BUS
 #include <Wire.h>
@@ -88,7 +89,7 @@
 float MeasureTemperature();
 #endif
 
-bool enableControls(bool enable_iic);
+bool enableControls(void);
 void disableControls(bool);
 bool openMeasures(void);
 void closeMeasures(void);
@@ -109,14 +110,15 @@ int MeasureVoltage(uint8_t pin);
 bool init_PCA9536(void);
 #endif
 #ifdef I2C_BUS
+bool getIIC(void);
+void freeIIC(void);
+
 i2c_err_t iic_readRegister(uint8_t devAdress, uint8_t regAdress, uint8_t *value);
 i2c_err_t iic_readRegister16(uint8_t devAdress, uint8_t regAdress, int16_t *value);
 i2c_err_t iic_writeRegister(uint8_t devAdress, uint8_t regAdress, uint8_t value);
 i2c_err_t iic_setRegisterBit(uint8_t devAdress, uint8_t regAdress, int bitPos, bool state);
 i2c_err_t iic_getRegisterBit(uint8_t devAdress, uint8_t regAdress, int bitPos, bool *value);
 #endif
-
-uint8_t iic_x_readRegister(uint8_t devAdress, uint8_t regAdress);
 
 void iic_clockFree(void);
 

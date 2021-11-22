@@ -29,10 +29,10 @@
 typedef __attribute__((__packed__)) struct _t_ConfigData{
    int8_t bootCount;
    int8_t bootCycles; //...cycles between data transmission
-   int8_t sleepMinutes;
-   int8_t nightHourStart;
-   int8_t nightHourEnd;
-   int8_t nightBootCycles;
+  uint8_t sleepMinutes;
+  uint8_t nightHourStart;
+  uint8_t nightHourEnd;
+  uint8_t nightBootCycles;
   uint8_t nightSleepMin;
   uint8_t accNightFactor; //percent
  uint16_t accThres1;
@@ -40,11 +40,10 @@ typedef __attribute__((__packed__)) struct _t_ConfigData{
  uint16_t accAlertThres1;
  uint16_t accAlertThres2;
  uint16_t distAlertThres;
- uint16_t status;
+ uint32_t status;
   int32_t lastTimeDiffMs;
   uint8_t alertFailCount;
   uint8_t dummy8;
- uint16_t dummy16;
   uint8_t telNo[TEL_NO_CNT][TEL_NO_LEN]; // BCD coded (A='+'; B=empty; C-F=not allowed)
 }t_ConfigData;
 
@@ -63,8 +62,8 @@ typedef __attribute__((__packed__)) struct _t_SendData{
   uint8_t  GPShdop; //horizontal position dilution
   uint8_t  satellites;
   uint16_t metersOut;
-  uint16_t accThres1;
-  uint16_t accThres2;
+  uint16_t accThresCnt1;
+  uint16_t accThresCnt2;
   //total size: 28 Bytes;
 }t_SendData;
 
@@ -96,6 +95,9 @@ typedef __attribute__((__packed__)) struct _t_FenceData{
 extern t_ConfigData* heidiConfig;
 extern t_SendData*   availableDataSet[MAX_DATA_SETS];
 extern t_FenceData*  FenceDataSet[FENCE_MAX_POS];
+extern bool newCycleSettings;
+extern bool newAccSettings;
+
 
 void     initConfig(bool reset);
 void     initRTCData(bool reset);
@@ -118,6 +120,10 @@ bool     setSettingsFromHTTPresponse(String response);
 bool     setTelNoFromHTTPresponse(String response);
 bool     newSettingsB64(String b64);
 bool     newTelNoB64(String b64);
+
+void     setNewSetting8(uint8_t *buffer, int pufferPos, int8_t *setting, uint32_t status);
+void     setNewSettingU8(uint8_t *buffer, int pufferPos, uint8_t *setting, uint32_t status);
+void     setNewSettingU16(uint8_t *buffer, int pufferPos, uint16_t *setting, uint32_t status);
 
 void     getRTCDataSpace(uint8_t**);
 int32_t  getCycleTimeMS(void);

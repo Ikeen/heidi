@@ -56,22 +56,25 @@
 #define COMMON_SERIAL
 //#define TEMP_SENSOR
 //#define CHECK_BATTERY
-//#define USE_VOLTAGE_MEAS_PIN
-//#define I2C_BUS
-//#define ACCELEROMETER
+#define USE_VOLTAGE_MEAS_PIN
+#define I2C_BUS
+#define ACCELEROMETER
 //#define I2C_SWITCH
-//#define USE_ULP
+#define USE_ULP
 //#define USE_GPS_ALERT
 //#define SEND_ALERT_SMS
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
-#define DEFAULT_BOOT_CYCLES         3         // ..until transferring data
-#define DEFAULT_CYCLE_DURATION_MSEC 600000    // 10 minutes
-#define DEFAULT_CYCLE_DURATION      10        // 10 minutes
-#define MAX_AWAKE_TIME_POWER        0         //    infinite
-#define MAX_AWAKE_TIME_TIMER        0         //    infinite
+#define DEFAULT_BOOT_CYCLES         32        // ..until transferring data
+#define DEFAULT_CYCLE_DURATION_MSEC 300000    // 5 minutes
+#define DEFAULT_CYCLE_DURATION      5         // 5 minutes
+#define MAX_AWAKE_TIME_POWER        0         // infinite
+#define MAX_AWAKE_TIME_TIMER        0         // infinite
 #endif
 
+#if (MAX_AWAKE_TIME_POWER == 0) || (MAX_AWAKE_TIME_TIMER == 0)
+#pragma warning "timeout disabled!"
+#endif
 
 /*
  * software configuration
@@ -91,8 +94,16 @@
 #define HEIDI_HERDE         0
 #define HEIDI_ANIMAL        1
 #endif
+
+
+
+#ifdef HEIDI_CONFIG_TEST
+#define MIN_CYCLE_DURATION_MSEC     60000     //  1 minutes
+#define MIN_CYCLE_DURATION          1         //  1 minutes
+#else
 #define MIN_CYCLE_DURATION_MSEC     300000    //  5 minutes
 #define MIN_CYCLE_DURATION          5         //  5 minutes
+#endif
 #define MAX_CYCLE_DURATION_MSEC     3600000   //  1 hour
 #define MAX_CYCLE_DURATION          60        //  1 hour
 #define MAX_CYCLES_PER_DAY          288       //  5 minutes each
@@ -117,8 +128,15 @@
 #define ONE_MINUTE          60000
 #define MS_PER_DAY          86400000
 
-#define DEFALUT_ACCELERATION_THRESHOLD  10000 /* never ever do an alert */
-#define DEFALUT_ACCEL_THRES_MAX_COUNT   10000 /* never ever do an alert */
+#ifdef HEIDI_CONFIG_TEST
+#define DEFALUT_ACCELERATION_THRESHOLD_1    50
+#define DEFALUT_ACCELERATION_THRESHOLD_2   150
+#define DEFALUT_ACCEL_THRES_MAX_COUNT    10000 /* never ever do an alert */
+#else
+#define DEFALUT_ACCELERATION_THRESHOLD_1  1000
+#define DEFALUT_ACCELERATION_THRESHOLD_2  3000
+#define DEFALUT_ACCEL_THRES_MAX_COUNT    10000 /* never ever do an alert */
+#endif
 
 #define DEFALUT_NIGHT_HOUR_START_UTC    18
 #define DEFALUT_NIGHT_HOUR_END_UTC      5
@@ -128,23 +146,25 @@
 #define GSM_POWER_SAVE_3_VOLTAGE    3.4   //do nothing just deep sleep
 #define GSM_POWER_SAVE_4_VOLTAGE    3.3   //do nothing deep sleep for 1 hour
 
-#define PRE_MEAS_STATE     0x0001
-#define PRE_GPS_ALERT      0x0002
-#define GPS_ALERT_1        0x0004
-#define GPS_ALERT_2        0x0008
-#define GPS_ALERT_PSD      0x0010
-#define PRE_ACC_ALERT      0x0020
-#define ACC_ALERT_1        0x0040
-#define ACC_ALERT_2        0x0080
-#define ACC_ALERT_PSD      0x0100
-#define POWER_SAVE_1       0x0200
-#define POWER_SAVE_2       0x0400
-#define NOT_IN_CYCLE       0x0800
-#define NEW_FENCE          0x1000
-#define NEW_SETTINGS       0x2000
-#define RESET_INITS        0x4000
-#define TRSMT_DATA_ERROR   0x8000
-//#define GOOD_NIGHT         0x2000
+#define PRE_MEAS_STATE      0x00000001
+#define PRE_GPS_ALERT       0x00000002
+#define GPS_ALERT_1         0x00000004
+#define GPS_ALERT_2         0x00000008
+#define GPS_ALERT_PSD       0x00000010 //alert passed
+#define PRE_ACC_ALERT       0x00000020
+#define ACC_ALERT_1         0x00000040
+#define ACC_ALERT_2         0x00000080
+#define ACC_ALERT_PSD       0x00000100
+#define POWER_SAVE_1        0x00000200
+#define POWER_SAVE_2        0x00000400
+#define NOT_IN_CYCLE        0x00000800
+#define NEW_FENCE           0x00001000
+#define NEW_SETTINGS        0x00002000
+#define NEW_ACC_DATA        0x00004000
+#define RESET_INITS         0x00008000
+#define TRSMT_DATA_ERROR    0x00010000
+#define ULP_RUNNING         0x00020000
+#define FROM_PWR_SAVE_SLEEP 0x00040000
 
 #ifdef HEIDI_CONFIG_1
 #ifdef HEIDI_CONFIG_2

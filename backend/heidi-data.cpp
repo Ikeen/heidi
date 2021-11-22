@@ -17,11 +17,14 @@
 t_ConfigData* heidiConfig;
 t_SendData*   availableDataSet[MAX_DATA_SETS];
 t_FenceData*  FenceDataSet[FENCE_MAX_POS];
+bool newCycleSettings = false;
+bool newFenceSettings = false;
+bool newAccSettings   = false;
 
 void initConfig(bool reset){
   heidiConfig = (t_ConfigData*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
   if(reset) {
-    _D(DebugPrintln("RESET all RTC data", DEBUG_LEVEL_1);)
+    _D(DebugPrintln("Power on reset: reset all RTC data", DEBUG_LEVEL_1);)
     heidiConfig->bootCount       = START_FROM_RESET;
     heidiConfig->bootCycles      = DEFAULT_BOOT_CYCLES;
     heidiConfig->sleepMinutes    = DEFAULT_CYCLE_DURATION;
@@ -31,9 +34,9 @@ void initConfig(bool reset){
     heidiConfig->nightSleepMin   = DEFAULT_CYCLE_DURATION;
     heidiConfig->lastTimeDiffMs  = 0;
     heidiConfig->status          = (NEW_FENCE | RESET_INITS);
-    heidiConfig->accThres1       = DEFALUT_ACCELERATION_THRESHOLD;
+    heidiConfig->accThres1       = DEFALUT_ACCELERATION_THRESHOLD_1;
     heidiConfig->accAlertThres1  = DEFALUT_ACCEL_THRES_MAX_COUNT;
-    heidiConfig->accThres2       = DEFALUT_ACCELERATION_THRESHOLD;
+    heidiConfig->accThres2       = DEFALUT_ACCELERATION_THRESHOLD_2;
     heidiConfig->accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT;
     heidiConfig->accNightFactor  = 100;  //equals to 1
     heidiConfig->alertFailCount  = 0;
@@ -67,9 +70,10 @@ void initRTCData(bool reset){
     }
     curSet += FENCE_SET_LEN;
   }
-#ifdef USE_ULP
+  #ifdef USE_ULP
   //init ULP Variables
   if(reset){
+    _D(DebugPrintln("Power on reset: reset all ULP vars!", DEBUG_LEVEL_1);)
     RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_DATA_CUR] = 0;
     RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_DIFF_VAL]   = 0;
     RTC_SLOW_MEM[ACCEL_X_VALUES + I2C_TRNS_RES] = 0;
@@ -87,13 +91,15 @@ void initRTCData(bool reset){
     set_accel_meas_cnt_ULP(0);
     set_accel_avrerage_ULP(0);
     set_accel_excnt1_ULP(0);
-    set_accel_exthr1_ULP(ACCEL_LO_THRESHOLD);
-    set_accel_wake1_ULP(ACCEL_LO_CNT_WAKE);
+    set_accel_exthr1_ULP(DEFALUT_ACCELERATION_THRESHOLD_1);
+    set_accel_wake1_ULP(DEFALUT_ACCEL_THRES_MAX_COUNT);
     set_accel_excnt2_ULP(0);
-    set_accel_exthr2_ULP(ACCEL_HI_THRESHOLD);
-    set_accel_wake2_ULP(ACCEL_HI_CNT_WAKE);
+    set_accel_exthr2_ULP(DEFALUT_ACCELERATION_THRESHOLD_2);
+    set_accel_wake2_ULP(DEFALUT_ACCEL_THRES_MAX_COUNT);
+    set_IIC_request(0);
+    set_IIC_lock(0);
   }
-#endif
+  #endif
 }
 
 void initDataSet(t_SendData* DataSet){
@@ -108,27 +114,27 @@ void initDataSet(t_SendData* DataSet){
   DataSet->errCode     = 0;
   DataSet->satellites  = 0;
   DataSet->metersOut   = 0;
-  DataSet->accThres1   = 0;
-  DataSet->accThres2   = 0;
+  DataSet->accThresCnt1   = 0;
+  DataSet->accThresCnt2   = 0;
 
 }
 bool emptyDataSet(t_SendData* DataSet){
   return (DataSet->date == 0);
 }
 void copyDataSet(t_SendData* _from, t_SendData* _to){
-  _to->longitude  = _from->longitude ;
-  _to->latitude   = _from->latitude  ;
-  _to->altitude   = _from->altitude  ;
-  _to->date       = _from->date      ;
-  _to->time       = _from->time      ;
-  _to->battery    = _from->battery   ;
-  _to->temperature= _from->temperature;
-  _to->satellites = _from->satellites;
-  _to->GPShdop    = _from->GPShdop   ;
-  _to->errCode    = _from->errCode   ;
-  _to->metersOut  = _from->metersOut ;
-  _to->accThres1  = _from->accThres1 ;
-  _to->accThres2  = _from->accThres2 ;
+  _to->longitude    = _from->longitude ;
+  _to->latitude     = _from->latitude  ;
+  _to->altitude     = _from->altitude  ;
+  _to->date         = _from->date      ;
+  _to->time         = _from->time      ;
+  _to->battery      = _from->battery   ;
+  _to->temperature  = _from->temperature;
+  _to->satellites   = _from->satellites;
+  _to->GPShdop      = _from->GPShdop   ;
+  _to->errCode      = _from->errCode   ;
+  _to->metersOut    = _from->metersOut ;
+  _to->accThresCnt1 = _from->accThresCnt1 ;
+  _to->accThresCnt2 = _from->accThresCnt2 ;
 
  }
 /* this function is deprecated */
@@ -152,7 +158,7 @@ String generateSendLine(t_SendData* DataSet){
     result += "&FreeValue1=" + String((int)DataSet->satellites);
     result += "&FreeValue2="  + String((float)DataSet->temperature / 100, 2);
     //result += "&FreeValue3="  + String(DataSet->errCode, HEX);
-    result += "&FreeValue3="  + String(DataSet->accThres1);
+    result += "&FreeValue3="  + String(DataSet->accThresCnt1);
     result += "&FreeValue4="  + String((int)DataSet->GPShdop);
     result += "&FreeValue5="  + String((int)DataSet->metersOut);
   }
@@ -189,7 +195,7 @@ String generateMultiSendLine(int first, int last, int* setsDone){
       result += "&F1" + String(k) + "=" + String((int)DataSet->satellites);
       result += "&F2" + String(k) + "=" + String((float)DataSet->temperature / 100, 2);
       //result += "&F3" + String(k) + "=" + String(DataSet->errCode, HEX);
-      result += "&F3" + String(k) + "=" + String(DataSet->accThres1);
+      result += "&F3" + String(k) + "=" + String(DataSet->accThresCnt1);
       result += "&F4" + String(k) + "=" + String((int)DataSet->GPShdop);
       result += "&F5" + String(k) + "=" + String((int)DataSet->metersOut);
       if (k == 83) { break; } //1000 max POST vars reached
@@ -228,8 +234,8 @@ String generateMulti64SendLine(int first, int last){
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 18, DataSet->errCode); //9
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, DataSet->satellites); //10
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, DataSet->GPShdop); //11
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThres1);  //12
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThres2);  //13
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThresCnt1);  //12
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThresCnt2);  //13
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //14 = HEX_BUFFER_VALUES
       _D(
         String HexStr = "";
@@ -288,61 +294,20 @@ bool newSettingsB64(String b64){
   unsigned char buffer[256];
   int dataLen = b64Decode(b64, buffer);
   if (dataLen < 3) { return false; };
-  if ( buffer[0] >= 1 ) {
-    uint8_t dummy = _copyBufferToUInt16(buffer, 1);
-    if(dummy != heidiConfig->bootCycles){
-      heidiConfig->bootCycles = dummy;
-      setState(NEW_SETTINGS);
-      _DD( DebugPrintln("settings bootCycles       " + String(heidiConfig->bootCycles), DEBUG_LEVEL_3); )
-    } _DD( else { DebugPrintln("settings bootCycles keeps the same", DEBUG_LEVEL_3); } )
-  }
-  if ( buffer[0] >= 2 ) {
-    uint8_t dummy = _copyBufferToUInt16(buffer, 3);
-    if(dummy != heidiConfig->nightBootCycles){
-      heidiConfig->nightBootCycles = dummy;
-      setState(NEW_SETTINGS);
-      _DD( DebugPrintln("settings nightBootCycles  " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
-    } _DD( else { DebugPrintln("settings nightBootCycles keeps the same", DEBUG_LEVEL_3); } )
-  }
-  if ( buffer[0] >= 3 ) {
-    uint8_t dummy = _copyBufferToUInt16(buffer, 5);
-    if(dummy != heidiConfig->sleepMinutes){
-      heidiConfig->sleepMinutes = dummy;
-      setState(NEW_SETTINGS);
-      _DD( DebugPrintln("settings sleepMinutes     " + String(heidiConfig->sleepMinutes), DEBUG_LEVEL_3); )
-    } _DD( else { DebugPrintln("settings sleepMinutes keeps the same", DEBUG_LEVEL_3); } )
-    heidiConfig->sleepMinutes     = _copyBufferToUInt16(buffer, 5);
-  }
-  if ( buffer[0] >= 4 ) {
-    uint8_t dummy = _copyBufferToUInt16(buffer, 7);
-    if(dummy != heidiConfig->nightSleepMin){
-      heidiConfig->nightSleepMin = dummy;
-      setState(NEW_SETTINGS);
-      _DD( DebugPrintln("settings nightSleepMin    " + String(heidiConfig->nightSleepMin), DEBUG_LEVEL_3); )
-    } _DD( else { DebugPrintln("settings nightSleepMin keeps the same", DEBUG_LEVEL_3); } )
-  }
-  if ( buffer[0] >= 5 ) {
-    uint8_t dummy = _copyBufferToUInt16(buffer, 9);
-    if(dummy != heidiConfig->nightHourStart){
-      heidiConfig->nightHourStart = dummy;
-      setState(NEW_SETTINGS);
-      _DD( DebugPrintln("settings nightHourStart   " + String(heidiConfig->nightHourStart), DEBUG_LEVEL_3); )
-    } _DD( else { DebugPrintln("settings nightHourStart keeps the same", DEBUG_LEVEL_3); } )
-  }
-  if ( buffer[0] >= 6 ) {
-    uint8_t dummy = _copyBufferToUInt16(buffer, 11);
-    if(dummy != heidiConfig->nightHourEnd){
-      heidiConfig->nightHourEnd = dummy;
-      setState(NEW_SETTINGS);
-      _DD( DebugPrintln("settings nightHourEnd     " + String(heidiConfig->nightHourEnd), DEBUG_LEVEL_3); )
-    } _DD( else { DebugPrintln("settings nightHourEnd keeps the same", DEBUG_LEVEL_3); } )
-  }
-  if ( buffer[0] >= 7 ) { heidiConfig->distAlertThres   = _copyBufferToUInt16(buffer,13); _DD( DebugPrintln("settings distAlertThres   " + String(heidiConfig->distAlertThres), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 8 ) { heidiConfig->accThres1        = _copyBufferToUInt16(buffer,15); _DD( DebugPrintln("settings accThres1        " + String(heidiConfig->accThres1), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 9 ) { heidiConfig->accAlertThres1   = _copyBufferToUInt16(buffer,17); _DD( DebugPrintln("settings accAlertThres1   " + String(heidiConfig->accAlertThres1), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 10) { heidiConfig->accThres2        = _copyBufferToUInt16(buffer,19); _DD( DebugPrintln("settings accThres2        " + String(heidiConfig->accThres2), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 11) { heidiConfig->accAlertThres2   = _copyBufferToUInt16(buffer,21); _DD( DebugPrintln("settings accAlertThres2   " + String(heidiConfig->accAlertThres2), DEBUG_LEVEL_3); )}
-  if ( buffer[0] >= 12) { heidiConfig->accNightFactor   = _copyBufferToUInt16(buffer,23); _DD( DebugPrintln("settings accNightFact     " + String(heidiConfig->accNightFactor), DEBUG_LEVEL_3); )}
+  if ( buffer[0] >= 1  ) { setNewSetting8(  buffer, 1, &heidiConfig->bootCycles, NEW_SETTINGS); }
+  if ( buffer[0] >= 2  ) { setNewSettingU8( buffer, 3, &heidiConfig->nightBootCycles, NEW_SETTINGS); }
+  if ( buffer[0] >= 3  ) { setNewSettingU8( buffer, 5, &heidiConfig->sleepMinutes, NEW_SETTINGS); }
+  if ( buffer[0] >= 4  ) { setNewSettingU8( buffer, 7, &heidiConfig->nightSleepMin, NEW_SETTINGS); }
+  if ( buffer[0] >= 5  ) { setNewSettingU8( buffer, 9, &heidiConfig->nightHourStart, NEW_SETTINGS); }
+  if ( buffer[0] >= 6  ) { setNewSettingU8( buffer,11, &heidiConfig->nightHourEnd, NEW_SETTINGS); }
+  if ( buffer[0] >= 7  ) { setNewSettingU16(buffer,13, &heidiConfig->distAlertThres, NEW_SETTINGS); }
+
+  if ( buffer[0] >= 8  ) { setNewSettingU16(buffer,15, &heidiConfig->accThres1, NEW_ACC_DATA); }
+  if ( buffer[0] >= 9  ) { setNewSettingU16(buffer,17, &heidiConfig->accAlertThres1, NEW_ACC_DATA); }
+  if ( buffer[0] >= 10 ) { setNewSettingU16(buffer,19, &heidiConfig->accThres2, NEW_ACC_DATA); }
+  if ( buffer[0] >= 11 ) { setNewSettingU16(buffer,21, &heidiConfig->accAlertThres2, NEW_ACC_DATA); }
+  if ( buffer[0] >= 12 ) { setNewSettingU8( buffer,23, &heidiConfig->accNightFactor, NEW_ACC_DATA); }
+
   if (heidiConfig->sleepMinutes < MIN_CYCLE_DURATION) { heidiConfig->sleepMinutes = MIN_CYCLE_DURATION; }
   if (heidiConfig->nightSleepMin < MIN_CYCLE_DURATION) { heidiConfig->nightSleepMin = MIN_CYCLE_DURATION; }
   if (heidiConfig->sleepMinutes > MAX_CYCLE_DURATION) { heidiConfig->sleepMinutes = MAX_CYCLE_DURATION; }
@@ -359,6 +324,29 @@ bool newSettingsB64(String b64){
   return true;
 }
 
+void setNewSetting8(uint8_t *buffer, int pufferPos, int8_t *setting, uint32_t status){
+  int8_t dummy = _copyBufferToUInt16(buffer, pufferPos);
+  if(dummy != *setting){
+    *setting = dummy;
+    setState(status);
+    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
+  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
+}
+void setNewSettingU8(uint8_t *buffer, int pufferPos, uint8_t *setting, uint32_t status){
+  uint8_t dummy = _copyBufferToUInt16(buffer, pufferPos);
+  if(dummy != *setting){
+    *setting = dummy;
+    setState(status);
+    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
+  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
+}void setNewSettingU16(uint8_t *buffer, int pufferPos, uint16_t *setting, uint32_t status){
+  uint16_t dummy = _copyBufferToUInt16(buffer, pufferPos);
+  if(dummy != *setting){
+    *setting = dummy;
+    setState(status);
+    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
+  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
+}
 bool newTelNoB64(String b64){
   unsigned char buffer[256];
   int dataLen = b64Decode(b64, buffer);
@@ -528,8 +516,7 @@ void testRTC(t_SendData* currentDataSet, tm* bootTime){
   _PrintShortSummary(DEBUG_LEVEL_2);
   _PrintFence(DEBUG_LEVEL_2);
   testRTCbounary();
-  //goto_sleep(60000);
-}
+ }
 void fillRTCbounary(){
   _D(DebugPrintln("fill RTC memory with test pattern", DEBUG_LEVEL_2);)
   for (int i=(RTC_DATA_SPACE >> 2); i<RTC_TEST_MAX_MEM; i++ ){ RTC_SLOW_MEM[i] = RTC_TEST_PATTERN; }

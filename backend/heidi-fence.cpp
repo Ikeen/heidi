@@ -283,16 +283,6 @@ void testGeoFencing()
   t_PointData poi;
   clearFence();
 
-
-  /*
-[16:01:42:779] new fence by more than: -1 poles␍␊
-[16:01:42:779] set lat: 51.009199, lng: 13.342415␍␊
-[16:01:42:789] set lat: 51.008855, lng: 13.342501␍␊
-[16:01:42:794] set lat: 51.008831, lng: 13.342844␍␊
-[16:01:42:799] set lat: 51.008909, lng: 13.343155␍␊
-[16:01:42:804] Fence: 4 poles set␍␊
-  */
-
   addFencePoint(51.009199, 13.342415);
   addFencePoint(51.008855, 13.342501);
   addFencePoint(51.008831, 13.342844);
