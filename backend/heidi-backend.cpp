@@ -393,11 +393,11 @@ bool setupSystemDateTime(tm* systime, int timeOut){
 void gotoSleep(int32_t mseconds){
   if (watchd != NULL) { esp_timer_delete(watchd); }
   disableControls(true);
-  #if !(SCL == GPIO_NUM_4)
+  #if !(I2C_SCL == GPIO_NUM_4) //if ULP uses I2C we must not set SDA & SCL to INPUT
   pinMode(GPIO_NUM_4,  INPUT); //SCL
   #endif
   pinMode(GPIO_NUM_5,  INPUT);
-  #if !(SDA == GPIO_NUM_13)
+  #if !(I2C_SDA == GPIO_NUM_13)//if ULP uses I2C we must not set SDA & SCL to INPUT
   pinMode(GPIO_NUM_13, INPUT); //SDA, (GSM_ENABLE_PIN)
   #endif
   pinMode(GPIO_NUM_14, INPUT);
