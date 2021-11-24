@@ -235,7 +235,7 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
 #define I2C_DEBUG   0                  //need to increase code size if enabled
 #define I2C_SUCCESS 0
 #define I2C_FAILED  1
-#define ACCEL_ULP_CODE_SIZE 200
+#define ACCEL_ULP_CODE_SIZE 196
 #define ACCEL_DATA_HEADER ACCEL_ULP_CODE_SIZE
 #define ACCEL_MEAS_CNT 0
 #define ACCEL_LOOP_CUR 1

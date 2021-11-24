@@ -15,7 +15,6 @@
 #include <LoRa.h>
 #include <esp_deep_sleep.h>
 #include <esp_timer.h>
-#include <HardwareSerial.h>
 #include <driver/adc.h>
 #include <rom/rtc.h>
 #include "heidi-defines.h"
@@ -25,6 +24,7 @@
 #include "heidi-gps.h"
 #include "heidi-fence.h"
 #include "heidi-error.h"
+//#include "heidi-flash.h"
 
 
 #define SCK     5    // GPIO5  -- SX1278's SCK
@@ -68,9 +68,9 @@ void setupWatchDog(uint32_t timeOutMS);
 void   handlePreMeasuring(void);
 #endif
 #ifdef GSM_MODULE
-void   transmitData(t_SendData* currentDataSet);
+void   transmitData(t_SendData*);
 #endif
-void   checkGPSalert(t_SendData* currentDataSet);
+void   checkGPSalert(t_SendData*);
 void   checkGPSposition(t_SendData* currentDataSet, int timeOut);
 double checkBattery(void);
 void   checkCycle(void);

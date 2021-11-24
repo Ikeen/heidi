@@ -37,8 +37,8 @@ void setup()
   int  timeOut = MAX_AWAKE_TIME_TIMER;
   bool powerOnReset = wasPowerOnReset();
   if (wasbrownOut()) { setState(RESET_INITS); doSleepRTCon(MAX_CYCLE_DURATION_MSEC); }
-  _D(
-  setupDebug(startMS, powerOnReset);)
+  //setupFlashData(powerOnReset);
+  _D(setupDebug(startMS, powerOnReset);)
   setupError();
   setupData(powerOnReset);
   setupCycleTable();
@@ -55,10 +55,10 @@ void setup()
   #ifdef USE_VOLTAGE_MEAS_PIN
   /* best is to check battery before enabling measures...*/
   volt = checkBattery();
-  openMeasures();
+  enableMeasures();
   #else
   /*... otherwise we need to enable measures before, what may lead into brown-outs */
-  openMeasures();
+  enableMeasures();
   volt = checkBattery();
   #endif
 
@@ -99,8 +99,8 @@ void setup()
   //_D(clrState(NEW_FENCE); DebugPrintln("!!!!!! NEW FENCE off !!!!!", DEBUG_LEVEL_1);) //!!!!!!!!
 
   checkGPSposition(currentDataSet, timeOut); //closes GPS
-  closeMeasures();
-  finalizeDataSet(currentDataSet);
+  finalizeDataSet(currentDataSet); //does last measurements
+  disableMeasures();
 
 #ifdef GSM_MODULE
   _D(PRINT_ALERT_STATUS)
@@ -146,7 +146,7 @@ void handlePreMeasuring(void){
     #ifdef GPS_MODULE
     openGPS();
     #endif
-    EnableHoldPin(MEASURES_ENABLE_PIN);
+    enableHoldPin(MEASURES_ENABLE_PIN);
     _D(DebugPrintln("Sleep for : " + String(uint32_t((PRE_CYCLE_TIME - millis())/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
     doSleepRTCon(PRE_CYCLE_TIME - millis());
   }
@@ -252,7 +252,7 @@ void checkCycle(void){
 
 void finalizeDataSet(t_SendData* currentDataSet){
   #ifdef TEMP_SENSOR
-  currentDataSet->temperature = (int16_t)(MeasureTemperature()*100);
+  currentDataSet->temperature = (int16_t)(measureTemperature()*100);
   _D(DebugPrintln("Temperature: " + String(((float)currentDataSet->temperature / 100)) + "C", DEBUG_LEVEL_1);)
   #endif
   #ifdef ACCELEROMETER
@@ -301,7 +301,7 @@ void finalizeHeidiStatus(bool powerOnReset){
   #endif
   #ifdef USE_ULP
   if (getState(NEW_ACC_DATA | FROM_PWR_SAVE_SLEEP) || powerOnReset || (!getState(ULP_RUNNING))){
-    stopULP();
+    disableULP();
     init_accel_ULP(ULP_INTERVALL_US);
     clrState(NEW_ACC_DATA);
   }
@@ -393,25 +393,7 @@ bool setupSystemDateTime(tm* systime, int timeOut){
 void gotoSleep(int32_t mseconds){
   if (watchd != NULL) { esp_timer_delete(watchd); }
   disableControls(true);
-  #if !(I2C_SCL == GPIO_NUM_4) //if ULP uses I2C we must not set SDA & SCL to INPUT
-  pinMode(GPIO_NUM_4,  INPUT); //SCL
-  #endif
-  pinMode(GPIO_NUM_5,  INPUT);
-  #if !(I2C_SDA == GPIO_NUM_13)//if ULP uses I2C we must not set SDA & SCL to INPUT
-  pinMode(GPIO_NUM_13, INPUT); //SDA, (GSM_ENABLE_PIN)
-  #endif
-  pinMode(GPIO_NUM_14, INPUT);
-  pinMode(GPIO_NUM_15, INPUT);
-  pinMode(GPIO_NUM_16, INPUT); //RXD
-  pinMode(GPIO_NUM_17, INPUT); //TXD
-  pinMode(GPIO_NUM_18, INPUT);
-  pinMode(GPIO_NUM_19, INPUT);
-  pinMode(GPIO_NUM_21, INPUT); //VOLT_ENABLE_PIN, GSM_RST (TXD)
-  pinMode(GPIO_NUM_22, INPUT); //TEMP_SENSOR_PIN
-  pinMode(GPIO_NUM_23, INPUT); //GSM_ENABLE_PIN, (RXD)
-  pinMode(GPIO_NUM_25, INPUT); //MEASURES_ENABLE_PIN
-  pinMode(GPIO_NUM_26, INPUT);
-  pinMode(GPIO_NUM_27, INPUT);
+  disableGPIOs();
 
   int32_t sleeptime = mseconds;
   _DD(DebugPrintln("Sleep requested for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_3); delay(50);)
@@ -424,7 +406,7 @@ void gotoSleep(int32_t mseconds){
     setState(PRE_MEAS_STATE);
     _D(DebugPrintln("Pre-Measure on.", DEBUG_LEVEL_1); delay(50);)
     sleeptime -= PRE_CYCLE_TIME;
-    DisableHoldPin(MEASURES_ENABLE_PIN);
+    disableHoldPin(MEASURES_ENABLE_PIN);
   }
   #endif
   _D(DebugPrintln("Sleep for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
@@ -502,12 +484,12 @@ double checkBattery(void){
   val = (double)(_dval + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER;
   _D(DebugPrintln("Battery: " + String(val, 2) + "V [" + String(_dval) + "]", DEBUG_LEVEL_1); delay(50);)
   if (val <= GSM_POWER_SAVE_3_VOLTAGE){
-    setState(FROM_POWER_SAVE_SLEEP);
+    setState(FROM_PWR_SAVE_SLEEP);
     #ifdef ACCELEROMETER
     sleep_ADXL345();
     #endif
     #ifdef USE_ULP
-    stopULP();
+    disableULP();
     #endif
     disableControls(true);
      if (val <= GSM_POWER_SAVE_4_VOLTAGE){ // low Battery?
@@ -560,9 +542,9 @@ void testMeasure(){
 	  measures     = 0;
   }
 }
+#ifdef GSM_MODULE
 byte hexbuffer[35] = { 0x0e, 0x01, 0x01, 0xa7, 0x55, 0x0a, 0x03, 0xe5, 0x97, 0xcb, 0x00, 0x1c, 0x01, 0xa7, 0x52, 0x7d, 0x8a, 0x4b, 0x0f, 0xdd, 0x09, 0x00, 0x00, 0x05, 0x00, 0x44, 0x00, 0x9c, 0x01, 0x20, 0x01, 0x00, 0x00, 0x2b, 0x40 };
 void testGSM(void){
-  #ifdef GSM_MODULE
   if(openGSM()){
     if (GSMsetup()){
       String sendLine = "X01=" + b64Encode(hexbuffer, 35);
@@ -585,7 +567,7 @@ void testGSM(void){
     GSMshutDown();
     closeGSM();
   }
-  #endif
 }
+#endif
 
 #endif

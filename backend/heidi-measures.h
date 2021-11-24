@@ -22,8 +22,8 @@
 #include "heidi-debug.h"
 #include "heidi-error.h"
 
-#define I2C_SDA GPIO_NUM_13
-#define I2C_SCL GPIO_NUM_4
+#define I2C_SDA GPIO_NUM_13      //when change - take care for gotoSleep() - function settings
+#define I2C_SCL GPIO_NUM_4       //when change - take care for gotoSleep() - function settings
 #define I2C_FREQ 100000L
 
 
@@ -86,23 +86,25 @@
 #define TEMPERATURE_NOT_SET   -27315
 
 #ifdef TEMP_SENSOR
-float MeasureTemperature();
+float measureTemperature();
 #endif
 
 bool enableControls(void);
 void disableControls(bool);
-bool openMeasures(void);
-void closeMeasures(void);
-void stopULP(void);
+bool enableMeasures(void);
+void disableMeasures(void);
 void enableULP(void);
-void EnableHoldPin(gpio_num_t which);
-void DisableHoldPin(gpio_num_t which);
+void disableULP(void);
+void enableHoldPin(gpio_num_t which);
+void disableHoldPin(gpio_num_t which);
+void disableGPIOs(void);
 
 void VoltOn(void);
 void VoltOff(void);
 void GSMOn(void);
 void GSMOff(void);
 void LED_off(void);
+void setGPIOInput(gpio_num_t which);
 
 int MeasureVoltage(uint8_t pin);
 

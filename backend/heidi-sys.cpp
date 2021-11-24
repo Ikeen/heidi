@@ -30,11 +30,19 @@ uint8_t animalID(){
   return HEIDI_ANIMAL;
 }
 
+String intString4(uint16_t val){
+  if (val < 10) { return "000" + String(val); }
+  if (val < 100) { return "00" + String(val); }
+  if (val < 1000) { return "0" + String(val); }
+  return String(val);
+}
+
+
 String _herdeID(){
-  if (herdeID() < 10) { return "000" + String(herdeID()); }
-  if (herdeID() < 100) { return "00" + String(herdeID()); }
-  if (herdeID() < 1000) { return "0" + String(herdeID()); }
-  return String(herdeID());
+  return intString4(herdeID());
+}
+String _animalID(){
+  return intString4(animalID());
 }
 
 void setupCycleTable(void){

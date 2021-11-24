@@ -218,7 +218,7 @@ bool openGPS(){
     _D(DebugPrintln("GSM still enabled - cannot open GPS", DEBUG_LEVEL_1); delay(50);)
     return false;
   }
-  if (!openMeasures()){
+  if (!enableMeasures()){
     _D(DebugPrintln("enable GPS power failed", DEBUG_LEVEL_1); delay(50);)
     return false;
   }
@@ -236,7 +236,7 @@ void closeGPS(){
   if (GPSenabled){
     SerialGPS.flush();
     SerialGPS.end();
-    closeMeasures();
+    disableMeasures();
     _D(DebugPrintln("GPS closed", DEBUG_LEVEL_2));
   } _D(else { DebugPrintln("GPS already closed", DEBUG_LEVEL_2); })
   GPSenabled = false;

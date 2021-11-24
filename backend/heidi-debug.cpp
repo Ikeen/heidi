@@ -21,9 +21,7 @@ void DebugPrint(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ Seri
 void DebugPrintln(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ Serial.println(number); }}
 
 void setupDebug(int startMS, bool powerOnReset){
-  Serial.begin(115200);
-  Serial.println("Up and running...!");
-  if(powerOnReset){ delay(3000); }
+  if(!powerOnReset){ Serial.begin(115200); } else { delay(3000); }
   DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1); DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);
   checkWakeUpReason();
   #if (MAX_AWAKE_TIME_POWER == 0) || (MAX_AWAKE_TIME_TIMER == 0)

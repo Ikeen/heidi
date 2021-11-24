@@ -107,7 +107,7 @@ bool init_PCA9536(void){
 }
 #endif
 
-void stopULP(void){
+void disableULP(void){
   CLEAR_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN);
   #if ULP_LED_BLINK
   rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_DISABLED);
@@ -121,17 +121,45 @@ void enableULP(void){
   rtc_gpio_set_direction(I2C_SCL, RTC_GPIO_MODE_INPUT_OUTPUT);
   SET_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN);
 }
-void EnableHoldPin(gpio_num_t which){
+void enableHoldPin(gpio_num_t which){
   gpio_hold_en(which);
   //gpio_deep_sleep_hold_en();
 }
-void DisableHoldPin(gpio_num_t which){
+void disableHoldPin(gpio_num_t which){
   gpio_hold_dis(which);
   //gpio_deep_sleep_hold_dis();
 }
 
+void disableGPIOs(void){
+  setGPIOInput(GPIO_NUM_4 ); //SCL
+  setGPIOInput(GPIO_NUM_5 );
+  setGPIOInput(GPIO_NUM_13); //SDA, (GSM_ENABLE_PIN)
+  setGPIOInput(GPIO_NUM_14);
+  setGPIOInput(GPIO_NUM_15);
+  setGPIOInput(GPIO_NUM_16); //RXD
+  setGPIOInput(GPIO_NUM_17); //TXD
+  setGPIOInput(GPIO_NUM_18);
+  setGPIOInput(GPIO_NUM_19);
+  setGPIOInput(GPIO_NUM_21); //VOLT_ENABLE_PIN, GSM_RST (TXD)
+  setGPIOInput(GPIO_NUM_22); //TEMP_SENSOR_PIN
+  setGPIOInput(GPIO_NUM_23); //GSM_ENABLE_PIN, (RXD)
+  setGPIOInput(GPIO_NUM_25); //MEASURES_ENABLE_PIN
+  setGPIOInput(GPIO_NUM_26);
+  setGPIOInput(GPIO_NUM_27);
+}
+
+void setGPIOInput(gpio_num_t which){
+  #ifdef USE_ULP
+  if ((which != I2C_SDA) && (which != I2C_SCL)) {
+    pinMode(which, INPUT);
+  }
+  #else
+  pinMode(GPIO_NUM_27, INPUT);
+  #endif
+}
+
 #ifdef TEMP_SENSOR
-float MeasureTemperature(){
+float measureTemperature(){
   float temp;
   int start = millis();
   tempSensor.begin();
@@ -159,7 +187,7 @@ int MeasureVoltage(uint8_t pin){
   return(analog_value);
 }
 
-bool openMeasures(){
+bool enableMeasures(){
   if (!CTLenabled){
     _D(DebugPrintln("controls not enabled - cannot measure", DEBUG_LEVEL_1); delay(50););
     return false;
@@ -196,7 +224,7 @@ bool openMeasures(){
   running_measures++;
   return true;
 }
-void closeMeasures(){
+void disableMeasures(){
   running_measures--;
   if (running_measures == 0){
     #ifdef I2C_SWITCH

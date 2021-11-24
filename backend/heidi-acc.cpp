@@ -567,7 +567,6 @@ void set_IIC_lock(uint16_t value){
 }
 
 bool IICisLocked(void){
-  _D(DebugPrintln("IIC Lock Status : " + String((uint16_t)RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED]), DEBUG_LEVEL_1);)
   return ((uint16_t)RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED] != 0);
 }
 

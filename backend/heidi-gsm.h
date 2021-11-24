@@ -35,8 +35,9 @@ int  GSMdoPost(String url, String contentType, String payload, unsigned int clie
 bool GSMhandleAlerts(void);
 bool GSMsendSMS(String TelNo, String Message);
 
+bool   GSMRestartModem(void);
 bool   GSMwaitForModem(uint32_t timeOutMS = 5000);
-bool   GSMwaitForNetwork(uint32_t timeOutMS);
+bool   GSMwaitForNetwork(uint32_t timeOutMS = 15000);
 bool   GSMsimUnlock(String pin);
 int    GSMinitiateHTTP(String url);
 int    GSMterminateHTTP();
@@ -45,7 +46,8 @@ bool   GSMopenGPRS();
 int    GSMterminateGPRS();
 String GSMGetLastResponse(void);
 String GSMsendCommand(const String command, int timeoutMs);
-bool   GSMsendCommand(const String command, const String okPhrase = "OK", int timeOutMs = 5000);
+bool   GSMsendCommand(const String command, const String okPhrase, int timeOutMs);
+bool   GSMsendCommand(const String command);
 bool   GSMwriteDown(const String payload);
 
 int  _responseGetInt(int position, int errValue = -1);

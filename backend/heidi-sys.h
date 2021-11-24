@@ -18,6 +18,7 @@
 uint8_t herdeID();
 String _herdeID();
 uint8_t animalID();
+String _animalID();
 
 void setupCycleTable();
 
@@ -33,6 +34,7 @@ void setBootTimeFromCurrentTime(tm* sysTime, tm* bootTime);
 void   initSysTimeMS(void);
 bool   getSysTime(tm *info);
 String getCSVvalue(String line, int no);
+String intString4(uint16_t val);
 bool     _night(void);
 bool     __night(uint8_t hour);
 uint8_t  _currentCyleLen_m();
@@ -40,7 +42,8 @@ uint8_t  _currentCyleMaxDiff_s();
 uint8_t  _cyleMaxDiff_s(uint8_t hour);
 uint8_t  _currentCycles();
 uint8_t  __currentCycles(bool isNight);
-_D(uint8_t __currentCyclesD(bool isNight);)
+_D(
+uint8_t  __currentCyclesD(bool isNight);)
 void     _copyTime(tm *from, tm *to);
 void     _copyDate(tm *from, tm *to);
 void     _copyInt32toBuffer(uint8_t *buffer, int pos, int32_t value);
