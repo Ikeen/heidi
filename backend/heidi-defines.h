@@ -44,6 +44,7 @@
 #define SEND_ALERT_SMS
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
+#define USE_RTC_FAST_MEM
 #define DEFAULT_BOOT_CYCLES         4         // ..until transferring data
 #define DEFAULT_CYCLE_DURATION_MSEC 900000    // 15 minutes
 #define DEFAULT_CYCLE_DURATION      15        // 15 minutes
@@ -65,6 +66,7 @@
 //#define SEND_ALERT_SMS
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
+#define USE_RTC_FAST_MEM
 #define DEFAULT_BOOT_CYCLES         32        // ..until transferring data
 #define DEFAULT_CYCLE_DURATION_MSEC 300000    // 5 minutes
 #define DEFAULT_CYCLE_DURATION      5         // 5 minutes
@@ -188,6 +190,12 @@
 #ifndef HEIDI_CONFIG_TEST
 #error "no hardware configuration set"
 #endif
+#endif
+#endif
+
+#ifndef USE_RTC_FAST_MEM
+#ifndef USE_RTC_SLOW_MEM
+#define USE_RTC_SLOW_MEM
 #endif
 #endif
 

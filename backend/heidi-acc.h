@@ -35,8 +35,9 @@ extern bool _ADXL345_status;
 /*
  * increase ULP code Memory:
  * enable following define USE_MORE_THAN_128_INSN
- * set CONFIG_ULP_COPROC_RESERVE_MEM in "sdkconfig.h" AND "../tools/sdk/sdkconfig" to a higher value (512 = step size)
- * at least ULP_RTC_MEMORY_SIZE*4
+ * set CONFIG_ULP_COPROC_RESERVE_MEM in "sdkconfig.h"
+ * AND "./arduinocdt/packages/esp32/hardware/esp32/[version]/tools/sdk/sdkconfig"
+ * to a higher value (512 = step size) at least ULP_RTC_MEMORY_SIZE*4 -> for heidi: 1024
  */
 
 #define ADXL345_DEFAULT_ADDRESS byte(0x53)
@@ -226,8 +227,8 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
 /*
  * increase ULP code Memory:
  * enable following define
- * set CONFIG_ULP_COPROC_RESERVE_MEM in ".arduinocdt/packages/esp32/hardware/esp32/1.0.0/tools/sdk/include/config/sdkconfig.h"
- *   AND in ".arduinocdt/packages/esp32/hardware/esp32/1.0.0/tools/sdk/sdkconfig" to a higher value (512 = step size)
+ * set CONFIG_ULP_COPROC_RESERVE_MEM in ".arduinocdt/packages/esp32/hardware/esp32/x.y.z/tools/sdk/include/config/sdkconfig.h"
+ *   AND in ".arduinocdt/packages/esp32/hardware/esp32/x.y.z/tools/sdk/sdkconfig" to a higher value (512 = step size)
  */
 #define ULP_LED_BLINK          0
 #define USE_MORE_THAN_128_INSN 1

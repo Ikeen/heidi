@@ -31,10 +31,9 @@ bool GPSalert();
 bool calcCurrentTimeDiff();
 bool isInTime(const int target_m, const int current_m, const int current_s);
 void setBootTimeFromCurrentTime(tm* sysTime, tm* bootTime);
-void   initSysTimeMS(void);
-bool   getSysTime(tm *info);
+void   initBootTimeMS(void);
 String getCSVvalue(String line, int no);
-String intString4(uint16_t val);
+
 bool     _night(void);
 bool     __night(uint8_t hour);
 uint8_t  _currentCyleLen_m();
@@ -57,5 +56,7 @@ String   b64Encode(uint8_t* Buffer, int length);
 int      b64Decode(String Base64Str, uint8_t* Buffer);
 uint16_t crc16F(String data);
 uint32_t hex2int(String data);
+String   hexString8(uint16_t val);
+String   intString4(uint16_t val);
 
 #endif /* HEIDI_SYS_H_ */

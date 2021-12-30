@@ -37,6 +37,18 @@ String intString4(uint16_t val){
   return String(val);
 }
 
+String hexString8(uint16_t val){
+  String rc = String(val, HEX);
+  int l = rc.length();
+  if (l < 2) { return "0x0000000" + rc; }
+  if (l < 3) { return "0x000000" + rc; }
+  if (l < 4) { return "0x00000" + rc; }
+  if (l < 5) { return "0x0000" + rc; }
+  if (l < 6) { return "0x000" + rc; }
+  if (l < 7) { return "0x00" + rc; }
+  if (l < 8) { return "0x0" + rc; }
+  return "0x" + rc;
+}
 
 String _herdeID(){
   return intString4(herdeID());
@@ -305,7 +317,6 @@ void setBootTimeFromCurrentTime(tm* sysTime, tm* bootTime){
     bootTime->tm_mday -= 1;
     mktime(bootTime);
   }
-  _DD(DebugPrintln("Set boot time ms to: " + String(bootMs), DEBUG_LEVEL_3);)
   bootTimeStampMs = bootMs;
   bootTime->tm_hour = (int)(bootMs / 3600000);
   bootMs -= bootTime->tm_hour * 3600000;
@@ -315,22 +326,11 @@ void setBootTimeFromCurrentTime(tm* sysTime, tm* bootTime){
   mktime(bootTime);
 }
 
-void initSysTimeMS(void){
+void initBootTimeMS(void){
   bootTimeStampMs     = INVALID_TIME_VALUE;
   expectedBootTimeMs  = INVALID_TIME_VALUE;
 }
 
-bool getSysTime(tm *info){
-  uint32_t count = 500;
-  time_t now;
-  do{
-    time(&now);
-    localtime_r(&now, info);
-    if(info->tm_year > (2016 - 1900)){ info->tm_year += 1900; info->tm_mon++; return true; }
-    delay(10);
-  }while(count--);
-  return false;
-}
 
 String getCSVvalue(String line, int no)
 {

@@ -69,10 +69,21 @@ typedef __attribute__((__packed__)) struct _t_SendData{
 
 #define DATA_SET_LEN     28 //must be a multiple of 4
 
-#define MAX_DATA_SETS 96
+#ifdef USE_RTC_FAST_MEM
+#define FAST_MEM_DATA_SETS    288
+#else
+#define FAST_MEM_DATA_SETS 0
+#endif
 
-#define DATA_SET_MEM_SPACE (DATA_SET_LEN * MAX_DATA_SETS)
-#define DATA_SET_MEM_SPACE_RTC (DATA_SET_MEM_SPACE >> 2)
+#ifdef USE_RTC_SLOW_MEM
+#define SLOW_MEM_DATA_SETS    96
+#else
+#define SLOW_MEM_DATA_SETS 0
+#endif
+
+#define DATA_SET_FAST_MEM_SPACE (DATA_SET_LEN * FAST_MEM_DATA_SETS)
+#define DATA_SET_SLOW_MEM_SPACE (DATA_SET_LEN * SLOW_MEM_DATA_SETS)
+#define MAX_DATA_SETS    (FAST_MEM_DATA_SETS + SLOW_MEM_DATA_SETS)
 
 typedef __attribute__((__packed__)) struct _t_FenceData{
   int32_t  latitude;
@@ -84,20 +95,31 @@ typedef __attribute__((__packed__)) struct _t_FenceData{
 #define FENCE_MEM_SPACE  (FENCE_MAX_POS * FENCE_SET_LEN) //must be a multiple of 4
 #define FENCE_MEM_SPACE_RTC (FENCE_MEM_SPACE >> 2)
 
-
-#define RTC_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + DATA_SET_MEM_SPACE + FENCE_MEM_SPACE)
-
-#if (RTC_DATA_SPACE > 3840)
-  #error 'Too much RTC space for data sets\n'
+#ifdef USE_RTC_FAST_MEM
+#define RTC_FAST_MEM_SIZE_32 2016
+extern uint32_t fastMemBuffer[RTC_FAST_MEM_SIZE_32];
+#define RTC_MAX_FAST_DATA_SPACE (RTC_FAST_MEM_SIZE_32 << 2)
+#define RTC_FAST_DATA_SPACE DATA_SET_MEM_SPACE
+#define RTC_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + FENCE_MEM_SPACE)
+#if (RTC_FAST_DATA_SPACE > RTC_MAX_FAST_DATA_SPACE)
+   #error 'Too much data for RTC fast mem\n'
+#endif
 #endif
 
+#define RTC_SLOW_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + DATA_SET_SLOW_MEM_SPACE + FENCE_MEM_SPACE)
+#define RTC_SLOW_MAX_DATA_SPACE 3840
+#if (RTC_SLOW_DATA_SPACE > RTC_SLOW_MAX_DATA_SPACE)
+  #error 'Too much data for RTC slow mem\n'
+#endif
 
 extern t_ConfigData* heidiConfig;
 extern t_SendData*   availableDataSet[MAX_DATA_SETS];
 extern t_FenceData*  FenceDataSet[FENCE_MAX_POS];
 extern bool newCycleSettings;
 extern bool newAccSettings;
-
+#ifdef USE_RTC_FAST_MEM
+extern uint32_t fastMemBuffer[RTC_FAST_MEM_SIZE_32];
+#endif
 
 void     initConfig(bool reset);
 void     initRTCData(bool reset);
@@ -137,6 +159,8 @@ void     testData(void);
 
 String   DateString(tm* timestamp);
 String   TimeString(tm* timestamp);
+String   DOSdateString(uint16_t _dosDate);
+String   DOStimeString(uint16_t _dosTime);
 String   LenTwo(const String No);
 
 uint16_t dosDate(const uint8_t year, const uint8_t month, const uint8_t day);
@@ -148,9 +172,19 @@ uint8_t  dosHour(const uint16_t time);
 uint8_t  dosMinute(const uint16_t time);
 uint8_t  dosSecond(const uint16_t time);
 
+#ifdef USE_RTC_FAST_MEM
+bool RTCfastMemRead(void);
+bool RTCfastMemWrite(void);
+void fastMemReadTask(void *pvParameters);
+void fastMemWriteTask(void *pvParameters);
+#endif
+
+//void PrintRTCFastMemBufferBoundaries(void);
+#ifdef TEST_RTC
 void testRTC(t_SendData* currentDataSet, tm* bootTime);
 void fillRTCbounary();
 void testRTCbounary();
+#endif
 
 
 

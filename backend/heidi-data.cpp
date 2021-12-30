@@ -20,6 +20,9 @@ t_FenceData*  FenceDataSet[FENCE_MAX_POS];
 bool newCycleSettings = false;
 bool newFenceSettings = false;
 bool newAccSettings   = false;
+#ifdef USE_RTC_FAST_MEM
+uint32_t fastMemBuffer[RTC_FAST_MEM_SIZE_32];
+#endif
 
 void initConfig(bool reset){
   heidiConfig = (t_ConfigData*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
@@ -51,17 +54,29 @@ void initRTCData(bool reset){
   #endif
   initConfig(reset);
   uint8_t* curSet;
-  //_D(DebugPrintln("Init data sets", DEBUG_LEVEL_1));
-  //_D(delay(100));
-  curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC)]);
-  for (int i=0; i<MAX_DATA_SETS; i++){
-    availableDataSet[i] = (t_SendData*)curSet;
-    if(reset) { initDataSet(availableDataSet[i]); }
+  //_D(DebugPrintln("Init data sets", DEBUG_LEVEL_1); delay(50));
+  int p=0;
+  #ifdef USE_RTC_FAST_MEM
+  RTCfastMemRead();
+  curSet = (uint8_t*)fastMemBuffer;
+  for (int i=0; i<FAST_MEM_DATA_SETS; i++){
+    availableDataSet[p] = (t_SendData*)curSet;
+    if(reset) { initDataSet(availableDataSet[p]); }
     curSet += DATA_SET_LEN;
+    p++;
   }
-  //_D(DebugPrintln("Init fence sets", DEBUG_LEVEL_1));
-  //_D(delay(100));
-  curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC + DATA_SET_MEM_SPACE_RTC)]);
+  #endif
+  #ifdef USE_RTC_SLOW_MEM
+  curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC)]);
+  for (int i=0; i<SLOW_MEM_DATA_SETS; i++){
+    availableDataSet[p] = (t_SendData*)curSet;
+    if(reset) { initDataSet(availableDataSet[p]); }
+    curSet += DATA_SET_LEN;
+    p++;
+  }
+  #endif
+  //_D(DebugPrintln("Init fence sets", DEBUG_LEVEL_1); delay(50);)
+  curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC + DATA_SET_SLOW_MEM_SPACE)]);
   for (int i=0; i<FENCE_MAX_POS; i++){
     FenceDataSet[i] = (t_FenceData*)curSet;
     if(reset) {
@@ -100,6 +115,13 @@ void initRTCData(bool reset){
     set_IIC_lock(0);
   }
   #endif
+  _D(
+    if(!reset){
+      int c = 0;
+      for(int i=0; i<MAX_DATA_SETS; i++){ if(!emptyDataSet(availableDataSet[i])) { c++; } }
+      DebugPrintln("Used data sets: " + String(c), DEBUG_LEVEL_2);
+    }
+  )
 }
 
 void initDataSet(t_SendData* DataSet){
@@ -152,8 +174,8 @@ String generateSendLine(t_SendData* DataSet){
     result += "&Longitude=" + String(IntToGeo(DataSet->longitude), 6);
     result += "&Latitude=" + String(IntToGeo(DataSet->latitude), 6);
     result += "&Altitude=" + String(DataSet->altitude);
-    result += "&Date=" + String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date)));
-    result += "&Time=" + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time)));
+    result += "&Date=" + DOSdateString(DataSet->date);
+    result += "&Time=" + DOStimeString(DataSet->time);
     result += "&Battery=" + String((double(DataSet->battery) / 1000), 2);
     result += "&FreeValue1=" + String((int)DataSet->satellites);
     result += "&FreeValue2="  + String((float)DataSet->temperature / 100, 2);
@@ -189,8 +211,8 @@ String generateMultiSendLine(int first, int last, int* setsDone){
       result += "&Lo" + String(k) + "=" + String(IntToGeo(DataSet->longitude), 6);
       result += "&La" + String(k) + "=" + String(IntToGeo(DataSet->latitude), 6);
       result += "&Al" + String(k) + "=" + String(DataSet->altitude);
-      result += "&Da" + String(k) + "=" + String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date)));
-      result += "&Ti" + String(k) + "=" + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time)));
+      result += "&Da" + String(k) + "=" + DOSdateString(DataSet->date);
+      result += "&Ti" + String(k) + "=" + DOStimeString(DataSet->time);
       result += "&Ba" + String(k) + "=" + String((double(DataSet->battery) / 1000), 2);
       result += "&F1" + String(k) + "=" + String((int)DataSet->satellites);
       result += "&F2" + String(k) + "=" + String((float)DataSet->temperature / 100, 2);
@@ -457,10 +479,16 @@ double   IntToGeo(int32_t val)
 
 
 String DateString(tm* timestamp){
-  return String(timestamp->tm_year) + "-" + LenTwo(String(timestamp->tm_mon)) + "-" + LenTwo(String(timestamp->tm_mday));
+  return String(timestamp->tm_year) + "-" + LenTwo(String(timestamp->tm_mon + 1)) + "-" + LenTwo(String(timestamp->tm_mday));
 }
 String TimeString(tm* timestamp){
   return LenTwo(String(timestamp->tm_hour)) + ":" + LenTwo(String(timestamp->tm_min)) + ":"+ LenTwo(String(timestamp->tm_sec));
+}
+String DOSdateString(uint16_t _dosDate){
+  return String(dosYear(_dosDate)) + "-" + LenTwo(String(dosMonth(_dosDate))) + "-" + LenTwo(String(dosDay(_dosDate)));
+}
+String DOStimeString(uint16_t _dosTime){
+  return LenTwo(String(dosHour(_dosTime))) + ":" + LenTwo(String(dosMinute(_dosTime))) + ":" + LenTwo(String(dosSecond(_dosTime)));
 }
 String LenTwo(const String No){
   if (No.length() == 1) { return "0" + No; }
@@ -501,13 +529,93 @@ uint8_t dosSecond(const uint16_t time){
   return (time & 0x1F) << 1;
 }
 
+
+
+#ifdef USE_RTC_FAST_MEM
+
+TaskHandle_t task_fmem_read;
+TaskHandle_t task_fmem_write;
+#define FAST_MEM_TASK_HEAP_SIZE 1024
+RTC_FAST_ATTR uint32_t _realFastMem[RTC_FAST_MEM_SIZE_32];
+bool taskReady;
+bool taskRunning;
+
+/*
+ * usually arduino code runs on CPU_1, but RTC_FAST_MEM is accessible only from CPU_0. Therefore we need
+ * to create Tasks for reading and writing pinned on CPU_0. You may change several settings in
+ * "./arduinocdt/packages/esp32/hardware/esp32/[version]/tools/sdk/sdkconfig" to get arduino code running
+ * on CPU_0 - no clue what's all needed for that
+ */
+
+#ifdef USE_RTC_FAST_MEM
+bool RTCfastMemRead(void){
+  BaseType_t rc = xTaskCreatePinnedToCore(fastMemReadTask, "fastMemReadTask", FAST_MEM_TASK_HEAP_SIZE, NULL, 1, &task_fmem_read, 0);
+  if (rc != pdPASS){
+    _D(DebugPrintln("unable to create fast mem read Task. " + String(rc), DEBUG_LEVEL_1); delay(50);)
+    return false;
+  }
+  while (task_fmem_read != NULL){ vTaskDelay(100); }
+  //_D( PrintRTCFastMemBufferBoundaries(); )
+  return true;
+}
+bool RTCfastMemWrite(void){
+  BaseType_t rc = xTaskCreatePinnedToCore(fastMemWriteTask, "fastMemWriteTask", FAST_MEM_TASK_HEAP_SIZE, NULL, 1, &task_fmem_write, 0);
+  if (rc != pdPASS){
+    _D(DebugPrintln("unable to create fast mem read Task. " + String(rc), DEBUG_LEVEL_1); delay(50);)
+    return false;
+  }
+  while (task_fmem_write != NULL){ vTaskDelay(100); }
+  return true;
+}
+
+void fastMemReadTask(void *pvParameters) {
+  _D(Serial.begin(115200);
+    DebugPrintln("Fast mem read task created on core " + String(xPortGetCoreID()), DEBUG_LEVEL_1); delay(50);
+    int t = millis();
+  )
+  for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ fastMemBuffer[i] = _realFastMem[i];  }
+  _D(DebugPrintln("RTC fast mem read " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
+  task_fmem_read = NULL;
+  vTaskDelete(NULL);
+
+}
+
+void fastMemWriteTask(void *pvParameters) {
+  _D(Serial.begin(115200);
+    DebugPrintln("Fast mem write task created on core " + String(xPortGetCoreID()), DEBUG_LEVEL_1); delay(50);
+    int t = millis();
+  )
+  for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ _realFastMem[i] = fastMemBuffer[i]; }
+  _D(DebugPrintln("RTC fast mem written " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
+  task_fmem_write = NULL;
+  vTaskDelete(NULL);
+}
+/*
+_D(
+void PrintRTCFastMemBufferBoundaries(void){
+  int a = 0;
+  for(int i=0; i<32; i++){
+    if ((a++) == 8) {DebugPrintln(hexString8(fastMemBuffer[i]), DEBUG_LEVEL_1); a = 0; }
+    else { DebugPrint(hexString8(fastMemBuffer[i]) + ", ", DEBUG_LEVEL_1); }
+  }
+  delay(100);
+  a = 0;
+  for(int i=(RTC_FAST_MEM_SIZE_32-32); i<RTC_FAST_MEM_SIZE_32; i++){
+    if ((a++) == 8) { DebugPrintln(hexString8(fastMemBuffer[i]), DEBUG_LEVEL_1); a = 0; }
+    else { DebugPrint(hexString8(fastMemBuffer[i]) + ", ", DEBUG_LEVEL_1); }
+  }
+  delay(100);
+}
+)
+*/
+#endif
 #ifdef TEST_RTC
 
 #define RTC_TEST_PATTERN 0x55AA55AA
 #define RTC_TEST_MAX_MEM 2048
 
 void testRTC(t_SendData* currentDataSet, tm* bootTime){
-  currentDataSet->date = dosDate(bootTime->tm_year, bootTime->tm_mon, bootTime->tm_mday);
+  currentDataSet->date = dosDate(bootTime->tm_year, bootTime->tm_mon + 1, bootTime->tm_mday);
   currentDataSet->time = dosTime(bootTime->tm_hour, bootTime->tm_min, bootTime->tm_sec);
   _D(DebugPrintln("RTC ULP_MEM_SIZE: " + String(ACCEL_ULP_MEM_SIZE) + ", ULP_CODE_SIZE: " + String(ACCEL_ULP_CODE_SIZE) + ", ULP_DATA_SIZE: " + String(ACCEL_ULP_DATA_SIZE), DEBUG_LEVEL_2);)
   _D(DebugPrintln("RTC config address: 0x" + String((uint32_t)heidiConfig, HEX), DEBUG_LEVEL_2);)
@@ -533,4 +641,4 @@ void testRTCbounary(){
   _D(DebugPrintln(" ..clean", DEBUG_LEVEL_2);)
 }
 #endif
-
+#endif

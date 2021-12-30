@@ -24,7 +24,15 @@
 #define GSM_UART_NO 2
 #endif
 #define GSM_RST  GPIO_NUM_21
-#define GSM_BAUD 19200 //57600
+//SIM800L max auto-bauding rate is 57600
+#define GSM_BAUD 57600
+/* you need to adjust READ_STRING_TIMEOUT if you intend to use smaller Baud-rates, consider at least 100 character times
+ * as enough (56700 are about 5000 char/s = 100 char/20ms)
+ * consider that Stream::readString() does not use timeout as over all timeout but as timeout on silence, so a 100 char
+ * times timeout will not break a read of 5000 chars on block - if we wait for the first char previously, and we do so
+ */
+#define READ_STRING_TIMEOUT 50
+
 
 bool openGSM();
 void closeGSM();
@@ -45,11 +53,16 @@ bool   GSMsetupGPRS(const String apn, const String user, const String pwd);
 bool   GSMopenGPRS();
 int    GSMterminateGPRS();
 String GSMGetLastResponse(void);
-String GSMsendCommand(const String command, int timeoutMs);
 bool   GSMsendCommand(const String command, const String okPhrase, int timeOutMs);
 bool   GSMsendCommand(const String command);
 bool   GSMwriteDown(const String payload);
 
+bool GSMsetCFUN(uint32_t timeOutMS);
+bool GSMwaitPIN(uint32_t timeOutMS);
+
+void testGSM(void);
+
+int  _responseGetIntKeyWord(int position, String keyWord, int errValue = -1);
 int  _responseGetInt(int position, int errValue = -1);
 int  _responseGetInt(int position, String response, int errValue);
 

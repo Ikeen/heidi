@@ -23,8 +23,8 @@
 #define WAIT_FOR_GPS_TIME 180000
 
 int  GPSGetPosition(t_SendData* DataSet, int averages, int timeOut);
-bool setSysTimeToGPSTime(int timeOut);
-bool SetSysToGPS();
+bool setBootTimeFromGPSTime(tm* bootTime, int timeOut);
+void SetSysToGPS();
 bool openGPS();
 void closeGPS();
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1

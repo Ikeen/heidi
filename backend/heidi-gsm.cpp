@@ -3,6 +3,17 @@
  *
  *  Created on: 22.06.2020
  *      Author: frank
+ *
+ *  note: This code is intended for using SIM800L with GPRS data transmission only - no more no less.
+ *  Other modems may work but also may not. Especially the booting sequence, which in this case puts out
+ *  data depending on the current status of e.g. SIM card, may vary from modem to modem. We tried modem
+ *  drivers from other too, but they lack of reliability or setup-speed. In fact most of them just wait
+ *  a save amount of time after power up, and do lots of unnecessary configurations afterwards, but SIM800L
+ *  for example, starts up with a useful default setup. So we have to wait a little bit after power up and
+ *  do some settings - that cuts the setup time from 40 to 20 seconds. Waiting-time eats up power...
+ *
+ *  If you intend to use any other module, do some tests with DEBUG_LEVEL_3 and testGSM();
+ *
  */
 
 #include "heidi-defines.h"
@@ -40,17 +51,18 @@ bool openGSM(){
   }
   if (!GSMenabled){
     GSMenabled = true;
-    GSMOn();
     SerialGSM.begin(GSM_BAUD, SERIAL_8N1, GSM_RXD, GSM_TXD, false);
     pinMode(GSM_RXD, INPUT_PULLUP);
-    SerialGSM.flush();
+    SerialGSM.setTimeout(READ_STRING_TIMEOUT);
+    GSMOn();
+    delay(3000); //GSM boot time
     _D(DebugPrintln("GSM open", DEBUG_LEVEL_2);)
   } _D(else { DebugPrintln("GSM already open", DEBUG_LEVEL_2); })
   return true;
 }
 void closeGSM(){
   if (GSMenabled){
-    SerialGSM.flush();
+    while(SerialGSM.available() > 0){ SerialGSM.read(); }
     SerialGSM.end();
     GSMOff();
     _D(DebugPrintln("GSM closed", DEBUG_LEVEL_2);)
@@ -62,10 +74,8 @@ void closeGSM(){
 bool GSMsetup()
 {
   _D(DebugPrintln("Setup GSM", DEBUG_LEVEL_1));
-  // init serial SIM800L
-  SerialGSM.begin(57600, SERIAL_8N1, GSM_RXD, GSM_TXD, false);
   // wait for modem
-  if (!GSMwaitForModem(5000)) { return false; }
+  if (!GSMwaitForModem(10000)) { return false; }
   _D(DebugPrintln("Modem OK", DEBUG_LEVEL_2));
   //unlock SIM
   if(!GSMsimUnlock(HEIDI_SIM_PIN)) { return false; };
@@ -126,6 +136,7 @@ bool GSMhandleAlerts(void){
  */
 int GSMdoPost(String url, String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs) {
   String response ="";
+  unsigned int t = millis();
   // Open the defined GPRS bearer context
   if (!GSMopenGPRS()) { return false; }
   int initRC = GSMinitiateHTTP(url);
@@ -135,6 +146,7 @@ int GSMdoPost(String url, String contentType, String payload, unsigned int clien
 
   if(!GSMsendCommand("AT+HTTPDATA=" + String(payload.length()) + "," + String(clientWriteTimeoutMs), "DOWNLOAD", 5000)){ return 707; }
   SerialGSM.println(payload);
+  while((SerialGSM.available() == 0) && (millis()-t < clientWriteTimeoutMs)) { delay(10); }
   response = SerialGSM.readString();
   if(response.indexOf("OK") == -1){ return 703; }
   _DD(DebugPrintln("SIM800L : payload transmitted.", DEBUG_LEVEL_3);)
@@ -144,7 +156,7 @@ int GSMdoPost(String url, String contentType, String payload, unsigned int clien
 
   // Wait answer from the server
   response = "";
-  unsigned int t=millis();
+  t = millis();
   while(millis() - t < serverReadTimeoutMs){
     delay(1);
     response += SerialGSM.readString();
@@ -238,7 +250,7 @@ bool GSMshutDown()
 }
 
 bool GSMsimUnlock(String pin){
-  if(!GSMsendCommand("AT+CPIN?")) { return false; }
+  if(!GSMwaitPIN(5000)) { return false; }
   _D(
     if(ATresponse.indexOf("SIM PUK") != -1){
       DebugPrintln("SIM requests PUK", DEBUG_LEVEL_1);
@@ -247,7 +259,8 @@ bool GSMsimUnlock(String pin){
   )
   if(ATresponse.indexOf("+CPIN: SIM PIN") != -1) {
     if(!GSMsendCommand("AT+CPIN=" + pin)) { return false; }
-    if(!GSMsendCommand("AT+CPIN?")) { return false; }
+    delay(1000); //some setup time
+    if(!GSMsendCommand("AT+CPIN?", "+CPIN:", 5000)) { return false; }
   }
   if(ATresponse.indexOf("+CPIN: READY") == -1) {
     _D(DebugPrintln("SIM800L : Cannot unlock SIM.", DEBUG_LEVEL_1);)
@@ -263,7 +276,7 @@ bool GSMwaitForNetwork(uint32_t timeOutMS){
   GSMsendCommand("AT+CGREG=1");
   while (millis()-t < timeOutMS){
     if (GSMsendCommand("AT+CGREG?")){
-      int status = _responseGetInt(2);
+      int status = _responseGetIntKeyWord(2, "+CGREG");
       switch (status) {
         case 1: {
           _DD(DebugPrintln("SIM800L : registered to home network", DEBUG_LEVEL_3);)
@@ -281,7 +294,7 @@ bool GSMwaitForNetwork(uint32_t timeOutMS){
           _DD(DebugPrintln("SIM800L : registered to roaming network", DEBUG_LEVEL_3);)
           return true;
         }
-        default: { delay(500); }
+        default: { delay(1000); }
       }
     }
   }
@@ -324,6 +337,7 @@ bool GSMRestartModem(void){
 bool GSMwaitForModem(uint32_t timeOutMS){
   int msStart = millis();
   while((millis() - msStart) < timeOutMS){
+    while(SerialGSM.available() > 0){ SerialGSM.read(); }
     SerialGSM.println("AT");
     for( int i=0; i< 200; i++){
       if(SerialGSM.available()) { break; }
@@ -331,18 +345,50 @@ bool GSMwaitForModem(uint32_t timeOutMS){
     }
     if(SerialGSM.available()) {
       String response =  SerialGSM.readString();
-      if (response.indexOf("OK") > -1) { return true; }
+      if (response.indexOf("OK") > -1) {
+        delay(1000); //some setup time
+        return GSMsetCFUN(5000);
+      }
     }
+  }
+  return false;
+}
+bool GSMsetCFUN(uint32_t timeOutMS){
+  int msStart = millis();
+  GSMsendCommand("AT+CFUN=1");
+  while((millis() - msStart) < timeOutMS){
+    GSMsendCommand("AT+CFUN?");
+    if (ATresponse.indexOf("+CFUN: 1") > -1) { return true; }
+    delay(500);
+  }
+  return false;
+}
+bool GSMwaitPIN(uint32_t timeOutMS){
+  int msStart = millis();
+  while((millis() - msStart) < timeOutMS){
+    GSMsendCommand("AT+CPIN?");
+    if (ATresponse.indexOf("+CPIN:") > -1) { return true; }
+    delay(1000);
   }
   return false;
 }
 
 
 bool GSMsendCommand(const String command) {return GSMsendCommand(command, "OK", 5000); }
-bool GSMsendCommand(const String command, const String okPhrase, int timeOutMs)
-{
-  _DD(DebugPrintln("SIM800L : " + command, DEBUG_LEVEL_3); delay(10);)
-  ATresponse = GSMsendCommand(command, timeOutMs);
+bool GSMsendCommand(const String command, const String okPhrase, int timeOutMs){
+  String response = "";
+  unsigned int t = millis();
+  int localTimeOut = timeOutMs;
+  while(SerialGSM.available() > 0){ SerialGSM.read(); delay(1); }
+  while(millis() - t < timeOutMs){
+    _DD(DebugPrintln("SIM800L : " + command, DEBUG_LEVEL_3); delay(10);)
+    SerialGSM.println(command);
+    while((!SerialGSM.available()) && ((millis() - t) < localTimeOut)) { delay(1); };
+    response = SerialGSM.readString();
+    if(response.indexOf(okPhrase) > -1){ break; }
+    delay(1000); //wait and try again;
+  }
+  ATresponse = response;
   ATresponse.trim();
   _DD(DebugPrintln("SIM800L : " + ATresponse, DEBUG_LEVEL_3); delay(10);)
   if(ATresponse.indexOf(okPhrase) == -1){
@@ -352,18 +398,14 @@ bool GSMsendCommand(const String command, const String okPhrase, int timeOutMs)
   return true;
 }
 
-String GSMsendCommand(const String command, int timeoutMs)
-{
-  SerialGSM.println(command);
-  int msStart = millis();
-  while((!SerialGSM.available()) && ((millis() - msStart) < timeoutMs)) { delay(1); };
-  if ((millis() - msStart) >= timeoutMs) {
-    _DD(DebugPrintln("SIM800L : timeout", DEBUG_LEVEL_3); delay(10);)
-    return "";
-  }
-  return SerialGSM.readString();
+int _responseGetIntKeyWord(int position, String keyWord, int errValue){
+  int p1 = ATresponse.indexOf(keyWord);
+  if (p1 < 0) { return errValue; }
+  int p2 = ATresponse.indexOf(10, p1);
+  if (p2 < 0) { p2 = ATresponse.length(); }
+  String keyLine = ATresponse.substring(p1, p2+1);
+  return _responseGetInt(position, keyLine, errValue);
 }
-
 
 int _responseGetInt(int position, int errValue){
   return _responseGetInt(position, ATresponse, errValue);
@@ -379,8 +421,8 @@ int _responseGetInt(int position, String response, int errValue){
     if (p2 == -1) { p2 = payload.length(); }
     if (p2 == p1) { break; }
   }
-  if  (p2 > (p1+1)){
-    payload = payload.substring(p1, p2);
+  if  (p2 > p1){
+    payload = payload.substring(p1, p2+1);
     String number = "";
     int l = payload.length();
     for(int i=0; i<l; i++){
@@ -394,21 +436,45 @@ int _responseGetInt(int position, String response, int errValue){
   return errValue;
 }
 
+void testGSM(void){
+  String Sendline = "ID=" + _herdeID();
+  if(openGSM()){
+    if (GSMsetup()){
+      Serial.println("SEND: " + Sendline);
+      int HTTPtimeOut = Sendline.length() * 20 + 1000;
+      if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
+      int HTTPrc = GSMdoPost(HEIDI_SERVER_PUSH_URL,
+                          "application/x-www-form-urlencoded",
+                          Sendline,
+                           HTTPtimeOut,
+                           HTTPtimeOut);
+      if (HTTPrc == 200){
+        Serial.println("HTTP send Line OK.");
+        Serial.println("HTTP response: " + GSMGetLastResponse());
+        setFenceFromHTTPresponse(GSMGetLastResponse());
+        setSettingsFromHTTPresponse(GSMGetLastResponse());
+        setTelNoFromHTTPresponse(GSMGetLastResponse());
+      } else {
+        Serial.println("HTTP send Line error: " + String(HTTPrc));
+      }
+    }
+    GSMshutDown();
+    closeGSM();
+  }
+}
+
+
 _D(
 void GSMCheckSignalStrength(){
   if (getError(E_WRONG_BOOT_REASON)){
     openGSM();
     if (GSMsetup()){
-      String response = "";
-      response = GSMsendCommand("AT+CCLK?", 5000);
-	    if(response.indexOf("OK") != -1){
-	      DebugPrint("GSM time : " + response.substring(7, response.indexOf((char)0x0C)) , DEBUG_LEVEL_1);
-      }
-	    response = GSMsendCommand("AT+CGSN", 5000);
-	    DebugPrint("SIM800L : response to \"AT+CGSN\": " + response, DEBUG_LEVEL_1);
-
-      response = GSMsendCommand("AT+CSQ", 5000);
-      DebugPrint("SIM800L : response to \"AT+CSQ\": " + response, DEBUG_LEVEL_1);
+	    GSMsendCommand("AT+CCLK?");
+	    DebugPrint("SIM800L : response to \"AT+CGSN\": " + ATresponse, DEBUG_LEVEL_1);
+	    GSMsendCommand("AT+CGSN");
+	    DebugPrint("SIM800L : response to \"AT+CGSN\": " + ATresponse, DEBUG_LEVEL_1);
+      GSMsendCommand("AT+CSQ");
+      DebugPrint("SIM800L : response to \"AT+CSQ\": " + ATresponse, DEBUG_LEVEL_1);
   	  delay(500);
 	    GSMshutDown();
 	  }

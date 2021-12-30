@@ -31,6 +31,7 @@
 #include <esp32/ulp.h>
 #include <LoRa.h>
 #include <driver/rtc_io.h>
+#include "heidi-debug.h"
 #include "heidi-measures.h"
 #include "heidi-data.h"
 #include "heidi-sys.h"

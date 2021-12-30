@@ -12,6 +12,9 @@
 #include "OneWire.h"
 #include "DallasTemperature.h"
 #endif
+#ifdef ACCELEROMETER
+#include "heidi-acc.h"
+#endif
 #ifdef I2C_BUS
 #define I2C_ERROR_READ_COUNT (I2C_ERROR_NO_BEGIN + 1)
 #define I2C_ERROR_UNDEFINED (I2C_ERROR_NO_BEGIN + 2)
@@ -86,7 +89,7 @@
 #define TEMPERATURE_NOT_SET   -27315
 
 #ifdef TEMP_SENSOR
-float measureTemperature();
+float measureTemperature(void);
 #endif
 
 bool enableControls(void);
@@ -105,6 +108,7 @@ void GSMOn(void);
 void GSMOff(void);
 void LED_off(void);
 void setGPIOInput(gpio_num_t which);
+void setGPIOInputHigh(gpio_num_t which);
 
 int MeasureVoltage(uint8_t pin);
 

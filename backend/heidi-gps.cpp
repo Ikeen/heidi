@@ -143,19 +143,21 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
   return measures;
 }
 
-bool setSysTimeToGPSTime(int timeOut)
+bool setBootTimeFromGPSTime(tm* bootTime, int timeOut)
 {
-  uint16_t year = 0;
-  uint8_t  mon  = 0;
-  uint8_t  day  = 0;
-  bool result   = false;
+  tm GPStime;
   #ifdef HEIDI_CONFIG_TEST
   uint16_t cnt  = 0;
   int      i    = 0;
   #endif
   setError(E_COULD_NOT_FETCH_GPS_TIME);
+  while(SerialGPS.available() > 0){ SerialGPS.read(); }
+  GPStime.tm_year = 0;
+  GPStime.tm_mon  = 0;
+  GPStime.tm_mday = 0;
   //_DD(DebugPrint("GPS raw data: ", DEBUG_LEVEL_3));
-  while(((year <= 2000) || (mon == 0) || (day == 0)) && ((millis() < timeOut) || (timeOut == 0))){
+  while(   ((GPStime.tm_year < 2000) || (GPStime.tm_mon <= 0) || (GPStime.tm_mday <= 0))
+        && ((millis() < timeOut) || (timeOut == 0))){
     #ifdef DEBUG_SERIAL_GPS
     int i = 0;
     while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(1000); _DD(Serial.print('.'));
@@ -182,35 +184,24 @@ bool setSysTimeToGPSTime(int timeOut)
         #ifdef DEBUG_SERIAL_GPS
         _DD(DebugPrintln("", DEBUG_LEVEL_3));
         #endif
-        year = gps.date.year();
-        mon  = gps.date.month();
-        day  = gps.date.day();
-        if ((year > 2000) && (mon > 0) && (day > 0)){
-          if((result = SetSysToGPS()) == true) { rmError(E_COULD_NOT_FETCH_GPS_TIME);}
-		      return result;
+
+        GPStime.tm_year  = gps.date.year();
+        GPStime.tm_mon   = gps.date.month();
+        GPStime.tm_mday  = gps.date.day();
+        if ((GPStime.tm_year > 2000) && (GPStime.tm_mon > 0) && (GPStime.tm_mday > 0)){
+          GPStime.tm_mon--;
+          GPStime.tm_hour = gps.time.hour();
+          GPStime.tm_min  = gps.time.minute();
+          GPStime.tm_sec  = gps.time.second();
+          mktime(&GPStime);
+          setBootTimeFromCurrentTime(&GPStime, bootTime);
+          rmError(E_COULD_NOT_FETCH_GPS_TIME);
+		      return true;
         }
 	    }
     }
   }
-  return result;
-}
-
-bool SetSysToGPS(){
-  tm time;
-  _DD(DebugPrint("Set system time to GPS time = ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(String(gps.date.year()) + "-" + LenTwo(String(gps.date.month())) + "-" + LenTwo(String(gps.date.day())), DEBUG_LEVEL_3));
-  _DD(DebugPrint(" Time= ", DEBUG_LEVEL_3));
-  _DD(DebugPrintln(LenTwo(String(gps.time.hour())) + ":" + LenTwo(String(gps.time.minute())) + ":" + LenTwo(String(gps.time.second())), DEBUG_LEVEL_3));
-  time.tm_year = gps.date.year()-1900;
-  time.tm_mon  = gps.date.month()-1;
-  time.tm_mday = gps.date.day();
-  time.tm_hour = gps.time.hour();
-  time.tm_min  = gps.time.minute();
-  time.tm_sec  = gps.time.second();
-  if (gps.time.centisecond() > 50) { time.tm_sec++; }
-  time_t t = mktime(&time);
-  struct timeval now = { .tv_sec = t };
-  return (settimeofday(&now, NULL) == 0);
+  return false;
 }
 
 bool openGPS(){
@@ -227,14 +218,14 @@ bool openGPS(){
     SerialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RXD, GPS_TXD, false);
     pinMode(GPS_RXD, INPUT_PULLDOWN);
     pinMode(GPS_TXD, OUTPUT);
-    SerialGPS.flush();
+    while(SerialGPS.available() > 0){ SerialGPS.read(); }
     _D(DebugPrintln("GPS open", DEBUG_LEVEL_2));
   } _D(else { DebugPrintln("GPS already open", DEBUG_LEVEL_2); delay(50); })
   return true;
 }
 void closeGPS(){
   if (GPSenabled){
-    SerialGPS.flush();
+    while(SerialGPS.available() > 0){ SerialGPS.read(); }
     SerialGPS.end();
     disableMeasures();
     _D(DebugPrintln("GPS closed", DEBUG_LEVEL_2));

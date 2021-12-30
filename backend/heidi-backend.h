@@ -24,7 +24,8 @@
 #include "heidi-gps.h"
 #include "heidi-fence.h"
 #include "heidi-error.h"
-//#include "heidi-flash.h"
+#include "heidi-flash.h"
+#include "heidi-lora.h"
 
 
 #define SCK     5    // GPIO5  -- SX1278's SCK
@@ -61,8 +62,11 @@ uint8_t herdeID();
 uint8_t animalID();
 
 void setupData(bool powerOnReset);
-bool setupSystemDateTime(tm* systime, int timeOut);
+bool setupSystemBootTime(tm* boottime, int timeOut);
 void setupWatchDog(uint32_t timeOutMS);
+
+void   finalizeDataSet(t_SendData* currentDataSet);
+void   finalizeHeidiStatus(bool powerOnReset);
 
 #ifdef PRE_MEASURE_HANDLING
 void   handlePreMeasuring(void);
@@ -71,12 +75,9 @@ void   handlePreMeasuring(void);
 void   transmitData(t_SendData*);
 #endif
 void   checkGPSalert(t_SendData*);
-void   checkGPSposition(t_SendData* currentDataSet, int timeOut);
+void   checkGPSposition(t_SendData* currentDataSet, int timeOut, bool force);
 double checkBattery(void);
 void   checkCycle(void);
-
-void   finalizeDataSet(t_SendData* currentDataSet);
-void   finalizeHeidiStatus(bool powerOnReset);
 
 void restartCycling();
 void gotoSleep(int32_t mseconds);
@@ -89,13 +90,14 @@ bool wasULPWakeUp(void);
 
 static void watchDog(void* arg);
 
-_D(
-void reesetTests(void);
+#ifdef HEIDI_CONFIG_TEST
+void doTests(t_SendData*);
 void testMeasure(void);
-void testGSM(void);
+#ifdef GSM_MODULE
+
+#endif
 #ifdef TEST_RTC
 void testRTC(t_SendData*);
 #endif
-)
-
+#endif
 #endif /* HEIDI_BACKEND_H_ */

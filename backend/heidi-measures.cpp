@@ -9,6 +9,7 @@
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "driver/rtc_io.h"
+#include "rom/uart.h"
 #include "heidi-measures.h"
 #include "heidi-acc.h"
 #include "heidi-gsm.h"
@@ -146,6 +147,14 @@ void disableGPIOs(void){
   setGPIOInput(GPIO_NUM_25); //MEASURES_ENABLE_PIN
   setGPIOInput(GPIO_NUM_26);
   setGPIOInput(GPIO_NUM_27);
+  setGPIOInput(GPIO_NUM_32);
+  setGPIOInput(GPIO_NUM_33);
+  setGPIOInput(GPIO_NUM_34);
+  setGPIOInput(GPIO_NUM_35);
+  setGPIOInput(GPIO_NUM_36);
+  setGPIOInput(GPIO_NUM_37);
+  setGPIOInput(GPIO_NUM_38);
+  setGPIOInput(GPIO_NUM_39);
 }
 
 void setGPIOInput(gpio_num_t which){
@@ -157,6 +166,17 @@ void setGPIOInput(gpio_num_t which){
   pinMode(GPIO_NUM_27, INPUT);
   #endif
 }
+
+void setGPIOInputHigh(gpio_num_t which){
+  #ifdef USE_ULP
+  if ((which != I2C_SDA) && (which != I2C_SCL)) {
+    pinMode(which, INPUT_PULLUP);
+  }
+  #else
+  pinMode(GPIO_NUM_27, INPUT_PULLUP);
+  #endif
+}
+
 
 #ifdef TEMP_SENSOR
 float measureTemperature(){
@@ -273,19 +293,18 @@ void GSMOn(){
   freeIIC();
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
-  for(int i=0; i<2000; i++){
+  for(int i=0; i<100; i++){
     digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
-    delayMicroseconds(2010-i);
+    delayMicroseconds(110-i);
     digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
     delayMicroseconds(10+i);
   }
   digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
   #endif
   //_DD(DebugPrintln("GSM Voltage on", DEBUG_LEVEL_3));
-  delay(1000); //setup voltage time
+  delay(100); //setup voltage time
   digitalWrite(GSM_RST, HIGH);
   //_DD(DebugPrintln("GSM Reset released", DEBUG_LEVEL_3));
-  delay(5000); //boot time
 }
 void GSMOff(){
   #ifdef I2C_SWITCH
