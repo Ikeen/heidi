@@ -229,12 +229,14 @@ bool enableMeasures(){
     freeIIC();
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
+    /*
     for(int i=0; i<5; i++){
       digitalWrite(MEASURES_ENABLE_PIN, MEASURES_OFF);
       delayMicroseconds(50);
       digitalWrite(MEASURES_ENABLE_PIN, MEASURES_ON);
       delayMicroseconds(50);
     }
+    */
     digitalWrite(MEASURES_ENABLE_PIN, MEASURES_ON);
     #endif
     _D(DebugPrintln("Measures on", DEBUG_LEVEL_1));

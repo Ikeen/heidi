@@ -92,10 +92,6 @@ static void watchDog(void* arg);
 
 #ifdef HEIDI_CONFIG_TEST
 void doTests(t_SendData*);
-void testMeasure(void);
-#ifdef GSM_MODULE
-
-#endif
 #ifdef TEST_RTC
 void testRTC(t_SendData*);
 #endif

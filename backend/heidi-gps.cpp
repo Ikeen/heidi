@@ -25,21 +25,13 @@ Warm start : B5 62 06 04 04 00 01 00 02 00 11 6C
 Hot start  : B5 62 06 04 04 00 00 00 02 00 10 68
  */
 
-// The TinyGPS++ object
 HardwareSerial SerialGPS(GPS_UART_NO);
+#ifdef  USE_TINY_GPS_LIB
+// The TinyGPS++ object
 TinyGPSPlus gps;
-//on
-uint8_t gpsColdStart[]  = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0xFF, 0xB9, 0x02, 0x00, 0xC8, 0x8F};
-uint8_t gpsWarmStart[]  = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x01, 0x00, 0x02, 0x00, 0x11, 0x6C};
-uint8_t gpsHotStart[]   = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00, 0x10, 0x68};
-
-//Backup
-uint8_t gpsToBakup[]   = {0xB5, 0x62, 0x02, 0x41, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x4D, 0x3B}; //off
-uint8_t gpsFromBakup[] = {0xB5, 0x62, 0x02, 0x41, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x4C, 0x37}; //on
-
-//Sleep
-uint8_t gpsToSleep[]   = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00,0x08, 0x00, 0x16, 0x74}; //off
-uint8_t gpsFromSleep[] = {0xB5, 0x62, 0x06, 0x04, 0x04, 0x00, 0x00, 0x00,0x09, 0x00, 0x17, 0x76}; //on
+#else
+gpsData_t gpsData;
+#endif
 
 int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
   int      measures = 0;
@@ -58,52 +50,30 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
 
   _D(DebugPrintln("GPS: Acquire position", DEBUG_LEVEL_1));
   while((measures < averages) && ((millis() < timeOut) || (timeOut == 0))){
-    #ifdef DEBUG_SERIAL_GPS
-    int i = 0;
-    while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) { delay(1000); _DD(Serial.print('.'));
-      i++; if (i >= 60) { i = 0;  _DD(DebugPrintln("", DEBUG_LEVEL_3)); }
-    }
-    _DD(DebugPrintln("", DEBUG_LEVEL_3));
-    #else
-    while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) {
-      delay(10);
-      #ifdef HEIDI_CONFIG_TEST
-      _D(if (timeOut == 0) { cnt++; if (cnt == 1000) { cnt = 0; i++; Serial.print("."); }})
-      #endif
-    }
-    #endif
+    GPSwaitForData(timeOut);
     while ((SerialGPS.available() > 0) && (measures < averages) && ((millis() < timeOut) || (timeOut == 0))) {
-      #ifdef DEBUG_SERIAL_GPS
-      char r = SerialGPS.read();
-      _DD(Serial.print(r));
-      gps.encode(r);
+      GPSprocessData();
+      #ifdef  USE_TINY_GPS_LIB
+      if (gps.location.isUpdated()) { if (gps.location.isValid()) { if (gps.altitude.isUpdated()) {
       #else
-      gps.encode(SerialGPS.read());
+      if (gpsData.valid) { if (gpsData.type == GPS_DT_NAV_PVT) { if ((gpsData.data->navPVT.fixType == GPS_FIX_TYPE_2D_FIX) || (gpsData.data->navPVT.fixType == GPS_FIX_TYPE_3D_FIX)) {
       #endif
-      if (gps.location.isUpdated() && gps.location.isValid() && gps.altitude.isUpdated()){
         #ifdef DEBUG_SERIAL_GPS
         _DD(DebugPrintln("", DEBUG_LEVEL_3));
         #endif
         measures++;
-        if (gps_sat < gps.satellites.value()) { gps_sat = gps.satellites.value(); }
+        if (gps_sat < GPS_GET_SAT) { gps_sat = GPS_GET_SAT; }
         _DD(_PrintDataGPS();)
-        a_lng += gps.location.lng();
-        a_lat += gps.location.lat();
-        a_alt += gps.altitude.meters();
-        a_hdop += gps.hdop.value();
-        _D(DebugPrint("GPS: Lat :" + String(gps.location.lat(),6) + ", Lon: " + String(gps.location.lng(), 6), DEBUG_LEVEL_1));
-        _D(DebugPrintln("GPS: Sats:" + String(gps.satellites.value()) + ", HDOP: " + String(gps.hdop.value() / 10), DEBUG_LEVEL_1));
-      }
-      /*
-       * already done on setup
-
-      if (gps.date.isUpdated() && gps.date.isValid() && gps.time.isUpdated() && gps.time.isValid() && !gotTime){
-        if ((gps.date.year() > 2000) && (gps.date.month() > 0) && (gps.date.day() > 0)){
-          SetSysToGPS();
-          gotTime = true;
-        }
-      }
-      */
+        a_lng += GPS_GET_LON;
+        a_lat += GPS_GET_LAT;
+        a_alt += GPS_GET_ALT;
+        a_hdop += GPS_GET_DOP;
+        _D(DebugPrint("GPS: Lat :" + String(GPS_GET_LAT,6) + ", Lon: " + String(GPS_GET_LON, 6), DEBUG_LEVEL_1));
+        _D(DebugPrintln("GPS: Sats:" + String(GPS_GET_SAT) + ", DOP: " + String(GPS_GET_DOP) + ", ACC: " + String(GPS_GET_ACC), DEBUG_LEVEL_1));
+        #ifndef  USE_TINY_GPS_LIB
+        gpsData.valid = false;
+        #endif
+      }}}
     }
   }
   if(measures > 0){
@@ -146,10 +116,6 @@ int GPSGetPosition(t_SendData* DataSet, int averages, int timeOut){
 bool setBootTimeFromGPSTime(tm* bootTime, int timeOut)
 {
   tm GPStime;
-  #ifdef HEIDI_CONFIG_TEST
-  uint16_t cnt  = 0;
-  int      i    = 0;
-  #endif
   setError(E_COULD_NOT_FETCH_GPS_TIME);
   while(SerialGPS.available() > 0){ SerialGPS.read(); }
   GPStime.tm_year = 0;
@@ -158,57 +124,84 @@ bool setBootTimeFromGPSTime(tm* bootTime, int timeOut)
   //_DD(DebugPrint("GPS raw data: ", DEBUG_LEVEL_3));
   while(   ((GPStime.tm_year < 2000) || (GPStime.tm_mon <= 0) || (GPStime.tm_mday <= 0))
         && ((millis() < timeOut) || (timeOut == 0))){
-    #ifdef DEBUG_SERIAL_GPS
-    int i = 0;
-    while ((SerialGPS.available() == 0) && (millis() < timeOut)) { delay(1000); _DD(Serial.print('.'));
-      i++; if (i >= 60) { i = 0;  _DD(DebugPrintln("", DEBUG_LEVEL_3)); }
-    }
-    _DD(DebugPrintln("", DEBUG_LEVEL_3));
-    #else
-    while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) {
-      delay(10);
-      #ifdef HEIDI_CONFIG_TEST
-      _D(if (timeOut == 0) { cnt++; if (cnt == 1000) { cnt = 0; i++; Serial.print("."); }})
-      #endif
-    }
-    #endif
+    GPSwaitForData(timeOut);
     while ((SerialGPS.available() > 0)  && ((millis() < timeOut) || (timeOut == 0))){
-      #ifdef DEBUG_SERIAL_GPS
-      char r = SerialGPS.read();
-      _DD(Serial.print(r));
-      gps.encode(r);
+      GPSprocessData();
+      #ifdef  USE_TINY_GPS_LIB
+      if (gps.date.isUpdated()) { if (gps.date.isValid()) { if (gps.time.isUpdated()) { if (gps.time.isValid()) {
       #else
-      gps.encode(SerialGPS.read());
+      if (gpsData.valid) { if (gpsData.type == GPS_DT_NAV_PVT) { if (gpsData.data->navPVT.valid == GPS_DATE_TIME_VALID) {{
       #endif
-      if (gps.date.isUpdated() && gps.date.isValid() && gps.time.isUpdated() && gps.time.isValid()){
         #ifdef DEBUG_SERIAL_GPS
         _DD(DebugPrintln("", DEBUG_LEVEL_3));
         #endif
-
-        GPStime.tm_year  = gps.date.year();
-        GPStime.tm_mon   = gps.date.month();
-        GPStime.tm_mday  = gps.date.day();
+        GPStime.tm_year  = GPS_GET_YR;
+        GPStime.tm_mon   = GPS_GET_MO;
+        GPStime.tm_mday  = GPS_GET_DY;
         if ((GPStime.tm_year > 2000) && (GPStime.tm_mon > 0) && (GPStime.tm_mday > 0)){
           GPStime.tm_mon--;
-          GPStime.tm_hour = gps.time.hour();
-          GPStime.tm_min  = gps.time.minute();
-          GPStime.tm_sec  = gps.time.second();
+          GPStime.tm_hour = GPS_GET_HR;
+          GPStime.tm_min  = GPS_GET_MI;
+          GPStime.tm_sec  = GPS_GET_SE;
           mktime(&GPStime);
           setBootTimeFromCurrentTime(&GPStime, bootTime);
           rmError(E_COULD_NOT_FETCH_GPS_TIME);
 		      return true;
         }
-	    }
+	    }}}}
     }
   }
   return false;
 }
 
 bool openGPS(){
+  /*
+   * https://youtu.be/ylxwOg2pXrc?list=RDCMUCTXOorupCLqqQifs2jbz7rQ
+   *
+
+                                           i2c  ser1 ser2 usb  spi
+  $GPTXT B5 62 | 06 01 | 08 00 | F0 | 41 | 00   00   00   00   00  | 00 |
+  $GPRMC B5 62 | 06 01 | 08 00 | F0 | 04 | 00   00   00   00   00  | 00 | 03 3F
+  $GPVTG B5 62 | 06 01 | 08 00 | F0 | 05 | 00   00   00   00   00  | 00 | 04 46
+  $GPGGA B5 62 | 06 01 | 08 00 | F0 | 00 | 00   00   00   00   00  | 00 | FF 23
+  $GPGSA B5 62 | 06 01 | 08 00 | F0 | 02 | 00   00   00   00   00  | 00 | 01 31
+  $GPGSV B5 62 | 06 01 | 08 00 | F0 | 03 | 00   00   00   00   00  | 00 | 02 38
+
+ NAV_PVT B5 62   06 01   08 00   01   07   00   00   00   00   00    00   17 DC
+
+  */
+#ifndef  USE_TINY_GPS_LIB
+  uint8_t NMEA_MSG_ON_OFF[] = {GPS_UBX_CLASS_CFG,
+                               GPS_UBX_CFG_MSG,
+                               0x08, //length low byte
+                               0x00, //length high byte
+                               GPS_CFG_MSG_NMEA,
+                               GPS_CFG_MSG_GGA,
+                               GPS_CFG_OFF, //i2c
+                               GPS_CFG_OFF, //uart1
+                               GPS_CFG_OFF, //uart2
+                               GPS_CFG_OFF, //USB
+                               GPS_CFG_OFF, //SPI
+                               0x00};       //unused
+
+  uint8_t UBX_SET_RATE[] =  {  GPS_UBX_CLASS_CFG,
+                               GPS_UBX_CFG_RATE,
+                               0x06, //length low byte
+                               0x00, //length high byte
+                               0xE8, //interval [ms] low byte   (1000)
+                               0x03, //interval [ms] high byte  (1000)
+                               0x01, //must be 1 low byte
+                               0x00, //must be 1 high byte
+                               0x01, //should be 1 low byte
+                               0x00, //should be 1 high byte
+                               };
+  //  B5 62 06 08 06 00 F4 01 01 00 01 00 0B 77
+#endif
   if (GSMenabled){
     _D(DebugPrintln("GSM still enabled - cannot open GPS", DEBUG_LEVEL_1); delay(50);)
     return false;
   }
+
   if (!enableMeasures()){
     _D(DebugPrintln("enable GPS power failed", DEBUG_LEVEL_1); delay(50);)
     return false;
@@ -218,6 +211,65 @@ bool openGPS(){
     SerialGPS.begin(GPS_BAUD, SERIAL_8N1, GPS_RXD, GPS_TXD, false);
     pinMode(GPS_RXD, INPUT_PULLDOWN);
     pinMode(GPS_TXD, OUTPUT);
+
+    #ifdef DEBUG_SERIAL_GPS
+    #ifndef I2C_SWITCH
+    extern bool powerOnReset;
+    if(powerOnReset){
+      while(SerialGPS.available() > 0){ SerialGPS.read(); }
+      //print status of module at boot up - so restart
+      pinMode(MEASURES_ENABLE_PIN,OUTPUT);
+      digitalWrite(MEASURES_ENABLE_PIN, MEASURES_OFF);
+      delay(1000);
+      digitalWrite(MEASURES_ENABLE_PIN, MEASURES_ON);
+      for (int i=0; i<2000; i++) {
+        delay(1);
+        String line = "";
+        while(SerialGPS.available() > 0){ line += char(SerialGPS.read()); }
+        _DD(DebugPrint(line, DEBUG_LEVEL_3);)
+       i++;
+      }
+      _DD(DebugPrintln("", DEBUG_LEVEL_3));
+    }
+    #endif
+    #endif
+
+#ifndef  USE_TINY_GPS_LIB
+    //disable NMEA - messages on all channels
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE] = GPS_CFG_MSG_GGA;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE] = GPS_CFG_MSG_GLL;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE] = GPS_CFG_MSG_GSA;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE] = GPS_CFG_MSG_GSV;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE] = GPS_CFG_MSG_VGT;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE] = GPS_CFG_MSG_RMC;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE] = GPS_CFG_MSG_TXT;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+
+    //enable UBX NAV PVT - message on UART1
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_GROUP] = GPS_CFG_MSG_UBX;
+    NMEA_MSG_ON_OFF[GPS_CFG_SER_CH_UART1]  = GPS_CFG_ON;
+    NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE]  = GPS_UBX_NAV_PVT;
+    GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+    //enable UBX NAV STATUS - message on UART1
+    //NMEA_MSG_ON_OFF[NMEA_MSG_ON_OFF_TYPE]  = GPS_UBX_NAV_STATUS;
+    //GPSsendMessage(NMEA_MSG_ON_OFF, sizeof(NMEA_MSG_ON_OFF));
+
+    //set rate
+    UBX_SET_RATE[4] = 0xF4; //500 low  byte
+    UBX_SET_RATE[5] = 0x01; //500 high byte
+    GPSsendMessage(UBX_SET_RATE, sizeof(UBX_SET_RATE));
+
+    gpsData.valid = false;
+    gpsData.type  = GPS_DT_NONE;
+    gpsData.data  = NULL;
+
+#endif
     while(SerialGPS.available() > 0){ SerialGPS.read(); }
     _D(DebugPrintln("GPS open", DEBUG_LEVEL_2));
   } _D(else { DebugPrintln("GPS already open", DEBUG_LEVEL_2); delay(50); })
@@ -233,26 +285,154 @@ void closeGPS(){
   GPSenabled = false;
 }
 
+bool GPSwaitForData(int timeOut){
+  #ifdef DEBUG_SERIAL_GPS
+  int  i  = 0;
+  #else
+  #ifdef HEIDI_CONFIG_TEST
+  int  cnt  = 0;
+  int  i  = 0;
+  #endif
+  #endif
+
+  #ifdef DEBUG_SERIAL_GPS
+  while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) { delay(200); _DD(Serial.print('.'));
+    i++; if (i >= 60) { i = 0;  _DD(DebugPrintln("", DEBUG_LEVEL_3)); }
+  }
+  _DD(DebugPrintln("", DEBUG_LEVEL_3));
+  #else
+  while ((SerialGPS.available() == 0) && ((millis() < timeOut) || (timeOut == 0))) {
+    delay(10);
+    #ifdef HEIDI_CONFIG_TEST
+    _D(if (timeOut == 0) { cnt++; if (cnt == 1000) { cnt = 0; i++; Serial.print("."); }})
+    if (i >= 60) { i = 0;  Serial.println(""); }
+    #endif
+  }
+  #endif
+  return ((millis() < timeOut) || (timeOut == 0));
+}
+
+void GPSprocessData(void){
+  #ifdef DEBUG_SERIAL_GPS
+  static int i=0;
+  #ifdef  USE_TINY_GPS_LIB
+  char r = SerialGPS.read();
+  _DD(Serial.print(r));
+  gps.encode(r);
+  #else
+  uint8_t r = SerialGPS.read();
+  _DD(Serial.print(LenTwo(String(r,HEX)) + " ");)
+  _DD(i++; if(i >= 32){Serial.println (""); i = 0; })
+  GPSdecodeData(r);
+  #endif
+  #else
+  #ifdef  USE_TINY_GPS_LIB
+  gps.encode(SerialGPS.read());
+  #else
+  GPSdecodeData(SerialGPS.read());
+  #endif
+  #endif
+
+}
+#ifndef  USE_TINY_GPS_LIB
+void GPSdecodeData(uint8_t data) {
+  static int fpos = 0;
+  static uint8_t checksumSent[2];
+  static UBXMessage_t ubxBuffer;
+  static int payloadSize;
+  static uint8_t* buffer = (uint8_t*)&ubxBuffer;
+
+  if ( fpos < 2 ) {  if ( data == UBX_HEADER[fpos] ){  fpos++; } else { fpos = 0; } return; }
+  //header found, load id & length
+  if ( fpos < 5 ) { buffer[fpos-2] = data; fpos++; return; }
+  if ( fpos == 5 ) { //check header information
+    buffer[fpos-2] = data;
+    payloadSize = ubxBuffer.head.len;
+    if (payloadSize > 0) {
+      fpos++;
+      gpsData.valid = false;
+      gpsData.type  = GPS_DT_NONE;
+      if(ubxBuffer.head.cls == GPS_UBX_CLASS_NAV){
+        if(ubxBuffer.head.id == GPS_UBX_NAV_PVT){ gpsData.type = GPS_DT_NAV_PVT; }
+      }
+    } else { fpos = 0;} //something strange
+    return;
+  }
+  if ( fpos < (payloadSize + 6)){
+    if (gpsData.type != GPS_DT_NONE){ //if data type is known then load
+      buffer[fpos-2] = data;
+    } //otherwise crush it
+    fpos++;
+    return;
+  }
+  if (fpos == (payloadSize + 6)) { checksumSent[0] = data; fpos++; return;}
+  if (fpos == (payloadSize + 7)) {
+    uint8_t checksumCalc[2];
+    checksumSent[1] = data;
+    fpos = 0;
+    GPScalcChecksum(buffer, checksumCalc, payloadSize+4);
+    if((checksumCalc[0]==checksumSent[0]) && (checksumCalc[1]==checksumSent[1])){
+      gpsData.data  = &ubxBuffer;
+      gpsData.valid = true;
+      return;
+    }
+  }
+  //we should never come here
+  gpsData.valid = false;
+  gpsData.type  = GPS_DT_NONE;
+  fpos = 0;
+  return;
+}
+
+void GPScalcChecksum(uint8_t* buffer, uint8_t* CK, int len) {
+  memset(CK, 0, 2);
+  for (int i = 0; i < len; i++) {
+    CK[0] += buffer[i];
+    CK[1] += CK[0];
+  }
+}
+
+void GPSsendMessage(uint8_t* message, int len){
+  uint8_t fullmessage[128];
+  fullmessage[0] = UBX_HEADER[0];
+  fullmessage[1] = UBX_HEADER[1];
+  int l = len;
+  for(int i=0; i<l; i++){ fullmessage[i+2] = message[i]; }
+  GPScalcChecksum(message, &fullmessage[l+2] ,l);
+  l += 4;  //plus sync bytes and checksum
+  for(int i=0; i<l; i++){
+    SerialGPS.write(fullmessage[i]);
+    delay(2);
+  }
+  delay(50);
+}
+#endif
+
 #if DEBUG_LEVEL >= DEBUG_LEVEL_1
 void testGPS(){
   int startMs = millis();
   while ((SerialGPS.available() == 0) && ((millis() - startMs) < 60000)) { delay(10); }
-  while ((SerialGPS.available() > 0)) {
-    gps.encode(SerialGPS.read());
-    if (   gps.location.isUpdated() && gps.location.isValid() && gps.altitude.isValid()
-        && gps.satellites.isValid() && gps.hdop.isValid()){
+  while((SerialGPS.available() > 0) && ((millis() - startMs) < 60000)){
+    GPSprocessData();
+    #ifdef  USE_TINY_GPS_LIB
+    if (gps.location.isUpdated()) { if (gps.location.isValid()){ if (gps.altitude.isUpdated()) {
+    #else
+    if (gpsData.valid) { if (gpsData.type == GPS_DT_NAV_PVT) { if ((gpsData.data->navPVT.fixType == GPS_FIX_TYPE_2D_FIX) || (gpsData.data->navPVT.fixType == GPS_FIX_TYPE_3D_FIX)) {
+    #endif
       _D(DebugPrint("Latitude= ", DEBUG_LEVEL_1));
-      _D(DebugPrint(gps.location.lat(), 6, DEBUG_LEVEL_1));
+      _D(DebugPrint(GPS_GET_LAT, 6, DEBUG_LEVEL_1));
       _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_1));
-      _D(DebugPrint(gps.location.lng(), 6, DEBUG_LEVEL_1));
+      _D(DebugPrint(GPS_GET_LON, 6, DEBUG_LEVEL_1));
       _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_1));
-      _D(DebugPrintln(gps.altitude.meters(), 6, DEBUG_LEVEL_1));
+      _D(DebugPrintln(GPS_GET_ALT, 6, DEBUG_LEVEL_1));
       _D(DebugPrint("Satellites= ", DEBUG_LEVEL_1));
-      _D(DebugPrint(gps.satellites.value(), DEBUG_LEVEL_1));
+      _D(DebugPrint(GPS_GET_SAT, DEBUG_LEVEL_1));
       _D(DebugPrint(" HDOP= ", DEBUG_LEVEL_1));
-      _D(DebugPrintln(gps.hdop.value()/10, DEBUG_LEVEL_1));
+      _D(DebugPrint((int)(GPS_GET_DOP/10), DEBUG_LEVEL_1));
+      _D(DebugPrint(" ACC= ", DEBUG_LEVEL_1));
+      _D(DebugPrintln(String(GPS_GET_ACC), DEBUG_LEVEL_1));
       break;
-    }
+    }}}
   }
   if(!SerialGPS.available()){
     _D(DebugPrintln("Could not fetch GPS", DEBUG_LEVEL_1));
@@ -261,20 +441,17 @@ void testGPS(){
 
 void _PrintDataGPS(){
   _DD(DebugPrint("Latitude= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(gps.location.lat(), 6, DEBUG_LEVEL_3));
+  _DD(DebugPrint(GPS_GET_LAT, 6, DEBUG_LEVEL_3));
   _DD(DebugPrint(" Longitude= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(gps.location.lng(), 6, DEBUG_LEVEL_3));
+  _DD(DebugPrint(GPS_GET_LON, 6, DEBUG_LEVEL_3));
   _DD(DebugPrint(" Altitude= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(gps.altitude.meters(), 6, DEBUG_LEVEL_3));
+  _DD(DebugPrint(GPS_GET_ALT, 6, DEBUG_LEVEL_3));
   _DD(DebugPrint(" Date= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(String(gps.date.year()) + "-" + String(gps.date.month()) + "-" + String(gps.date.day()), DEBUG_LEVEL_3));
+  _DD(DebugPrint(String(GPS_GET_YR) + "-" + String(GPS_GET_MO) + "-" + String(GPS_GET_DY), DEBUG_LEVEL_3));
   _DD(DebugPrint(" Time= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(String(gps.time.hour()) + ":" + String(gps.time.minute()) + ":" + String(gps.time.second()), DEBUG_LEVEL_3));
-  _DD(DebugPrint(" Age= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(gps.location.age(), DEBUG_LEVEL_3));
-  _DD(DebugPrint("ms", DEBUG_LEVEL_3));
+  _DD(DebugPrint(String(GPS_GET_HR) + ":" + String(GPS_GET_MI) + ":" + String(GPS_GET_SE), DEBUG_LEVEL_3));
   _DD(DebugPrint(" Sat= ", DEBUG_LEVEL_3));
-  _DD(DebugPrintln(gps.satellites.value(), DEBUG_LEVEL_3));
+  _DD(DebugPrintln(GPS_GET_SAT, DEBUG_LEVEL_3));
 }
 #endif
 

@@ -97,8 +97,6 @@
 #define HEIDI_ANIMAL        1
 #endif
 
-
-
 #ifdef HEIDI_CONFIG_TEST
 #define MIN_CYCLE_DURATION_MSEC     60000     //  1 minutes
 #define MIN_CYCLE_DURATION          1         //  1 minutes

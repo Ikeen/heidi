@@ -560,8 +560,7 @@ void doTests(t_SendData* currentDataSet){
       //}
 
       openGPS();
-      delay(5000);
-      GPSGetPosition(currentDataSet, 10, 60000);
+      GPSGetPosition(currentDataSet, 10000, 3600000);
       SPI.begin(SCK,MISO,MOSI,SS);
       LoRa.setPins(SS,RST,DI0);
       LoRa.begin(BAND);
@@ -572,26 +571,6 @@ void doTests(t_SendData* currentDataSet){
       disableMeasures();
       disableControls(true);
       gotoSleep(10000);
-
-
 }
 
-void testMeasure(){
-  uint32_t a_measures   = 0;
-  int32_t  measures     = 0;
-  int analog_value      = 0;
-  while(true){
-    for(int i=1; i<1000;i++){
-	    analog_value += analogRead(BATTERY_MEASURE_PIN);
-	    a_measures++;
-	    delay(1);
-    }
-	  if(a_measures > 0){
-	    analog_value /= a_measures;
-    }
-	  _D(DebugPrintln("Measured Value: " + String(analog_value), DEBUG_LEVEL_1);)
-	  a_measures   = 0;
-	  measures     = 0;
-  }
-}
 #endif
