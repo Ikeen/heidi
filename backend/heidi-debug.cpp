@@ -26,7 +26,7 @@ _D(
   //if(powerOnReset) { delay(3000); }
   DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1); DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); delay(50);
   checkWakeUpReason();
-  #if (MAX_AWAKE_TIME_POWER == 0) || (MAX_AWAKE_TIME_TIMER == 0)
+  #if (MAX_AWAKE_TIME_POWER_MSEC == 0) || (MAX_AWAKE_TIME_TIMER_MSEC == 0)
   DebugPrintln("!!!! timeouts disabled !!!!!", DEBUG_LEVEL_1);
   #endif
   )
@@ -60,7 +60,7 @@ void _PrintDataSet(t_SendData* DataSet, int dLevel){
   _D(DebugPrintln(DataSet->accThresCnt1, dLevel));
 }
 void _PrintShortSummary(int dLevel){
-  for(int i=0; i<MAX_DATA_SETS; i++){
+  for(int i=0; i<allDataSets; i++){
     t_SendData* DataSet = availableDataSet[i];
     if (!emptyDataSet(availableDataSet[i])){
       _D(DebugPrint("Dataset " + String(i) + ": ", dLevel);)

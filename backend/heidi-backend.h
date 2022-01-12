@@ -55,7 +55,7 @@
 #define codingRateDenominator 8 //5;8 -> 4/5; 4/8
 
 #ifdef USE_LORA
-void SetupLoRa(){
+void SetupLoRa();
 #endif
 
 uint8_t herdeID();

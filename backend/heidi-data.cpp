@@ -17,12 +17,17 @@
 t_ConfigData* heidiConfig;
 t_SendData*   availableDataSet[MAX_DATA_SETS];
 t_FenceData*  FenceDataSet[FENCE_MAX_POS];
+#ifdef SAVE_AOP_DATA
+t_aopData*    aopDataSet[AOP_DATA_SETS];
+#endif
 bool newCycleSettings = false;
 bool newFenceSettings = false;
 bool newAccSettings   = false;
 #ifdef USE_RTC_FAST_MEM
-uint32_t fastMemBuffer[RTC_FAST_MEM_SIZE_32];
+uint32_t* fastMemBuffer = NULL;
 #endif
+int allDataSets  =   0;
+
 
 void initConfig(bool reset){
   heidiConfig = (t_ConfigData*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
@@ -43,6 +48,7 @@ void initConfig(bool reset){
     heidiConfig->accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT;
     heidiConfig->accNightFactor  = 100;  //equals to 1
     heidiConfig->alertFailCount  = 0;
+    heidiConfig->gpsStatus       = 0;
     heidiConfig->telNo[0][0]     = 0xBB; //empty
     heidiConfig->telNo[1][0]     = 0xBB; //empty
   }
@@ -55,28 +61,17 @@ void initRTCData(bool reset){
   initConfig(reset);
   uint8_t* curSet;
   //_D(DebugPrintln("Init data sets", DEBUG_LEVEL_1); delay(50));
-  int p=0;
   #ifdef USE_RTC_FAST_MEM
   RTCfastMemRead();
   curSet = (uint8_t*)fastMemBuffer;
   for (int i=0; i<FAST_MEM_DATA_SETS; i++){
-    availableDataSet[p] = (t_SendData*)curSet;
-    if(reset) { initDataSet(availableDataSet[p]); }
+    availableDataSet[allDataSets] = (t_SendData*)curSet;
+    if(reset) { initDataSet(availableDataSet[allDataSets]); }
     curSet += DATA_SET_LEN;
-    p++;
+    allDataSets++;
   }
   #endif
-  #ifdef USE_RTC_SLOW_MEM
   curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC)]);
-  for (int i=0; i<SLOW_MEM_DATA_SETS; i++){
-    availableDataSet[p] = (t_SendData*)curSet;
-    if(reset) { initDataSet(availableDataSet[p]); }
-    curSet += DATA_SET_LEN;
-    p++;
-  }
-  #endif
-  //_D(DebugPrintln("Init fence sets", DEBUG_LEVEL_1); delay(50);)
-  curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC + DATA_SET_SLOW_MEM_SPACE)]);
   for (int i=0; i<FENCE_MAX_POS; i++){
     FenceDataSet[i] = (t_FenceData*)curSet;
     if(reset) {
@@ -85,6 +80,22 @@ void initRTCData(bool reset){
     }
     curSet += FENCE_SET_LEN;
   }
+  #ifdef SAVE_AOP_DATA
+  curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC + FENCE_MEM_SPACE)]);
+  for (int i=0; i<AOP_DATA_SETS; i++){
+    aopDataSet[i] = (t_aopData*)curSet;
+    if(reset) { aopDataSet[i]->svId = 0; }
+    curSet += AOP_DATA_SET_LEN;
+  }
+  #endif
+  curSet = (uint8_t*)&(RTC_SLOW_MEM[(RTC_DATA_SPACE_OFFSET + HEIDI_CONFIG_LENGTH_RTC + FENCE_MEM_SPACE + AOP_DATA_LEN)]);
+  for (int i=0; i<SLOW_MEM_DATA_SETS; i++){
+    availableDataSet[allDataSets] = (t_SendData*)curSet;
+    if(reset) { initDataSet(availableDataSet[allDataSets]); }
+    curSet += DATA_SET_LEN;
+    allDataSets++;
+  }
+  _DD(DebugPrintln(String(allDataSets) + " data set available", DEBUG_LEVEL_3);)
   #ifdef USE_ULP
   //init ULP Variables
   if(reset){
@@ -118,7 +129,7 @@ void initRTCData(bool reset){
   _D(
     if(!reset){
       int c = 0;
-      for(int i=0; i<MAX_DATA_SETS; i++){ if(!emptyDataSet(availableDataSet[i])) { c++; } }
+      for(int i=0; i<allDataSets; i++){ if(!emptyDataSet(availableDataSet[i])) { c++; } }
       DebugPrintln("Used data sets: " + String(c), DEBUG_LEVEL_2);
     }
   )
@@ -238,7 +249,7 @@ String generateMulti64SendLine(int first, int last){
     if (!emptyDataSet(DataSet)) {
       k++;
       if (k > 1) { result += "&"; }
-      _D(_PrintDataSet(DataSet, DEBUG_LEVEL_1));
+      _DD(_PrintDataSet(DataSet, DEBUG_LEVEL_3));
       // why that complicated and not just memcopy?
       // push_data.phtml expects 8 bit count of values, 16 bit ID, 2x32bit coordinates
       // and than count-3 16 bit values - always 16 bit
@@ -259,14 +270,14 @@ String generateMulti64SendLine(int first, int last){
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThresCnt1);  //12
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThresCnt2);  //13
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //14 = HEX_BUFFER_VALUES
-      _D(
+      _DD(
         String HexStr = "";
         for(int i=0; i<HEX_BUFFER_LEN; i++){
           String _hex = String(hexbuffer[i], HEX);
           if (_hex.length() < 2) {_hex = "0" + _hex;}
           HexStr = HexStr + _hex;
         }
-        DebugPrintln("bin: " + HexStr, DEBUG_LEVEL_2);
+        DebugPrintln("bin: " + HexStr, DEBUG_LEVEL_3);
       )
       result += "X" + LenTwo(String(k)) + "=" + b64Encode(hexbuffer, HEX_BUFFER_LEN);
     }
@@ -382,21 +393,21 @@ bool newTelNoB64(String b64){
 
 void cleanUpDataSets(bool TransmissionFailed){
   //mark transmission result
-  for(int i=0; i<MAX_DATA_SETS; i++){
+  for(int i=0; i<allDataSets; i++){
     if (!emptyDataSet(availableDataSet[i])){
       if (TransmissionFailed)  { setError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED); }
       else { rmError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED); }
     }
   }
   //delete all transmitted data
-  for(int i=0; i<MAX_DATA_SETS; i++){
+  for(int i=0; i<allDataSets; i++){
     if(getError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED) == false){
       initDataSet(availableDataSet[i]);
     }
   }
   //concentrate
   int k = 0;
-  for(int i=0; i<MAX_DATA_SETS; i++){
+  for(int i=0; i<allDataSets; i++){
     if(!emptyDataSet(availableDataSet[i]) && (k < i) && emptyDataSet(availableDataSet[k])){
       copyDataSet(availableDataSet[i], availableDataSet[k]);
       initDataSet(availableDataSet[i]);
@@ -406,7 +417,7 @@ void cleanUpDataSets(bool TransmissionFailed){
 }
 void freeFirstDataSet(void){
   if(emptyDataSet(availableDataSet[0])) { return; }
-  for(int i=(MAX_DATA_SETS - 2); i >= 0; i--){
+  for(int i=(allDataSets - 2); i >= 0; i--){
     if(!emptyDataSet(availableDataSet[i])){
       copyDataSet(availableDataSet[i], availableDataSet[i+1]);
       initDataSet(availableDataSet[i]);
@@ -573,11 +584,13 @@ void fastMemReadTask(void *pvParameters) {
     DebugPrintln("Fast mem read task created on core " + String(xPortGetCoreID()), DEBUG_LEVEL_1); delay(50);
     int t = millis();
   )
-  for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ fastMemBuffer[i] = _realFastMem[i];  }
-  _D(DebugPrintln("RTC fast mem read " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
+  fastMemBuffer = (uint32_t*)malloc(RTC_MAX_FAST_DATA_SPACE);
+  if(fastMemBuffer != NULL){
+    for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ fastMemBuffer[i] = _realFastMem[i];  }
+    _D(DebugPrintln("RTC fast mem read " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
+  }
   task_fmem_read = NULL;
   vTaskDelete(NULL);
-
 }
 
 void fastMemWriteTask(void *pvParameters) {
@@ -585,8 +598,12 @@ void fastMemWriteTask(void *pvParameters) {
     DebugPrintln("Fast mem write task created on core " + String(xPortGetCoreID()), DEBUG_LEVEL_1); delay(50);
     int t = millis();
   )
-  for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ _realFastMem[i] = fastMemBuffer[i]; }
-  _D(DebugPrintln("RTC fast mem written " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
+  if(fastMemBuffer != NULL){
+    for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ _realFastMem[i] = fastMemBuffer[i]; }
+    _D(DebugPrintln("RTC fast mem written " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
+    free(fastMemBuffer);
+    fastMemBuffer = NULL;
+  }
   task_fmem_write = NULL;
   vTaskDelete(NULL);
 }

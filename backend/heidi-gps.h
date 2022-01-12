@@ -14,11 +14,6 @@
 #include "esp32-hal-gpio.h"
 #include "heidi-data.h"
 
-//#define USE_TINY_GPS_LIB
-
-#ifdef USE_TINY_GPS_LIB
-#include "TinyGPS++.h"
-#endif
 #define GPS_RXD   GPIO_NUM_16
 #define GPS_TXD   GPIO_NUM_17
 #define GPS_UART_NO 1
@@ -26,38 +21,50 @@
 
 #define WAIT_FOR_GPS_TIME 180000
 
-#ifdef  USE_TINY_GPS_LIB
-    #define GPS_GET_SAT gps.satellites.value()
-    #define GPS_GET_LON gps.location.lng()
-    #define GPS_GET_LAT gps.location.lat()
-    #define GPS_GET_ALT gps.altitude.meters()
-    #define GPS_GET_DOP gps.hdop.value()
-    #define GPS_GET_ACC 0
-    #define GPS_GET_YR  gps.date.year()
-    #define GPS_GET_MO  gps.date.month()
-    #define GPS_GET_DY  gps.date.day()
-    #define GPS_GET_HR  gps.time.hour()
-    #define GPS_GET_MI  gps.time.minute()
-    #define GPS_GET_SE  gps.time.second()
-#else
-    #define GPS_GET_SAT gpsData.data->navPVT.numSV
-    #define GPS_GET_LON gpsData.data->navPVT.lon/10000000.0f
-    #define GPS_GET_LAT gpsData.data->navPVT.lat/10000000.0f
-    #define GPS_GET_ALT gpsData.data->navPVT.hMSL/1000.0f
-    #define GPS_GET_DOP gpsData.data->navPVT.pDOP/100.0f
-    #define GPS_GET_ACC (int)gpsData.data->navPVT.hAcc/1000.0f
-    #define GPS_GET_YR  gpsData.data->navPVT.year
-    #define GPS_GET_MO  gpsData.data->navPVT.month
-    #define GPS_GET_DY  gpsData.data->navPVT.day
-    #define GPS_GET_HR  gpsData.data->navPVT.hour
-    #define GPS_GET_MI  gpsData.data->navPVT.minute
-    #define GPS_GET_SE  gpsData.data->navPVT.second
+#define GPS_GET_SAT gpsData.data->navPVT.numSV
+#define GPS_GET_LON gpsData.data->navPVT.lon/10000000.0f
+#define GPS_GET_LAT gpsData.data->navPVT.lat/10000000.0f
+#define GPS_GET_ALT gpsData.data->navPVT.hMSL/1000.0f
+#define GPS_GET_DOP gpsData.data->navPVT.pDOP/100.0f
+#define GPS_GET_ACC gpsData.data->navPVT.hAcc/1000.0f
+#define GPS_GET_YR  gpsData.data->navPVT.year
+#define GPS_GET_MO  gpsData.data->navPVT.month
+#define GPS_GET_DY  gpsData.data->navPVT.day
+#define GPS_GET_HR  gpsData.data->navPVT.hour
+#define GPS_GET_MI  gpsData.data->navPVT.minute
+#define GPS_GET_SE  gpsData.data->navPVT.second
+#define RESET_GPS_DATA gpsData.valid = false; gpsData.type = GPS_DT_NONE;
 
+typedef struct _locationSet_t{
+  double   lng;
+  double   lat;
+  double   alt;
+  double   acc;
+  double   hdop;
+  int      gps_sat;
+}locationSet_t;
+
+typedef enum _gpsStatusType_t {
+  GPS_NEVER_GOT_LOCK = 0,
+  GPS_LESS_EHP_DATA,
+  GPS_GOT_EHP_DATA,
+  GPS_LESS_AOP_DATA,
+  GPS_GOT_AOP_DATA,
+  GPS_GOT_2D_LOCK,
+  GPS_GOT_3D_LOCK
+}gpsStatusType_t;
+
+//ublox UBX declarations
   typedef enum _gpsDataType_t {
      GPS_DT_NONE,
      GPS_DT_NAV_PVT,
      GPS_DT_NAV_POSLLH,
-     GPS_DT_NAV_STATUS
+     GPS_DT_NAV_STATUS,
+     GPS_DT_CFG_PRT,
+     GPS_DT_CFG_NAVX5,
+     GPS_DT_AID_EPH,
+     GPS_DT_AID_AOP_DATA,
+     GPS_DT_AID_AOP_STATUS
   }gpsDataType_t;
 
   #define GPS_UBX_CLASS 0
@@ -81,18 +88,25 @@
     GPS_UBX_NAV_PVT     = 0x07
   }gps_ubx_nav_id_t;
   typedef enum _gps_ubx_cfg_id_t{
-    GPS_UBX_CFG_MSG  = 0x01,
-    GPS_UBX_CFG_INF  = 0x02,
-    GPS_UBX_CFG_RATE = 0x08
+    GPS_UBX_CFG_PRT   = 0x00,
+    GPS_UBX_CFG_MSG   = 0x01,
+    GPS_UBX_CFG_INF   = 0x02,
+    GPS_UBX_CFG_RATE  = 0x08,
+    GPS_UBX_CFG_NAVX5 = 0x23
   }gps_ubx_cfg_id_t;
+  typedef enum _gps_ubx_aid_id_t{
+    GPS_UBX_AID_EPH     = 0x31,
+    GPS_UBX_AID_AOP_DT  = 0x33,
+    GPS_UBX_AID_AOP_ST  = 0x60
+  }gps_ubx_aid_id_t;
 
-  #define NMEA_MSG_ON_OFF_GROUP 4
+  #define MSG_ON_OFF_GROUP 4
   typedef enum _gps_cfg_msg_group_t{
     GPS_CFG_MSG_NMEA = 0xF0,
     GPS_CFG_MSG_UBX  = 0x01
   }gps_cfg_msg_group_t;
 
-  #define NMEA_MSG_ON_OFF_TYPE 5
+  #define MSG_ON_OFF_TYPE 5
   typedef enum _gps_cfg_msg_type_t{
     GPS_CFG_MSG_GGA, //0x00
     GPS_CFG_MSG_GLL, //0x01
@@ -202,6 +216,61 @@
     uint32_t msss;
   };
 
+  typedef __attribute__((__packed__)) struct UART_CONFIG_t {
+    uint8_t  cls;
+    uint8_t  id;
+    uint16_t len;
+    uint8_t  port;
+    uint8_t  reserved01;
+    uint16_t rxReady;
+    uint32_t UARTmode;
+    uint32_t baud;
+    uint16_t inProtoMask;
+    uint16_t outProtoMask;
+    uint16_t flags;
+    uint16_t reserved02;
+  };
+
+  typedef __attribute__((__packed__)) struct NAVX5_CONFIG_t {
+    uint8_t  cls;
+    uint8_t  id;
+    uint16_t len;
+    uint16_t version;
+    uint8_t  noInterest01[25];
+    uint8_t  aopCfg;
+    uint8_t  noInterest02[12];
+  };
+  typedef __attribute__((__packed__)) struct AID_EPH_DATA_t {
+    uint8_t  cls;
+    uint8_t  id;
+    uint16_t len;
+    uint32_t svId; //satellite ID
+    uint32_t handOver;
+    uint32_t sf1d[8];
+    uint32_t sf2d[8];
+    uint32_t sf3d[8];
+  };
+  typedef __attribute__((__packed__)) struct AID_AOP_DATA_t {
+    uint8_t  cls;
+    uint8_t  id;
+    uint16_t len;
+    uint8_t  svId; //satellite ID
+    uint8_t  data[59];
+    uint8_t  optional0[48];
+    uint8_t  optional1[48];
+    uint8_t  optional2[48];
+  };
+  typedef __attribute__((__packed__)) struct AID_AOPSTATUS_t {
+    uint8_t  cls;
+    uint8_t  id;
+    uint16_t len;
+    uint32_t iTOW;
+    uint8_t  aopCfg;
+    uint8_t  status;
+    uint8_t  noInterest01[14];
+  };
+
+
   typedef __attribute__((__packed__)) struct MSG_HEAD_t {
     uint8_t  cls;
     uint8_t  id;
@@ -209,10 +278,15 @@
   };
 
   union UBXMessage_t {
-    MSG_HEAD_t   head;
-    NAV_POSLLH_t navPosllh;
-    NAV_STATUS_t navStatus;
-    NAV_PVT_t    navPVT;
+    MSG_HEAD_t      head;
+    NAV_POSLLH_t    navPosllh;
+    NAV_STATUS_t    navStatus;
+    NAV_PVT_t       navPVT;
+    UART_CONFIG_t   UARTconf;
+    NAVX5_CONFIG_t  NAVX5conf;
+    AID_EPH_DATA_t  AIDephData;
+    AID_AOP_DATA_t  AIDaopData;
+    AID_AOPSTATUS_t AIDaopStatus;
   };
 
   struct gpsData_t {
@@ -221,24 +295,29 @@
     UBXMessage_t*  data;
   };
 
-
-#endif
-
-int  GPSGetPosition(t_SendData* DataSet, int averages, int timeOut);
+bool GPSGetPosition(t_SendData* DataSet, int requiredAccuracy, int maxWorse, int timeOut);
 bool setBootTimeFromGPSTime(tm* bootTime, int timeOut);
 void SetSysToGPS();
 bool openGPS();
 void closeGPS();
-void GPSprocessData(void);
-bool GPSwaitForData(int timeOut);
-#ifndef  USE_TINY_GPS_LIB
+bool GPSprocessData(int timeOut);
 void GPSsendMessage(uint8_t* message, int len);
 void GPScalcChecksum(uint8_t* buffer, uint8_t* CK, int len);
-void GPSdecodeData(uint8_t data);
+bool GPSdecodeData(uint8_t data);
+bool GPSwaitForMessage(gpsDataType_t type, int timeout);
+bool GPSsetupUART(int newBaudRate);
+void setGPSserialBaudRate(int rate);
+bool GPSenableAOP(void);
+void GPSsaveAOPdata(void);
+int  GPSuploadAOPdata(void);
+uint8_t GPSEphermerisDataStatus(void);
+uint8_t GPSAOPdataStatus(void);
+#if (DEBUG_LEVEL > 0 )
+void _PrintDataGPS(void);
+void testGPS(void);
 #endif
-#if DEBUG_LEVEL >= DEBUG_LEVEL_1
-void _PrintDataGPS();
-void testGPS();
+#ifdef HEIDI_CONFIG_TEST
+void GPSprintBootData(void);
 #endif
 
 #endif /*GSM_MODULE*/

@@ -31,7 +31,7 @@ void setup()
 
   t_SendData* currentDataSet;
   int  startMS = millis();
-  int  timeOut = MAX_AWAKE_TIME_TIMER;
+  int  timeOut = MAX_AWAKE_TIME_TIMER_MSEC;
 
   setCpuFrequencyMhz(80); //save power
 
@@ -44,7 +44,11 @@ void setup()
   setupCycleTable();
 
   _D(debugHeidiState(powerOnReset);)
-  if(heidiConfig->bootCount <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER; }
+  if(heidiConfig->bootCount <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER_MSEC; }
+  #ifdef GPS_MODULE
+  if(heidiConfig->gpsStatus < GPS_GOT_3D_LOCK) { timeOut = MAX_AWAKE_TIME_POWER_MSEC; }
+  #endif
+
   setupWatchDog(timeOut);
 
   enableControls();
@@ -230,7 +234,7 @@ void transmitData(t_SendData* currentDataSet){
   currentDataSet->errCode |= getErrorCode(); //error codes from doDataTransmission !!!!!!!!!!!!!!!!!!
   _DD(_PrintShortSummary(DEBUG_LEVEL_3));
   String sendLine = "";
-  sendLine = generateMulti64SendLine(0, (MAX_DATA_SETS-1));
+  sendLine = generateMulti64SendLine(0, (allDataSets-1));
   if ((sendLine.length() == 0)){ sendLine = "ID=" + _herdeID(); } //just get settings
   if(openGSM()){
     if (GSMsetup()){
@@ -244,11 +248,16 @@ void transmitData(t_SendData* currentDataSet){
                            HTTPtimeOut);
       if (HTTPrc == 200){
         _D(DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_1);)
-        _D(DebugPrintln("HTTP response: " + GSMGetLastResponse(), DEBUG_LEVEL_2);)
+        String httpResponse = GSMGetLastResponse();
+        #if (DEBUG_LEVEL < DEBUG_LEVEL_3)
+        _D(DebugPrintln("HTTP response: " + httpResponse.substring(0, 10) + httpResponse.length()>10?"..":"", DEBUG_LEVEL_2);)
+        #else
+        _DD(DebugPrintln("HTTP response: " + httpResponse, DEBUG_LEVEL_3);)
+        #endif
         GSMfailure = false;
-        if (    !setFenceFromHTTPresponse(GSMGetLastResponse())
-             || !setSettingsFromHTTPresponse(GSMGetLastResponse())
-             || !setTelNoFromHTTPresponse(GSMGetLastResponse())){
+        if (    !setFenceFromHTTPresponse(httpResponse)
+             || !setSettingsFromHTTPresponse(httpResponse)
+             || !setTelNoFromHTTPresponse(httpResponse)){
           setState(TRSMT_DATA_ERROR);
         }
         clrState(RESET_INITS);
@@ -259,7 +268,7 @@ void transmitData(t_SendData* currentDataSet){
   }
   cleanUpDataSets(GSMfailure);
   _D(
-    DebugPrintln("GPRS send done: " + String(millis()), DEBUG_LEVEL_2);
+    DebugPrintln("GPRS send done: " + (int)(String(millis()/1000) + " s"), DEBUG_LEVEL_2);
     if (GSMfailure){ DebugPrintln("GSM result: " + String(HTTPrc), DEBUG_LEVEL_1); }
   )
 }
@@ -286,7 +295,7 @@ void checkGPSalert(t_SendData* currentDataSet){
 void checkGPSposition(t_SendData* currentDataSet, int timeOut, bool force){
   if (!getState(NOT_IN_CYCLE) || GPSalert() || (timeOut == 0) || force){
     #ifdef GPS_MODULE
-    if (GPSGetPosition(currentDataSet, 10, timeOut) > 0){
+    if (GPSGetPosition(currentDataSet, 8, 10, timeOut) > 0){
       checkGPSalert(currentDataSet);
     } else {
       _D(DebugPrintln("GPS: Unable to fetch position.", DEBUG_LEVEL_1);)
@@ -551,26 +560,22 @@ void doTests(t_SendData* currentDataSet){
         set_accel_excnt2_ULP(0);
       }
       #endif
-      //if (setupFastMemAccess()) {
-        RTCfastMemRead();
-        for (int i=1; i<RTC_FAST_MEM_SIZE_32-1; i++){ fastMemBuffer[i] = 0; }
-        fastMemBuffer[0]++;
-        fastMemBuffer[RTC_FAST_MEM_SIZE_32-1]++;
-        RTCfastMemWrite();
-      //}
 
       openGPS();
-      GPSGetPosition(currentDataSet, 10000, 3600000);
-      SPI.begin(SCK,MISO,MOSI,SS);
-      LoRa.setPins(SS,RST,DI0);
-      LoRa.begin(BAND);
-      LoRa.end();
-      LoRa.sleep();
-      _D(DebugPrintln("CPU Freq: " + String(getCpuFrequencyMhz()) + " Core: " + String(xPortGetCoreID()), DEBUG_LEVEL_1);)
-      delay(500);
+      _D(DebugPrintln("GPS start heidi gpsStatus:  " + String (heidiConfig->gpsStatus), DEBUG_LEVEL_1);)
+      if(heidiConfig->gpsStatus < GPS_GOT_3D_LOCK){
+        _D(DebugPrintln("GPS: extend timeout to get more EPH data", DEBUG_LEVEL_1);)
+        GPSGetPosition(currentDataSet, 8, 10, 300000);
+      } else {
+        GPSGetPosition(currentDataSet, 8, 10, 120000);
+      }
+      _D(DebugPrintln("GPS end heidi gpsStatus:  " + String (heidiConfig->gpsStatus), DEBUG_LEVEL_1);)
+      #ifdef SAVE_AOP_DATA
+      GPSsaveAOPdata();
+      #endif
       disableMeasures();
       disableControls(true);
-      gotoSleep(10000);
+      gotoSleep(300000 - millis());
 }
 
 #endif

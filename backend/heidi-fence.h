@@ -67,6 +67,7 @@ bool pointIn(t_PointData* point);
 int  meterDistFromFence(t_PointData* point);
 bool getPointOutside(t_PointData* point);
 bool emptyPoint(t_FenceData* point);
+bool invalidFence(void);
 void testGeoFencing();
 void _PointToFence(t_PointData* from, t_FenceData* to);
 void _FenceToPoint(t_FenceData* from, t_PointData* to);

@@ -110,6 +110,7 @@ bool pointIn(t_PointData* point) //see ods sheet
   int intersections;
   bool noResult = true;
 
+  if(invalidFence()){_DD(DebugPrintln("fence not set yet", DEBUG_LEVEL_3);) return false; }
   copyPoint(point, &inter.p1);
   if (!getPointOutside(&inter.p2)) { return false; }
   while (noResult){
@@ -276,6 +277,14 @@ void copyPoint(t_PointData* _from, t_PointData* _to)
   _to->longitude = _from->longitude;
 }
 
+bool invalidFence(void){
+  for (int i=0; i<FENCE_MAX_POS-1; i++){
+    if(FenceDataSet[i]->latitude  != FenceDataSet[i+1]->latitude)  { return false; }
+    if(FenceDataSet[i]->longitude != FenceDataSet[i+1]->longitude) { return false; }
+  }
+  //all points equal
+  return true;
+}
 
 void testGeoFencing()
 {

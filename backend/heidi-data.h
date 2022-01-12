@@ -43,7 +43,7 @@ typedef __attribute__((__packed__)) struct _t_ConfigData{
  uint32_t status;
   int32_t lastTimeDiffMs;
   uint8_t alertFailCount;
-  uint8_t dummy8;
+  uint8_t gpsStatus;
   uint8_t telNo[TEL_NO_CNT][TEL_NO_LEN]; // BCD coded (A='+'; B=empty; C-F=not allowed)
 }t_ConfigData;
 
@@ -67,6 +67,18 @@ typedef __attribute__((__packed__)) struct _t_SendData{
   //total size: 28 Bytes;
 }t_SendData;
 
+#ifdef SAVE_AOP_DATA
+  typedef __attribute__((__packed__)) struct _t_aopData{
+    uint8_t svId;
+    uint8_t data[59];
+  }t_aopData;
+  #define AOP_DATA_SET_LEN 60
+  #define AOP_DATA_SETS    32
+  #define AOP_DATA_LEN (AOP_DATA_SET_LEN * AOP_DATA_SETS)
+#else
+  #define AOP_DATA_LEN 0
+#endif
+
 #define DATA_SET_LEN     28 //must be a multiple of 4
 
 #ifdef USE_RTC_FAST_MEM
@@ -75,10 +87,10 @@ typedef __attribute__((__packed__)) struct _t_SendData{
 #define FAST_MEM_DATA_SETS 0
 #endif
 
-#ifdef USE_RTC_SLOW_MEM
-#define SLOW_MEM_DATA_SETS    96
+#ifdef SAVE_AOP_DATA
+#define SLOW_MEM_DATA_SETS    30
 #else
-#define SLOW_MEM_DATA_SETS 0
+#define SLOW_MEM_DATA_SETS    96
 #endif
 
 #define DATA_SET_FAST_MEM_SPACE (DATA_SET_LEN * FAST_MEM_DATA_SETS)
@@ -97,29 +109,34 @@ typedef __attribute__((__packed__)) struct _t_FenceData{
 
 #ifdef USE_RTC_FAST_MEM
 #define RTC_FAST_MEM_SIZE_32 2016
-extern uint32_t fastMemBuffer[RTC_FAST_MEM_SIZE_32];
+extern uint32_t *fastMemBuffer;
 #define RTC_MAX_FAST_DATA_SPACE (RTC_FAST_MEM_SIZE_32 << 2)
-#define RTC_FAST_DATA_SPACE DATA_SET_MEM_SPACE
-#define RTC_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + FENCE_MEM_SPACE)
+#define RTC_FAST_DATA_SPACE DATA_SET_FAST_MEM_SPACE
+
 #if (RTC_FAST_DATA_SPACE > RTC_MAX_FAST_DATA_SPACE)
    #error 'Too much data for RTC fast mem\n'
 #endif
 #endif
 
-#define RTC_SLOW_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + DATA_SET_SLOW_MEM_SPACE + FENCE_MEM_SPACE)
+#define RTC_SLOW_DATA_SPACE ((RTC_DATA_SPACE_OFFSET << 2) + HEIDI_CONFIG_LENGTH + FENCE_MEM_SPACE + AOP_DATA_LEN + DATA_SET_SLOW_MEM_SPACE )
 #define RTC_SLOW_MAX_DATA_SPACE 3840
 #if (RTC_SLOW_DATA_SPACE > RTC_SLOW_MAX_DATA_SPACE)
   #error 'Too much data for RTC slow mem\n'
 #endif
 
+#if (MAX_DATA_SETS < 96)
+#pragma warning "low data set memory - you may enable RTC fast memory"
+#endif
+
 extern t_ConfigData* heidiConfig;
 extern t_SendData*   availableDataSet[MAX_DATA_SETS];
 extern t_FenceData*  FenceDataSet[FENCE_MAX_POS];
+#ifdef SAVE_AOP_DATA
+extern t_aopData*    aopDataSet[AOP_DATA_SETS];
+#endif
+extern int allDataSets;
 extern bool newCycleSettings;
 extern bool newAccSettings;
-#ifdef USE_RTC_FAST_MEM
-extern uint32_t fastMemBuffer[RTC_FAST_MEM_SIZE_32];
-#endif
 
 void     initConfig(bool reset);
 void     initRTCData(bool reset);

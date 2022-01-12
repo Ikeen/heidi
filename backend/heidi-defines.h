@@ -12,7 +12,43 @@
 
 /*
  * hardware configuration
+ *
+ * the following options are enabled by defining the corresponding item, leaving the define out disables the option
+ *
+ * GSM_MODULE            - there is a GSM module, e.g SIM800L
+ * GPS_MODULE            - there is a GPS module, e.g ublox NEO-7M
+ * COMMON_SERIAL         - GSM module and GPS module are sharing one serial interface
+ * TEMP_SENSOR           - there is a temperature sensor, e.g. dallas DS 18B20
+ * CHECK_BATTERY         - check battery status (disable this only for test configurations)
+ * USE_VOLTAGE_MEAS_PIN  - use a dedicated pin to activate battery voltage measuring.
+ *                         In the current version we double use the SIM800L reset wire for that, because SIM800L is
+ *                         usually powered off and reset pin is HIGHZ at the start. For voltage measuring it is pulled
+ *                         to ground. Not using this option means power up all sensors for just checking battery
+ *                         status. In case of low battery this is semi-best.
+ * I2C_BUS               - enable i²c bus
+ * ACCELEROMETER         - there is a accelerometer module, e.g. ADXL345
+ * USE_ULP               - ultra low power processor of ESP32 is used for monitoring
+ * USE_GPS_ALERT         - enable alerting modes for geo-fencing
+ * USE_ACC_ALERT         - enable alerting modes for activity-monitoring (currently not implemented)
+ * SEND_ALERT_SMS        - enable sending of alerting SMS
+ * PRE_MEASURE_HANDLING  - power up all sensors some time before the measurements are scheduled
+ *                         This is used for saving power, because e.g. the GPS module needs some seconds to get valid
+ *                         results. The ESP32 may sleep meanwhile.
+ * USE_RTC_FAST_MEM      - additionally use RTC fast memory to store data sets
+ * SAVE_AOP_DATA         - store GPS-AOP data on ESP32 RTC memory. (AOP - automatic orbit prediction - see ublox manual)
+ *                         AOP is enabled for Heidi because it speeds up position fixes significantly. There are 32
+ *                         satellites in orbit for whom NEO-7M calculates orbits, but it can only store 20 AOP data sets.
+ *                         Storing all data sets and uploading them on start should help to further speed up, but in fact
+ *                         it seems it doesn't. Furthermore it seems NEO-7M is able to store more than 20 data sets.
+ * DEFAULT_BOOT_CYCLES   - boot cycles until transferring data (if there is no setup stored in flash)
+ * DEFAULT_CYCLE_DURATION- in minutes (if there is no setup stored in flash)
+ * MAX_AWAKE_TIME_POWER  - extended measuring time after power up or in case of bad GPS-conditions (minutes)
+ *                         On powering up from scratch, GPS-module has no orbit-data (ephemeris-data). We need to give
+ *                         up-time for downloading it.
+ * MAX_AWAKE_TIME_TIMER  - usual maximum up-time (minutes)
+ *
  */
+
 #define HEIDI_CONFIG_2
 
 #ifdef HEIDI_CONFIG_1
@@ -24,10 +60,9 @@
 #define SEND_ALERT_SMS
 //#define PRE_MEASURE_HANDLING
 #define DEFAULT_BOOT_CYCLES         4         // ..until transferring data
-#define DEFAULT_CYCLE_DURATION_MSEC 900000    // 15 minutes
 #define DEFAULT_CYCLE_DURATION      15        // 15 minutes
-#define MAX_AWAKE_TIME_POWER        300000    //  5 minutes
-#define MAX_AWAKE_TIME_TIMER        120000    //  2 minutes
+#define MAX_AWAKE_TIME_POWER        5         //  5 minutes
+#define MAX_AWAKE_TIME_TIMER        2         //  2 minutes
 #endif
 #ifdef HEIDI_CONFIG_2
 #define GSM_MODULE
@@ -41,15 +76,15 @@
 //#define I2C_SWITCH
 #define USE_ULP
 #define USE_GPS_ALERT
-#define SEND_ALERT_SMS
+//#define SEND_ALERT_SMS
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
 #define USE_RTC_FAST_MEM
+//#define SAVE_AOP_DATA
 #define DEFAULT_BOOT_CYCLES         4         // ..until transferring data
-#define DEFAULT_CYCLE_DURATION_MSEC 900000    // 15 minutes
 #define DEFAULT_CYCLE_DURATION      15        // 15 minutes
-#define MAX_AWAKE_TIME_POWER        300000    //  5 minutes
-#define MAX_AWAKE_TIME_TIMER        120000    //  2 minutes
+#define MAX_AWAKE_TIME_POWER        5         //  5 minutes
+#define MAX_AWAKE_TIME_TIMER        2         //  2 minutes
 #endif
 #ifdef HEIDI_CONFIG_TEST
 //#define GSM_MODULE
@@ -67,15 +102,13 @@
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
 #define USE_RTC_FAST_MEM
+#define SAVE_AOP_DATA
 #define DEFAULT_BOOT_CYCLES         32        // ..until transferring data
-#define DEFAULT_CYCLE_DURATION_MSEC 300000    // 5 minutes
 #define DEFAULT_CYCLE_DURATION      5         // 5 minutes
 #define MAX_AWAKE_TIME_POWER        0         // infinite
 #define MAX_AWAKE_TIME_TIMER        0         // infinite
-#endif
-
-#if (MAX_AWAKE_TIME_POWER == 0) || (MAX_AWAKE_TIME_TIMER == 0)
-#pragma warning "timeout disabled!"
+#undef DEBUG_LEVEL
+#define DEBUG_LEVEL 3
 #endif
 
 /*
@@ -127,6 +160,13 @@
 #define MAX_SLEEP_TIME_MS   3600000   /* 1 hour */
 #define ONE_MINUTE          60000
 #define MS_PER_DAY          86400000
+
+#define MAX_AWAKE_TIME_POWER_MSEC (MAX_AWAKE_TIME_POWER * ONE_MINUTE)
+#define MAX_AWAKE_TIME_TIMER_MSEC (MAX_AWAKE_TIME_TIMER * ONE_MINUTE)
+#define DEFAULT_CYCLE_DURATION_MSEC (DEFAULT_CYCLE_DURATION * ONE_MINUTE)
+#if (MAX_AWAKE_TIME_POWER_MSEC == 0) || (MAX_AWAKE_TIME_TIMER_MSEC == 0)
+#pragma warning "timeout disabled!"
+#endif
 
 #ifdef HEIDI_CONFIG_TEST
 #define DEFALUT_ACCELERATION_THRESHOLD_1    50
@@ -197,6 +237,13 @@
 #endif
 #endif
 
+#ifdef  SAVE_AOP_DATA
+#ifndef USE_RTC_FAST_MEM
+#error "AOP data resides in RTC slow memory, which is currently used for tracker data too."
+#error "30 datasets might be too less. If you're sure, uncomment this."
+#endif
+#endif
+
 #ifdef ACCELEROMETER
 #ifndef I2C_BUS
 #error "I2C bus for accelerometer not enabled"
@@ -249,7 +296,7 @@
 #endif
 #endif
 
-#if (MAX_AWAKE_TIME_POWER == 0) || (MAX_AWAKE_TIME_TIMER == 0)
+#if (MAX_AWAKE_TIME_POWER_MSEC == 0) || (MAX_AWAKE_TIME_TIMER_MSEC == 0)
 #ifndef HEIDI_CONFIG_TEST
 #error "Timeout disabled!"
 #endif
