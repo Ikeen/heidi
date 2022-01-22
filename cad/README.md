@@ -12,8 +12,8 @@ For our purposes we decided to use 3D print for building up housings. This is fl
 ### Dealing with ASA-filament
 The outdoor usage of Heidi-Tracker requires a weather proofed housing material. We decided for ASA-filament from PolyMaker (for no special reasons). If you not own a industrial like 3D-printer, printing ASA-filament is not quite simple. The temperature for the material nozzle and the build plate (bed) needs to be adjusted depending on the geometry of the part you intend to print. (As far as we discovered due to many tries.)
 ### Warping
-<https://support.ultimaker.com/hc/en-us/articles/360012113239-How-to-fix-warping> 
-Warping is the main issue. 
+[(warping - see here)](https://support.ultimaker.com/hc/article_attachments/360009279100/How_to_fix_warping_Warping_model.jpg)<br />
+Warping is the main issue while printing ASA filament.
 
 ### Solutions
 
