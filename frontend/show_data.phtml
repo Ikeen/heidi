@@ -37,145 +37,289 @@ div.a {
     font-family: monospace;
 }
 </style>
+<div id="cards" class="cards"> 
 
 <?php
 
-    header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: GET");
+  header("Access-Control-Allow-Origin: *");
+  header("Access-Control-Allow-Methods: GET");
 
-    $servername = "localhost";
-    $username   = "HeidiTracker";
-    $password   = "jETh4dBShgwFawQ";
-    $dbname     = "Heidi";
-    // Create connection
-    $conn = new mysqli($servername, $username, $password, $dbname);
-    // Check connection
-    if ($conn->connect_error) {
-        echo "Database Connection failed: " . $conn->connect_error;
-        die("Database Connection failed: " . $conn->connect_error);
-    }
-
-    $TrackerID = $_GET['ID'];
-    if (isset($_GET['StartDate'])) {$StartDate = $_GET['StartDate']; } 
-    else { $StartDate = date('Y-m-d') . " 00:00:00"; }
-    if (isset($_GET['EndDate'])) {$EndDate = $_GET['EndDate']; } 
-    else { $EndDate = date('Y-m-d') . " 23:59:59"; }
-    $Table     = "TrackerData";
-    if (isset($_GET['ShowData'])) { $Action = $_GET['ShowData']; } 
-    else { $Action = "TAB"; } 
-
+  $servername = "localhost";
+  $username   = "HeidiTracker";
+  $password   = "jETh4dBShgwFawQ";
+  $dbname     = "Heidi";
+  // Create connection
+  $conn = new mysqli($servername, $username, $password, $dbname);
+  // Check connection
+  if ($conn->connect_error) {
+      echo "Database Connection failed: " . $conn->connect_error;
+      die("Database Connection failed: " . $conn->connect_error);
+  }
+  $TrackerID = $_GET['ID'];
+  if (isset($_GET['StartDate'])) {$StartDate = $_GET['StartDate']; } 
+  else { $StartDate = ''; }
+  if (isset($_GET['EndDate'])) {$EndDate = $_GET['EndDate']; } 
+  else { $EndDate = ''; }
+  $Table     = "TrackerData";
+  if ($StartDate != '') {
     $LocalStartDate = date_create_from_format('Y-m-d H:i:s', $StartDate);
     $StartDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalStartDate));
+  } else {
+    $LocalStartDate = '';
+    $StartDateUTC = '';
+  }
+  if ($EndDate != '') {
     $LocalEndDate = date_create_from_format('Y-m-d H:i:s', $EndDate);
     $EndDateUTC = gmdate('Y-m-d H:i:s', date_timestamp_get($LocalEndDate));
-    
-?>
-
-<div id="cards" class="cards"> 
-<?php 
-  echo "Tracker: "; 
-  echo "<input id=\"NewTrackerID\" type=\"text\" size=\"10\" onclick=\"\" value=\"" . $TrackerID . "\">";
-  echo " von "; 
-  echo "<input id=\"NewStartDate\" type=\"date\" onclick=\"\" value=\"" . date_format($LocalStartDate, "Y-m-d") . "\">";
-  echo " bis "; 
-  echo "<input id=\"NewEndDate\" type=\"date\" onclick=\"\" value=\"" . date_format($LocalEndDate, "Y-m-d") . "\"> ";
-  echo "<input id=\"ReLoad\" type=\"button\" onclick=\"ReloadPage()\" value=\"reload\"> ";
-  echo "<button onclick=\"exportToExcel()\">Export To Excel</button>";
-  echo "<br><br>"; 
-?>
-
-<?php
-    
-    //          row    0         1          2         3         4          5            6           7            8          9          10         11 
-    //                                                                                             Sats       GPShdop     acc1        acc2        Mout 
-    if (isset($_GET['StartDate']) && isset($_GET['EndDate'])){
-      $sql  = "SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5 FROM TrackerData ";
-      $sql .= "WHERE TrackerID = '{$TrackerID}' AND TimeStamp >= '{$StartDateUTC }' AND TimeStamp <= '{$EndDateUTC}' ";
-      $sql .= "ORDER BY TimeStamp DESC";
-    } else {
-      $sql  = "SELECT Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5 FROM TrackerData ";
-      $sql .= "WHERE TrackerID = '{$TrackerID}' ORDER BY idx DESC LIMIT 0,100";
-    }
-    
-    if ($result=mysqli_query($conn,$sql))
-      {
-      if ($Action == "GPX") {
-        echo "<div class=\"a\">";
-        echo "&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;<br>";
-        echo "&lt;gpx version=&quot;1.0&quot;&gt;<br>";
-        echo "&emsp;&lt;name&gt;Heidi track&lt;/name&gt;<br>";
-        echo "&emsp;&lt;trk&gt;&lt;name&gt;{$TrackerID}&lt;/name&gt;&lt;trkseg&gt;<br>";
-      } else {
-        echo "<table id='c4ytable'>";
-        echo "<tr><th>Datum</th><th>Zeit</th><th>L&auml;nge</th><th>Breite</th><th>Entfernung</th><th>BWcnt1</th><th>BWcnt2</th><th>Batterie</th><th>Temp.</th><th>Sats</th><th>GPShdop</th><th>ErrorCode</th></tr>";
-      }
-      // Fetch one and one row
-      $tz = new DateTimeZone( "UTC" );
-      while ($row=mysqli_fetch_row($result))
-      {
-        if ($Action == "GPX") {
-          $d = date_create_from_format("Y-m-d H:i:s", $row[4]);
-          echo "&emsp;&emsp;&lt;trkpt lat=&quot;" . $row[2] . "&quot; lon=&quot;" . $row[1]."&quot;&gt;";
-          echo "&lt;time&gt;" . date_format($d,"y-m-d") . "T" . date_format($d,"H:i:s") . "Z&lt;/time&gt;&lt;/trkpt&gt;";
-          echo "<br>";
-        } else {
-          
-          $MeasDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
-          $MeasDate = date('Y-m-d', date_timestamp_get($MeasDateUTC));
-          $MeasTime = date('H:i:s', date_timestamp_get($MeasDateUTC));
-          echo "<tr><td>".$MeasDate."</td><td>".$MeasTime."</td><td>".$row[0]."</td><td>".$row[1]."</td><td>".$row[11]."</td><td>".$row[9]."</td><td>".$row[10];
-          echo "</td><td>".$row[4]."</td><td>".$row[5]."</td><td>".$row[7]."</td><td>".$row[8]."</td><td>".$row[6]."</td></tr>";
-        }
-      }
-
-      if ($Action == "GPX") {
-        echo "&emsp;&lt;/trkseg&gt;&lt;/trk&gt;<br>";
-        echo "&lt;/gpx&gt;<br>";
-        echo "</div";
-      } else {
-        echo "</table>";
-      }
-      // Free result set
-      mysqli_free_result($result);
-    } else {
-      echo "empty result";
-    }
-
-    mysqli_close($conn);
-?>
-<script>
-
-  function ReloadPage(){
-    //console.log("redirect : show_data.phtml?ID=" + document.getElementById("NewTrackerID").value + "&StartDate=" + document.getElementById("NewStartDate").value + " 00:00:00&EndDate=" + document.getElementById("NewEndDate").value + " 23:59:59");
-    window.location.replace("show_data.phtml?ID=" + document.getElementById("NewTrackerID").value + "&StartDate=" + document.getElementById("NewStartDate").value + " 00:00:00&EndDate=" + document.getElementById("NewEndDate").value + " 23:59:59");
+  } else {
+    $LocalEndDate = '';
+    $EndDateUTC = '';
   }
+  $direction = 'DESC';
+  $dir = 0;
+  if (isset($_GET['Dir'])){
+    $dir = $_GET['Dir'];
+    if($dir == 1){
+      $direction = 'ASC';
+    } 
+  }
+  $det = 0;
+  if (isset($_GET['Det'])){
+    $det = $_GET['Det'];
+  } 
   
-  function exportToExcel(){  
-    var downloadurl;  
-    var dataFileType = 'application/vnd.ms-excel';  
-    var tableSelect = document.getElementById('c4ytable');  
-    var tableHTMLData = tableSelect.outerHTML.replace(/ /g, '%20');  
-    // Specify file name  
-    filename = 'HeidiData.xls';  
-    // Create download link element  
-    downloadurl = document.createElement("a");  
-    document.body.appendChild(downloadurl);  
-    if(navigator.msSaveOrOpenBlob){  
-      var blob = new Blob(['\ufeff', tableHTMLData], {  
-        type: dataFileType  
-      });  
-      navigator.msSaveOrOpenBlob( blob, filename);  
-    }else{  
-      // Create a link to the file  
-      downloadurl.href = 'data:' + dataFileType + ', ' + tableHTMLData;  
-      // Setting the file name  
-      downloadurl.download = filename;  
-      //triggering the function  
-      downloadurl.click();  
-   }
+  echo 'Tracker: '; 
+  echo '<input id="NewTrackerID" type="text" size="10" onclick="" value="' . $TrackerID . '">';
+  echo ' von '; 
+  echo '<input id="NewStartDate" type="date" onclick="" value="' . date_format($LocalStartDate, "Y-m-d") . '">';
+  echo '<input id="NewStartTime" type="time" onclick="" value="' . date_format($LocalStartDate, "H:i:s") . '">';
+  echo ' bis '; 
+  echo '<input id="NewEndDate" type="date" onclick="" value="' . date_format($LocalEndDate, "Y-m-d") . '">';
+  echo '<input id="NewEndTime" type="time" onclick="" value="' . date_format($LocalEndDate, "H:i:s") . '"> ';
+  echo '<input id="ReLoad" type="button" onclick="ReloadPage()" value="reload"> ';
+  echo '<button onclick="download_table_as_csv(\'c4ytable\')">Export to CSV</button>';
+  echo '&nbsp;&nbsp;&nbsp;&uarr;&darr; '; 
+  if ($dir == 0){
+     echo '<input id="UpSideDown" type="checkbox" onclick="ReloadPage()" value="upsidedown"> ';
+  } else {
+     echo '<input id="UpSideDown" type="checkbox" onclick="ReloadPage()" value="upsidedown" checked> ';
+  }
+  echo '&nbsp;&nbsp;&nbsp;&oplus; '; 
+  if ($det == 0){
+     echo '<input id="ShowDetails" type="checkbox" onclick="ReloadPage()" value="details"> ';
+  } else {
+     echo '<input id="ShowDetails" type="checkbox" onclick="ReloadPage()" value="details" checked> ';
+  }
+  echo '<br><br>'; 
+  
+  //          row    0         1          2         3         4          5            6           7            8          9          10         11          12          13
+  //                                                                                             Sats       GPShdop     acc1        acc2        Mout        AccSpr1     AccSpr2
+  if (($EndDateUTC != '') && ($StartDateUTC != '')){
+    $sql  = "SELECT Latitude, Longitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5, FreeValue6, FreeValue7 FROM TrackerData ";
+    $sql .= "WHERE TrackerID = '{$TrackerID}' AND TimeStamp >= '{$StartDateUTC }' AND TimeStamp <= '{$EndDateUTC}' ";
+    $sql .= "ORDER BY TimeStamp " . $direction ;
+  } else {
+    $sql  = "SELECT Latitude, Longitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5, FreeValue6, FreeValue7 FROM TrackerData ";
+    $sql .= "WHERE TrackerID = '{$TrackerID}' ORDER BY idx " . $direction . " LIMIT 0,100";
   }
    
+  if ($result=mysqli_query($conn,$sql))
+  {
+    echo "<table id='c4ytable'>";
+    echo "<tr><th>Datum</th><th>Zeit</th><th>Breite</th><th>L&auml;nge</th><th>&uArr;</th><th>Entfernung</th><th>BWcnt1</th><th>BWcnt2</th><th>Batterie</th><th>Temp.</th><th>Sats</th><th>GPShdop</th><th>ErrorCode</th></tr>";
+    // Fetch one and one row
+    $tz = new DateTimeZone( "UTC" );
+    $d1 = 0;
+    $d2 = 0;
+    $row=mysqli_fetch_row($result);
+    $spr = array();
+    $sum = array();
+    $acc = array();
+    $accSpreading = array();
+    $accValue = array();
+    while ($row)
+    {
+      $MeasDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
+      if ($loops == 0) {
+        $d1 =  date_timestamp_get($MeasDateUTC);
+      }
+      $MeasDate = date('Y-m-d', date_timestamp_get($MeasDateUTC));
+      $MeasTime = date('H:i:s', date_timestamp_get($MeasDateUTC));
+      if ($det == 1){
+        //detailed table
+        //first, check distribution of values (acceleration)
+        for($j=0; $j<2; $j++){
+          $sum[$j] = 0;
+          $accSpreading[$j] = $row[12 + $j];
+          for($i=0; $i<4; $i++){
+            $spr[$j][$i] = $accSpreading[$j] & 15;
+            $accSpreading[$j] = $accSpreading[$j] >> 4;
+            $sum[$j] += $spr[$j][$i];
+          }
+          if($sum[$j] == 0) { //means not set => equal distribution
+            $sum[$j] = 4;     //but we can't divide by zero - doing like accSpreading == 0x1111 will work
+            for($i=0; $i<4; $i++){ $spr[$j][$i] = 1; }
+          }
+        }
+        //calculate distributed acc values
+        for($j=0; $j<2; $j++){
+          $accValue[$j] = $row[9 + $j];
+          for($i=0; $i<3; $i++){
+            if($sum[$j] > 0) {
+               $acc[$j][$i] = round($accValue[$j] * $spr[$j][$i] / $sum[$j], 0);
+            } else {
+               $acc[$j][$i] = 0;
+            }
+            $sum[$j] -= $spr[$j][$i];      //we do 
+            $accValue[$j] -= $acc[$j][$i]; //this to
+          }                                //avoid rounding errors leading to
+          $acc[$j][3] = $accValue[$j];     //x1+x2+x3+x4 == 99% or 101%
+        }
+        if(($dir != 1) || (($loops == 0) && ($dir == 1))){
+          //top line (with distributed acceleration value)
+          echo '<tr><td>'.$MeasDate.'</td><td>'.$MeasTime.'</td><td>'.$row[0].'</td><td>'.$row[1].'</td><td>';
+          echo '<a href="http://maps.google.com/maps?q='.$row[0].','.$row[1].'&ll='.$row[0].','.$row[1].'&z=17">&uarr;</a>';
+          echo '</td><td>'.$row[11].'</td><td>'.$acc[0][0].'</td><td>'.$acc[1][0];
+          echo '</td><td>'.$row[4].'</td><td>'.$row[5].'</td><td>'.$row[7].'</td><td>'.$row[8].'</td><td>'.$row[6].'</td></tr>';
+        }
+        if ($dir != 1) {
+          $row=mysqli_fetch_row($result);
+        } else {
+          if ($loops == 0){ //upside down?
+            $loops++; 
+            $NextDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
+            $row=mysqli_fetch_row($result);
+            continue; //just print 1 top line
+          } 
+        } 
+        if ($row){ //now the interim steps to the next/previous measured value
+          if($dir != 1){
+            $NextDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
+          }
+          $TmStDiffUTC = date_timestamp_get($NextDateUTC) - date_timestamp_get($MeasDateUTC);
+          $TmStStepUTC = $TmStDiffUTC / 4;
+          $CurrTimeUTC = date_create(); 
+          for($i=1; $i<4; $i++){ // 
+            if ($dir != 1){
+              date_timestamp_set($CurrTimeUTC, date_timestamp_get($MeasDateUTC) + ($TmStStepUTC * $i));
+              $acc1 = $acc[0][$i];
+              $acc2 = $acc[1][$i];
+            } else {
+              date_timestamp_set($CurrTimeUTC, date_timestamp_get($MeasDateUTC) + ($TmStStepUTC * (4 - $i)));
+              $acc1 = $acc[0][4 - $i];
+              $acc2 = $acc[1][4 - $i];
+            }
+            $MeasDate = date('Y-m-d', date_timestamp_get($CurrTimeUTC));
+            $MeasTime = date('H:i:s', date_timestamp_get($CurrTimeUTC));
+            echo '<tr><td>'.$MeasDate.'</td><td>'.$MeasTime.'</td><td></td><td></td><td></td><td></td><td>'.$acc1.'</td><td>'.$acc2;
+            echo '</td><td></td><td></td><td></td><td></td><td></td></tr>';
+          }
+          if($dir == 1){
+            //bottom line (with distributed acceleration value)
+            $MeasDate = date('Y-m-d', date_timestamp_get($MeasDateUTC));
+            $MeasTime = date('H:i:s', date_timestamp_get($MeasDateUTC));
+            echo '<tr><td>'.$MeasDate.'</td><td>'.$MeasTime.'</td><td>'.$row[0].'</td><td>'.$row[1].'</td><td>';
+            echo '<a href="http://maps.google.com/maps?q='.$row[0].','.$row[1].'&ll='.$row[0].','.$row[1].'&z=17">&uarr;</a>';
+            echo '</td><td>'.$row[11].'</td><td>'.$acc[0][0].'</td><td>'.$acc[1][0];
+            echo '</td><td>'.$row[4].'</td><td>'.$row[5].'</td><td>'.$row[7].'</td><td>'.$row[8].'</td><td>'.$row[6].'</td></tr>';
+            $NextDateUTC = date_create_from_format('Y-m-d H:i:s', $row[3], $tz);
+            $row=mysqli_fetch_row($result);
+          }
+        }
+      } else {
+        //no detail
+        echo '<tr><td>'.$MeasDate.'</td><td>'.$MeasTime.'</td><td>'.$row[0].'</td><td>'.$row[1].'</td><td>';
+        echo '<a href="http://maps.google.com/maps?q='.$row[0].','.$row[1].'&ll='.$row[0].','.$row[1].'&z=17">&uarr;</a>';
+        echo '</td><td>'.$row[11].'</td><td>'.$row[9].'</td><td>'.$row[10];
+        echo '</td><td>'.$row[4].'</td><td>'.$row[5].'</td><td>'.$row[7].'</td><td>'.$row[8].'</td><td>'.$row[6].'</td></tr>';
+        $row=mysqli_fetch_row($result);
+      }  
+      $loops++;
+    }
+    echo "</table>";
+    $d2 =  date_timestamp_get($MeasDateUTC);
+    if ($d2 < $d1) {
+      $d3 = $d1; $d1 = $d2; $d2 = $d3;
+    }
+    $MeasDateStart = date('Y-m-d', $d1 );
+    $MeasTimeStart = date('H:i:s', $d1 );
+    $MeasDateEnd = date('Y-m-d', $d2);
+    $MeasTimeEnd = date('H:i:s', $d2);
+    
+    // Free result set
+    mysqli_free_result($result);
+   
+  } else {
+    echo "empty result";
+  }
+  mysqli_close($conn);
+?>
+ 
+<script>
+  var dateSet = 0;
+  var MeasDateStart = <?php echo json_encode($MeasDateStart); ?>;
+  var MeasTimeStart = <?php echo json_encode($MeasTimeStart); ?>;
+  var MeasDateEnd = <?php echo json_encode($MeasDateEnd); ?>;
+  var MeasTimeEnd = <?php echo json_encode($MeasTimeEnd); ?>;
 
+  function InitPage(date){
+     console.log("initPage called with " + date);
+     document.getElementById('NewStartDate').value = '';
+  }
+  
+  function ReloadPage(){
+    //console.log("redirect : show_data.phtml?ID=" + document.getElementById("NewTrackerID").value + "&StartDate=" + document.getElementById("NewStartDate").value + " 00:00:00&EndDate=" + document.getElementById("NewEndDate").value + " 23:59:59");
+    var _id = document.getElementById('NewTrackerID').value;
+    var _start = document.getElementById('NewStartDate').value;
+    var _end = document.getElementById('NewEndDate').value;
+    var _tstart = document.getElementById('NewStartTime').value;
+    var _tend = document.getElementById('NewEndTime').value;
+    var _dir = document.getElementById('UpSideDown').checked;
+    var _det = document.getElementById('ShowDetails').checked;
+    var dirApp = '&Dir=0';
+    var detApp = '&Det=0';
+    if (_dir) { dirApp = '&Dir=1'; }
+    if (_det) { detApp = '&Det=1'; }
+    if (_tstart == '') {_tstart = '00:00:00';}
+    if (_tend == '') {_tend = '23:59:59';}
+    if((_start != '') && (_end != '')){
+      window.location.replace('show_detail.phtml?ID=' + _id + '&StartDate=' + _start + ' ' + _tstart + '&EndDate=' + _end + ' ' + _tend + dirApp + detApp);
+    } else {
+      window.location.replace('show_detail.phtml?ID=' + _id + '&StartDate=' + MeasDateStart + ' ' + MeasTimeStart +'&EndDate=' + MeasDateEnd + ' ' + MeasTimeEnd + dirApp + detApp);
+    }
+  }
+  
+// Quick and simple export target #table_id into a csv
+function download_table_as_csv(table_id, separator = ';') {
+  // Select rows from table_id
+  var rows = document.querySelectorAll('table#' + table_id + ' tr');
+  // Construct csv
+  var csv = [];
+  for (var i = 0; i < rows.length; i++) {
+    var row = [], cols = rows[i].querySelectorAll('td, th');
+    for (var j = 0; j < cols.length; j++) {
+      if (j == 4) { continue; }
+      // Clean innertext to remove multiple spaces and jumpline (break csv)
+      var data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, '').replace(/(\s\s)/gm, ' ')
+      // Escape double-quote with double-double-quote (see https://stackoverflow.com/questions/17808511/properly-escape-a-double-quote-in-csv)
+      data = data.replace(/"/g, '""').replace(/\./g, ',');
+      // Push escaped string
+      row.push(data);
+    }
+    csv.push(row.join(separator));
+  }
+  var csv_string = csv.join('\n');
+  // Download it
+  var filename = 'HeidiDaten' + new Date().toLocaleDateString() + '.csv';
+  var link = document.createElement('a');
+  link.style.display = 'none';
+  link.setAttribute('target', '_blank');
+  link.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv_string));
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
 
 </script>
 </body>
