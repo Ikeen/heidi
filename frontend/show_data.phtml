@@ -283,9 +283,9 @@ div.a {
     if (_tstart == '') {_tstart = '00:00:00';}
     if (_tend == '') {_tend = '23:59:59';}
     if((_start != '') && (_end != '')){
-      window.location.replace('show_detail.phtml?ID=' + _id + '&StartDate=' + _start + ' ' + _tstart + '&EndDate=' + _end + ' ' + _tend + dirApp + detApp);
+      window.location.replace('show_data.phtml?ID=' + _id + '&StartDate=' + _start + ' ' + _tstart + '&EndDate=' + _end + ' ' + _tend + dirApp + detApp);
     } else {
-      window.location.replace('show_detail.phtml?ID=' + _id + '&StartDate=' + MeasDateStart + ' ' + MeasTimeStart +'&EndDate=' + MeasDateEnd + ' ' + MeasTimeEnd + dirApp + detApp);
+      window.location.replace('show_data.phtml?ID=' + _id + '&StartDate=' + MeasDateStart + ' ' + MeasTimeStart +'&EndDate=' + MeasDateEnd + ' ' + MeasTimeEnd + dirApp + detApp);
     }
   }
   
