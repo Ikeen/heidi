@@ -246,9 +246,9 @@ void transmitData(t_SendData* currentDataSet){
         while (setsSent < dataSets){
           int nextBd = setsSent + MAX_DATA_SETS_PER_LINE;
           if (nextBd > dataSets) { nextBd = dataSets; }
-          sendLine = generateMulti64SendLine(availableDataSet[setsSent], availableDataSet[nextBd - 1]);
+          sendLine = generateMulti64SendLine(availableDataSet, setsSent, nextBd - 1);
           if(GSMsendLine(sendLine)){
-            emptyDataSets(availableDataSet[setsSent], availableDataSet[nextBd - 1]);
+            initDataSets(availableDataSet[setsSent], availableDataSet[nextBd - 1]);
           } else {
             setError(availableDataSet[setsSent], availableDataSet[nextBd - 1], E_GSM_TRANSMISSION_FAILED);
           }

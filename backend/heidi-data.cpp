@@ -154,17 +154,6 @@ void initDataSet(t_SendData* DataSet){
 
 }
 
-bool emptyDataSet(t_SendData* DataSet){
-  return (DataSet->date == 0);
-}
-void emptyDataSets(t_SendData* first, t_SendData* last){
-  t_SendData* current = first;
-  while (current <= last){
-    emptyDataSet(current);
-    current++;
-  }
-}
-
 void copyDataSet(t_SendData* _from, t_SendData* _to){
   _to->longitude    = _from->longitude ;
   _to->latitude     = _from->latitude  ;
@@ -182,15 +171,20 @@ void copyDataSet(t_SendData* _from, t_SendData* _to){
   _to->accThCnt1Spr = _from->accThCnt1Spr;
   _to->accThCnt2Spr = _from->accThCnt2Spr;
 }
-
-String generateMulti64SendLine(t_SendData* first, t_SendData* last){
+/*
+ * generates a String for transmission of multible data sets
+ * sets: array of pointers to data sets
+ * first, last: boundaries
+ */
+String generateMulti64SendLine(t_SendData** sets, int first, int last){
   //php.ini: max_input_var = 1000 by default (1 data set = 1 var) -> max 100 datasets -> no problem
   //php.ini: post_max_size = 8M by default - SIM800 312k only! (1 data set = 64 byte) -> no problem
   //don't forget to increase timeouts on web server side
-  t_SendData* DataSet = first;
+  int current = first;
   String result = "";
   int k = 0;
-  while (DataSet <= last){
+  while ((current <= last) && (current < allDataSets)){
+    t_SendData* DataSet = sets[current];
     if (!emptyDataSet(DataSet)) {
       k++;
       if (k > 1) { result += "&"; }
@@ -228,7 +222,7 @@ String generateMulti64SendLine(t_SendData* first, t_SendData* last){
       )
       result += "X" + LenTwo(String(k)) + "=" + b64Encode(hexbuffer, HEX_BUFFER_LEN);
     }
-    DataSet++;
+    current++;
   }
   return result;
 }
@@ -360,6 +354,17 @@ void freeFirstDataSet(void){
       copyDataSet(availableDataSet[i], availableDataSet[i+1]);
       initDataSet(availableDataSet[i]);
     }
+  }
+}
+
+bool emptyDataSet(t_SendData* DataSet){
+  return (DataSet->date == 0);
+}
+void initDataSets(t_SendData* first, t_SendData* last){
+  t_SendData* current = first;
+  while (current <= last){
+    initDataSet(current);
+    current++;
   }
 }
 

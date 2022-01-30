@@ -143,8 +143,8 @@ extern bool newAccSettings;
 void     initConfig(bool reset);
 void     initRTCData(bool reset);
 void     initDataSet(t_SendData* DataSet);
+void     initDataSets(t_SendData* first, t_SendData* last);
 bool     emptyDataSet(t_SendData* DataSet);
-void     emptyDataSets(t_SendData* first, t_SendData* last);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
 int      packUpDataSets(void);
 void     freeFirstDataSet(void);
@@ -154,7 +154,7 @@ bool     getState(uint32_t which);
 void     setState(uint32_t which);
 void     clrState(uint32_t which);
 
-String   generateMulti64SendLine(t_SendData* first, t_SendData* last);
+String   generateMulti64SendLine(t_SendData** sets, int first, int last);
 
 bool     setSettingsFromHTTPresponse(String response);
 bool     setTelNoFromHTTPresponse(String response);
