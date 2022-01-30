@@ -122,8 +122,8 @@ void initRTCData(bool reset){
     set_accel_excnt2_ULP(0);
     set_accel_exthr2_ULP(DEFALUT_ACCELERATION_THRESHOLD_2);
     set_accel_wake2_ULP(DEFALUT_ACCEL_THRES_MAX_COUNT);
-    set_IIC_request(0);
-    set_IIC_lock(0);
+    set_ULP_request(0);
+    set_ULP_lock(0);
   }
   #endif
   _D(
@@ -149,11 +149,22 @@ void initDataSet(t_SendData* DataSet){
   DataSet->metersOut   = 0;
   DataSet->accThresCnt1   = 0;
   DataSet->accThresCnt2   = 0;
+  DataSet->accThCnt1Spr   = 0;
+  DataSet->accThCnt2Spr   = 0;
 
 }
+
 bool emptyDataSet(t_SendData* DataSet){
   return (DataSet->date == 0);
 }
+void emptyDataSets(t_SendData* first, t_SendData* last){
+  t_SendData* current = first;
+  while (current <= last){
+    emptyDataSet(current);
+    current++;
+  }
+}
+
 void copyDataSet(t_SendData* _from, t_SendData* _to){
   _to->longitude    = _from->longitude ;
   _to->latitude     = _from->latitude  ;
@@ -166,93 +177,27 @@ void copyDataSet(t_SendData* _from, t_SendData* _to){
   _to->GPShdop      = _from->GPShdop   ;
   _to->errCode      = _from->errCode   ;
   _to->metersOut    = _from->metersOut ;
-  _to->accThresCnt1 = _from->accThresCnt1 ;
-  _to->accThresCnt2 = _from->accThresCnt2 ;
+  _to->accThresCnt1 = _from->accThresCnt1;
+  _to->accThresCnt2 = _from->accThresCnt2;
+  _to->accThCnt1Spr = _from->accThCnt1Spr;
+  _to->accThCnt2Spr = _from->accThCnt2Spr;
+}
 
- }
-/* this function is deprecated */
-String generateSendLine(t_SendData* DataSet){
-  //"TrackerID=0002.1235&Longitude=-13.344855&Latitude=51.006709&Altitude=305&Date=2019-06-09&Time=17:20:00&Battery=4.02",
-  String result = "";
-  if (!emptyDataSet(DataSet)){
-    result = "TrackerID=";
-    int l = String(herdeID()).length();
-    for (int i=0; i<(4-l); i++){ result += "0";}
-    result += String(herdeID()) + ".";
-    l = String(animalID()).length();
-    for (int i=0; i<(4-l); i++){ result += "0";}
-    result += String(animalID());
-    result += "&Longitude=" + String(IntToGeo(DataSet->longitude), 6);
-    result += "&Latitude=" + String(IntToGeo(DataSet->latitude), 6);
-    result += "&Altitude=" + String(DataSet->altitude);
-    result += "&Date=" + DOSdateString(DataSet->date);
-    result += "&Time=" + DOStimeString(DataSet->time);
-    result += "&Battery=" + String((double(DataSet->battery) / 1000), 2);
-    result += "&FreeValue1=" + String((int)DataSet->satellites);
-    result += "&FreeValue2="  + String((float)DataSet->temperature / 100, 2);
-    //result += "&FreeValue3="  + String(DataSet->errCode, HEX);
-    result += "&FreeValue3="  + String(DataSet->accThresCnt1);
-    result += "&FreeValue4="  + String((int)DataSet->GPShdop);
-    result += "&FreeValue5="  + String((int)DataSet->metersOut);
-  }
-  return result;
-}
-/* this function is deprecated */
-String generateMultiSendLine(int first, int last, int* setsDone){
-  //short notation with multiple data sets
-  //php.ini: max_input_var = 1000 by default (1 data set = 7..12 vars) -> up to 83 data sets possible
-  //php.ini: post_max_size = 8M by default - SIM800 312k only! (1 data set = 90..150 byte)
-  //don't forget to increase timeouts on web server side
-  //"ID1=0002.1235&Lo1=-13.344855&La1=51.006709&Al1=305&Da1=2019-06-09&Ti1=17:20:00&Ba1=4.02&ID1=0002.1235&Lo1=...",
-  t_SendData* DataSet;
-  String result = "";
-  int k = 0;
-  for (int a=last; a<first; a--){
-    DataSet = availableDataSet[a];
-    if (!emptyDataSet(DataSet)) {
-      k++;
-	    if (k > 1) { result += "&"; }
-	    result += "ID" + String(k) + "=";
-      int l = String(herdeID()).length();
-      for (int j=0; j<(4-l); j++){ result += "0";}
-      result += String(herdeID()) + ".";
-      l = String(animalID()).length();
-      for (int j=0; j<(4-l); j++){ result += "0";}
-      result += String(animalID());
-      result += "&Lo" + String(k) + "=" + String(IntToGeo(DataSet->longitude), 6);
-      result += "&La" + String(k) + "=" + String(IntToGeo(DataSet->latitude), 6);
-      result += "&Al" + String(k) + "=" + String(DataSet->altitude);
-      result += "&Da" + String(k) + "=" + DOSdateString(DataSet->date);
-      result += "&Ti" + String(k) + "=" + DOStimeString(DataSet->time);
-      result += "&Ba" + String(k) + "=" + String((double(DataSet->battery) / 1000), 2);
-      result += "&F1" + String(k) + "=" + String((int)DataSet->satellites);
-      result += "&F2" + String(k) + "=" + String((float)DataSet->temperature / 100, 2);
-      //result += "&F3" + String(k) + "=" + String(DataSet->errCode, HEX);
-      result += "&F3" + String(k) + "=" + String(DataSet->accThresCnt1);
-      result += "&F4" + String(k) + "=" + String((int)DataSet->GPShdop);
-      result += "&F5" + String(k) + "=" + String((int)DataSet->metersOut);
-      if (k == 83) { break; } //1000 max POST vars reached
-    }
-  }
-  *setsDone = k;
-  return result;
-}
-String generateMulti64SendLine(int first, int last){
+String generateMulti64SendLine(t_SendData* first, t_SendData* last){
   //php.ini: max_input_var = 1000 by default (1 data set = 1 var) -> max 100 datasets -> no problem
-  //php.ini: post_max_size = 8M by default - SIM800 312k only! (1 data set = 50 byte) -> no problem
+  //php.ini: post_max_size = 8M by default - SIM800 312k only! (1 data set = 64 byte) -> no problem
   //don't forget to increase timeouts on web server side
-  t_SendData* DataSet;
+  t_SendData* DataSet = first;
   String result = "";
   int k = 0;
-  for (int a=last; a>=first; a--){
-    DataSet = availableDataSet[a];
+  while (DataSet <= last){
     if (!emptyDataSet(DataSet)) {
       k++;
       if (k > 1) { result += "&"; }
       _DD(_PrintDataSet(DataSet, DEBUG_LEVEL_3));
       // why that complicated and not just memcopy?
       // push_data.phtml expects 8 bit count of values, 16 bit ID, 2x32bit coordinates
-      // and than count-3 16 bit values - always 16 bit
+      // and than count-3 16 bit values - always 16 bit - but values in data structure aren't always 16 bit
       uint8_t hexbuffer[64];
       hexbuffer[0] = HEX_BUFFER_VALUES; //count of data values
       hexbuffer[1] = herdeID();
@@ -270,6 +215,8 @@ String generateMulti64SendLine(int first, int last){
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThresCnt1);  //12
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThresCnt2);  //13
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //14 = HEX_BUFFER_VALUES
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 30, DataSet->accThCnt1Spr);  //12
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 32, DataSet->accThCnt2Spr);  //13
       _DD(
         String HexStr = "";
         for(int i=0; i<HEX_BUFFER_LEN; i++){
@@ -281,6 +228,7 @@ String generateMulti64SendLine(int first, int last){
       )
       result += "X" + LenTwo(String(k)) + "=" + b64Encode(hexbuffer, HEX_BUFFER_LEN);
     }
+    DataSet++;
   }
   return result;
 }
@@ -390,22 +338,11 @@ bool newTelNoB64(String b64){
   }
   return true;
 }
-
-void cleanUpDataSets(bool TransmissionFailed){
-  //mark transmission result
-  for(int i=0; i<allDataSets; i++){
-    if (!emptyDataSet(availableDataSet[i])){
-      if (TransmissionFailed)  { setError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED); }
-      else { rmError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED); }
-    }
-  }
-  //delete all transmitted data
-  for(int i=0; i<allDataSets; i++){
-    if(getError(availableDataSet[i], E_GSM_TRANSMISSION_FAILED) == false){
-      initDataSet(availableDataSet[i]);
-    }
-  }
-  //concentrate
+/*
+ * packUpDataSets removes free data sets between used ones and returns count of used data sets
+ * Parameter: start position of packing
+ */
+int packUpDataSets(){
   int k = 0;
   for(int i=0; i<allDataSets; i++){
     if(!emptyDataSet(availableDataSet[i]) && (k < i) && emptyDataSet(availableDataSet[k])){
@@ -414,6 +351,7 @@ void cleanUpDataSets(bool TransmissionFailed){
     }
     if(!emptyDataSet(availableDataSet[k])){ k++; }
   }
+  return k;
 }
 void freeFirstDataSet(void){
   if(emptyDataSet(availableDataSet[0])) { return; }
@@ -580,27 +518,17 @@ bool RTCfastMemWrite(void){
 }
 
 void fastMemReadTask(void *pvParameters) {
-  _D(Serial.begin(115200);
-    DebugPrintln("Fast mem read task created on core " + String(xPortGetCoreID()), DEBUG_LEVEL_1); delay(50);
-    int t = millis();
-  )
   fastMemBuffer = (uint32_t*)malloc(RTC_MAX_FAST_DATA_SPACE);
   if(fastMemBuffer != NULL){
     for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ fastMemBuffer[i] = _realFastMem[i];  }
-    _D(DebugPrintln("RTC fast mem read " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
   }
   task_fmem_read = NULL;
   vTaskDelete(NULL);
 }
 
 void fastMemWriteTask(void *pvParameters) {
-  _D(Serial.begin(115200);
-    DebugPrintln("Fast mem write task created on core " + String(xPortGetCoreID()), DEBUG_LEVEL_1); delay(50);
-    int t = millis();
-  )
   if(fastMemBuffer != NULL){
     for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ _realFastMem[i] = fastMemBuffer[i]; }
-    _D(DebugPrintln("RTC fast mem written " + String (millis()-t), DEBUG_LEVEL_1); delay(50);)
     free(fastMemBuffer);
     fastMemBuffer = NULL;
   }

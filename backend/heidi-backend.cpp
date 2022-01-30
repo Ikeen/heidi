@@ -1,11 +1,4 @@
 /*
- * nächste Aufgaben:
- *   - Providermanagement
- *   - Hook beim Reset oder Power-Cut
- *   - einstellbarer Vorzugsprovider
- *   - Neue Provider
- *   - Neue Karten-Daten
- *   - Provider - Scans
  *   -
  *
  */
@@ -221,7 +214,6 @@ void finalizeHeidiStatus(bool powerOnReset){
     currentTimeDiffMs = 0;
     clrState(NOT_IN_CYCLE);
   }
-
 }
 
 #ifdef PRE_MEASURE_HANDLING
@@ -239,50 +231,47 @@ void handlePreMeasuring(void){
   _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
 }
 #endif
+
 #ifdef GSM_MODULE
 void transmitData(t_SendData* currentDataSet){
-  int HTTPrc = 0;
-  bool GSMfailure = true;
-  currentDataSet->errCode |= getErrorCode(); //error codes from doDataTransmission !!!!!!!!!!!!!!!!!!
-  _DD(_PrintShortSummary(DEBUG_LEVEL_3));
+  int HTTPrc = 0, setsSent = 0;
   String sendLine = "";
-  sendLine = generateMulti64SendLine(0, (allDataSets-1));
-  if ((sendLine.length() == 0)){ sendLine = "ID=" + _herdeID(); } //just get settings
+  _D(DebugPrintln("GPRS send data", DEBUG_LEVEL_2);)
+  _DD(_PrintShortSummary(DEBUG_LEVEL_3));
   if(openGSM()){
     if (GSMsetup()){
-      _DD(DebugPrintln("SEND: " + sendLine, DEBUG_LEVEL_3);)
-      int HTTPtimeOut = sendLine.length() * 10 + 5000;
-      if (HTTPtimeOut < 20000) {HTTPtimeOut = 20000;}
-      HTTPrc = GSMdoPost(HEIDI_SERVER_PUSH_URL,
-                          "application/x-www-form-urlencoded",
-                           sendLine,
-                           HTTPtimeOut,
-                           HTTPtimeOut);
-      if (HTTPrc == 200){
-        _D(DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_1);)
-        String httpResponse = GSMGetLastResponse();
-        #if (DEBUG_LEVEL < DEBUG_LEVEL_3)
-        _D(DebugPrintln("HTTP response: " + httpResponse.substring(0, 10) + httpResponse.length()>10?"..":"", DEBUG_LEVEL_2);)
-        #else
-        _DD(DebugPrintln("HTTP response: " + httpResponse, DEBUG_LEVEL_3);)
-        #endif
-        GSMfailure = false;
-        if (    !setFenceFromHTTPresponse(httpResponse)
-             || !setSettingsFromHTTPresponse(httpResponse)
-             || !setTelNoFromHTTPresponse(httpResponse)){
-          setState(TRSMT_DATA_ERROR);
+      if (GSMopenHTTPconnection(HEIDI_SERVER_PUSH_URL)){
+        int dataSets = packUpDataSets();
+        _D(DebugPrintln("data sets to send: " + String(dataSets), DEBUG_LEVEL_2);)
+        while (setsSent < dataSets){
+          int nextBd = setsSent + MAX_DATA_SETS_PER_LINE;
+          if (nextBd > dataSets) { nextBd = dataSets; }
+          sendLine = generateMulti64SendLine(availableDataSet[setsSent], availableDataSet[nextBd - 1]);
+          if(GSMsendLine(sendLine)){
+            emptyDataSets(availableDataSet[setsSent], availableDataSet[nextBd - 1]);
+          } else {
+            setError(availableDataSet[setsSent], availableDataSet[nextBd - 1], E_GSM_TRANSMISSION_FAILED);
+          }
+          setsSent = nextBd;
         }
-        clrState(RESET_INITS);
+        sendLine = "ID=" + _herdeID(); //get settings
+        if(GSMsendLine(sendLine)){
+          String httpResponse = GSMGetLastResponse();
+          if (    !setFenceFromHTTPresponse(httpResponse)
+               || !setSettingsFromHTTPresponse(httpResponse)
+               || !setTelNoFromHTTPresponse(httpResponse)){
+            setState(TRSMT_DATA_ERROR);
+          }
+          clrState(RESET_INITS);
+        }
+        GSMcloseHTTPconnection();
       }
+      GSMshutDown();
     }
-    GSMshutDown();
     closeGSM();
   }
-  cleanUpDataSets(GSMfailure);
-  _D(
-    DebugPrintln("GPRS send done: " + (String((int)(millis()/1000)) + " s"), DEBUG_LEVEL_2);
-    if (GSMfailure){ DebugPrintln("GSM result: " + String(HTTPrc), DEBUG_LEVEL_1); }
-  )
+  packUpDataSets();
+  _D(DebugPrintln("GPRS send done: " + (String((int)(millis()/1000)) + " s"), DEBUG_LEVEL_2);)
 }
 #endif
 
@@ -348,7 +337,7 @@ double checkBattery(void){
   _dval = MeasureVoltage(BATTERY_MEASURE_PIN);
   val = (double)(_dval + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER;
   _D(DebugPrintln("Battery: " + String(val, 2) + "V [" + String(_dval) + "]", DEBUG_LEVEL_1);)
-#ifdef CHECK_BATTERY
+  #ifdef CHECK_BATTERY
   if (val <= GSM_POWER_SAVE_3_VOLTAGE){
     setState(FROM_PWR_SAVE_SLEEP);
     #ifdef ACCELEROMETER

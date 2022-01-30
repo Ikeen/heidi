@@ -32,14 +32,20 @@
  * times timeout will not break a read of 5000 chars on block - if we wait for the first char previously, and we do so
  */
 #define READ_STRING_TIMEOUT 50
-
+/*
+ * consider time of transmission, because in case of failing transmission you need to repeat the whole line
+ * consider GSM-module max buffer (in case of SIM800L 312kByte) 1 data set will be encoded to an about
+ * 64 byte base64 string (including overhead).
+ */
+#define MAX_DATA_SETS_PER_LINE 96
 
 bool openGSM();
 void closeGSM();
 
 bool GSMsetup();
+bool GSMsendLine(String line);
 bool GSMshutDown();
-int  GSMdoPost(String url, String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs);
+int  GSMdoPost(String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs);
 bool GSMhandleAlerts(void);
 bool GSMsendSMS(String TelNo, String Message);
 
@@ -52,6 +58,8 @@ int    GSMterminateHTTP();
 bool   GSMsetupGPRS(const String apn, const String user, const String pwd);
 bool   GSMopenGPRS();
 int    GSMterminateGPRS();
+bool   GSMopenHTTPconnection(String url);
+bool   GSMcloseHTTPconnection(void);
 String GSMGetLastResponse(void);
 bool   GSMsendCommand(const String command, const String okPhrase, int timeOutMs);
 bool   GSMsendCommand(const String command);

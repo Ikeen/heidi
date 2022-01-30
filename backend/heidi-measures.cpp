@@ -6,6 +6,7 @@
  */
 #include <Arduino.h>
 #include <assert.h>
+#include <driver/gpio.h>
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "driver/rtc_io.h"
@@ -327,22 +328,40 @@ void LED_off(){
   pinMode(LED_ENABLE_PIN,OUTPUT);
   digitalWrite(LED_ENABLE_PIN, LED_OFF);
 }
-#ifdef I2C_BUS
-bool getIIC(void){
-  set_IIC_request(1);
+#ifdef USE_ULP
+bool getULPLock(void){
+  set_ULP_request(1);
   //wait a short time - maybe ULP was just on the way to lock...
   delay(1);
   int i = 0;
-  while(IICisLocked()){
+  while(ULPisLocked()){ //ULP may be running, wait until lock is released
     delay(1); i++;
-    if(i >= 20){ set_IIC_request(0); _D(DebugPrintln("Can't get IIC.", DEBUG_LEVEL_1);) return false; }
+    if(i >= 20){ set_ULP_request(0); _D(DebugPrintln("Can't get ULP lock.", DEBUG_LEVEL_1);) return false; }
   }
-  if (i>0) { _DD(DebugPrintln("Got IIC after " + String(i) + " wait-loops.", DEBUG_LEVEL_3);) }
+  if (i>0) { _DD(DebugPrintln("Got ULP lock after " + String(i) + " wait-loops.", DEBUG_LEVEL_3);) }
   //ULP just checks the request, no need to set LOCK here
+  return true;
+}
+void freeULP(void){
+  set_ULP_request(0);
+}
+#endif
+#ifdef I2C_BUS
+bool getIIC(void){
+  #ifdef USE_ULP
+  if (!getULPLock()) { return false; }
+  #endif
   rtc_gpio_hold_dis(I2C_SCL);
   rtc_gpio_hold_dis(I2C_SDA);
   Wire.begin(I2C_SDA, I2C_SCL, I2C_FREQ);
   return true;
+}
+bool gotIIC(void){
+  #ifdef USE_ULP
+  return gotULPlock();
+  #else
+  return true;
+  #endif
 }
 void freeIIC(void){
   rtc_gpio_init(I2C_SCL);
@@ -351,9 +370,11 @@ void freeIIC(void){
   rtc_gpio_init(I2C_SDA);
   rtc_gpio_set_direction(I2C_SDA, RTC_GPIO_MODE_INPUT_OUTPUT);
   rtc_gpio_hold_en(I2C_SDA);
-  set_IIC_request(0);
-
-}i2c_err_t iic_setRegisterBit(uint8_t devAdress, byte regAdress, int bitPos, bool state) {
+  #ifdef USE_ULP
+  freeULP();
+  #endif
+}
+i2c_err_t iic_setRegisterBit(uint8_t devAdress, byte regAdress, int bitPos, bool state) {
   byte _b;
   i2c_err_t rc = iic_readRegister(devAdress, regAdress, &_b);
   if (rc != I2C_ERROR_OK) { return rc; }

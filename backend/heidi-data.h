@@ -23,7 +23,7 @@
 #define TEL_NO_LEN 12
 #define TEL_NO_CNT 2
 #define HEX_BUFFER_OFFSET 3
-#define HEX_BUFFER_VALUES 14 //_t_SendData values + ID
+#define HEX_BUFFER_VALUES 16 //_t_SendData values + ID
 #define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 2 + 4 + 4 + (2 * (HEX_BUFFER_VALUES - 3)))
 
 typedef __attribute__((__packed__)) struct _t_ConfigData{
@@ -50,7 +50,7 @@ typedef __attribute__((__packed__)) struct _t_ConfigData{
 #define HEIDI_CONFIG_LENGTH (22+(TEL_NO_LEN*TEL_NO_CNT)) //must be a multiple of 4
 #define HEIDI_CONFIG_LENGTH_RTC (HEIDI_CONFIG_LENGTH >> 2)
 
-typedef __attribute__((__packed__)) struct _t_SendData{
+typedef __attribute__((__packed__)) struct {
   int32_t  latitude;
   int32_t  longitude;
   int16_t  altitude;
@@ -64,7 +64,9 @@ typedef __attribute__((__packed__)) struct _t_SendData{
   uint16_t metersOut;
   uint16_t accThresCnt1;
   uint16_t accThresCnt2;
-  //total size: 28 Bytes;
+  uint16_t accThCnt1Spr; //spreading of counter 1 values
+  uint16_t accThCnt2Spr; //spreading of counter 2 values
+  //total size: 32 Bytes;
 }t_SendData;
 
 #ifdef SAVE_AOP_DATA
@@ -79,18 +81,18 @@ typedef __attribute__((__packed__)) struct _t_SendData{
   #define AOP_DATA_LEN 0
 #endif
 
-#define DATA_SET_LEN     28 //must be a multiple of 4
+#define DATA_SET_LEN     32 //must be a multiple of 4
 
 #ifdef USE_RTC_FAST_MEM
-#define FAST_MEM_DATA_SETS    288
+#define FAST_MEM_DATA_SETS    252
 #else
 #define FAST_MEM_DATA_SETS 0
 #endif
 
 #ifdef SAVE_AOP_DATA
-#define SLOW_MEM_DATA_SETS    30
+#define SLOW_MEM_DATA_SETS    20
 #else
-#define SLOW_MEM_DATA_SETS    96
+#define SLOW_MEM_DATA_SETS    71//80
 #endif
 
 #define DATA_SET_FAST_MEM_SPACE (DATA_SET_LEN * FAST_MEM_DATA_SETS)
@@ -142,8 +144,9 @@ void     initConfig(bool reset);
 void     initRTCData(bool reset);
 void     initDataSet(t_SendData* DataSet);
 bool     emptyDataSet(t_SendData* DataSet);
+void     emptyDataSets(t_SendData* first, t_SendData* last);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
-void     cleanUpDataSets(bool TransmissionFailed);
+int      packUpDataSets(void);
 void     freeFirstDataSet(void);
 String   getTelNo(int which);
 
@@ -151,9 +154,7 @@ bool     getState(uint32_t which);
 void     setState(uint32_t which);
 void     clrState(uint32_t which);
 
-String   generateSendLine(t_SendData* DataSet);
-String   generateMultiSendLine(int first, int last, int* setsDone);
-String   generateMulti64SendLine(int first, int last);
+String   generateMulti64SendLine(t_SendData* first, t_SendData* last);
 
 bool     setSettingsFromHTTPresponse(String response);
 bool     setTelNoFromHTTPresponse(String response);

@@ -20,12 +20,7 @@
 #include "heidi-defines.h"
 #include "heidi-data.h"
 #include "heidi-debug.h"
-#include "heidi-gsm.h"
-#include "heidi-gps.h"
-#include "heidi-fence.h"
-#include "heidi-error.h"
-#include "heidi-flash.h"
-#include "heidi-lora.h"
+
 
 
 #define SCK     5    // GPIO5  -- SX1278's SCK
@@ -72,9 +67,9 @@ void   finalizeHeidiStatus(bool powerOnReset);
 void   handlePreMeasuring(void);
 #endif
 #ifdef GSM_MODULE
-void   transmitData(t_SendData*);
+void   transmitData(t_SendData* DatcurrentDataSetaSet);
 #endif
-void   checkGPSalert(t_SendData*);
+void   checkGPSalert(t_SendData* currentDataSet);
 void   checkGPSposition(t_SendData* currentDataSet, int timeOut, bool force);
 double checkBattery(void);
 void   checkCycle(void);

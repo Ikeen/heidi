@@ -26,6 +26,7 @@
  *                         to ground. Not using this option means power up all sensors for just checking battery
  *                         status. In case of low battery this is semi-best.
  * I2C_BUS               - enable i²c bus
+ * I2C_SWITCH            - use i²c GPIO extender for enabling sensor power and GSM power, e.g PCA9536D
  * ACCELEROMETER         - there is a accelerometer module, e.g. ADXL345
  * USE_ULP               - ultra low power processor of ESP32 is used for monitoring
  * USE_GPS_ALERT         - enable alerting modes for geo-fencing
@@ -88,27 +89,27 @@
 #endif
 #ifdef HEIDI_CONFIG_TEST
 //#define GSM_MODULE
-#define GPS_MODULE
+//#define GPS_MODULE
 #define COMMON_SERIAL
 //#define TEMP_SENSOR
 //#define CHECK_BATTERY
 #define USE_VOLTAGE_MEAS_PIN
-#define I2C_BUS
-#define ACCELEROMETER
+//#define I2C_BUS
+//#define ACCELEROMETER
 //#define I2C_SWITCH
-#define USE_ULP
+//#define USE_ULP
 //#define USE_GPS_ALERT
 //#define SEND_ALERT_SMS
 //#define USE_ACC_ALERT
 //#define PRE_MEASURE_HANDLING
-#define USE_RTC_FAST_MEM
-#define SAVE_AOP_DATA
+//#define USE_RTC_FAST_MEM
+//#define SAVE_AOP_DATA
 #define DEFAULT_BOOT_CYCLES         32        // ..until transferring data
 #define DEFAULT_CYCLE_DURATION      5         // 5 minutes
-#define MAX_AWAKE_TIME_POWER        0         // infinite
-#define MAX_AWAKE_TIME_TIMER        0         // infinite
-#undef DEBUG_LEVEL
-#define DEBUG_LEVEL 3
+#define MAX_AWAKE_TIME_POWER        5         // infinite
+#define MAX_AWAKE_TIME_TIMER        2         // infinite
+//#undef DEBUG_LEVEL
+//#define DEBUG_LEVEL 3
 #endif
 
 /*
@@ -131,10 +132,8 @@
 #endif
 
 #ifdef HEIDI_CONFIG_TEST
-#define MIN_CYCLE_DURATION_MSEC     60000     //  1 minutes
 #define MIN_CYCLE_DURATION          1         //  1 minutes
 #else
-#define MIN_CYCLE_DURATION_MSEC     300000    //  5 minutes
 #define MIN_CYCLE_DURATION          5         //  5 minutes
 #endif
 #define MAX_CYCLE_DURATION_MSEC     3600000   //  1 hour
@@ -240,7 +239,6 @@
 #ifdef  SAVE_AOP_DATA
 #ifndef USE_RTC_FAST_MEM
 #error "AOP data resides in RTC slow memory, which is currently used for tracker data too."
-#error "30 datasets might be too less. If you're sure, uncomment this."
 #endif
 #endif
 
@@ -300,6 +298,28 @@
 #ifndef HEIDI_CONFIG_TEST
 #error "Timeout disabled!"
 #endif
+#endif
+
+#ifndef HEIDI_ANIMAL
+#error "Please set a default value."
+#endif
+#ifndef HEIDI_HERDE
+#error "Please set a default value."
+#endif
+#ifndef HEIDI_SERVER_PUSH_URL
+#error "Please set a default value."
+#endif
+#ifndef HEIDI_MOBILE_APN
+#error "Please set a default value."
+#endif
+#ifndef HEIDI_MOBILE_USER
+#error "Please set a default value."
+#endif
+#ifndef HEIDI_MOBILE_PASSWD
+#error "Please set a default value."
+#endif
+#ifndef HEIDI_SIM_PIN
+#error "Please set a default value."
 #endif
 
 extern bool GPSenabled;

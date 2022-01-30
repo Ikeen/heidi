@@ -230,13 +230,13 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
  * set CONFIG_ULP_COPROC_RESERVE_MEM in ".arduinocdt/packages/esp32/hardware/esp32/x.y.z/tools/sdk/include/config/sdkconfig.h"
  *   AND in ".arduinocdt/packages/esp32/hardware/esp32/x.y.z/tools/sdk/sdkconfig" to a higher value (512 = step size)
  */
-#define ULP_LED_BLINK          0
+#define ULP_LED_BLINK          1
 #define USE_MORE_THAN_128_INSN 1
 
 #define I2C_DEBUG   0                  //need to increase code size if enabled
 #define I2C_SUCCESS 0
 #define I2C_FAILED  1
-#define ACCEL_ULP_CODE_SIZE 196
+#define ACCEL_ULP_CODE_SIZE 256 //232
 #define ACCEL_DATA_HEADER ACCEL_ULP_CODE_SIZE
 #define ACCEL_MEAS_CNT 0
 #define ACCEL_LOOP_CUR 1
@@ -248,7 +248,19 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
 #define AVR_EXCD_TH2 7
 #define AVR_EXCD_CT2 8
 #define AVR_WAKE_TH2 9
-#define ACCEL_HD_LEN 10
+#define AVR_INTERRIM 10
+#define AVR_INTERRIM_1 10
+#define AVR_INTERRIM_2 11
+#define AVR_INTERRIM_3 12
+#define AVR_EX_IR_CT1 13
+#define AVR_EX_IR_CT1_1 13
+#define AVR_EX_IR_CT1_2 14
+#define AVR_EX_IR_CT1_3 15
+#define AVR_EX_IR_CT2 16
+#define AVR_EX_IR_CT2_1 16
+#define AVR_EX_IR_CT2_2 17
+#define AVR_EX_IR_CT2_3 18
+#define ACCEL_HD_LEN 19
 #define ACCEL_X_VALUES (ACCEL_DATA_HEADER + ACCEL_HD_LEN)
 #define I2C_DATA_REG 0
 #define I2C_TRNS_RES 1
@@ -315,6 +327,7 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
 extern bool CTLenabled;
 
 void init_accel_ULP(uint32_t intervall_us);
+void init_accel_data_ULP(uint32_t intervall_us);
 /* get / set measure count value */
 uint16_t get_accel_meas_cnt_ULP();
 void set_accel_meas_cnt_ULP(uint16_t val);
@@ -339,13 +352,26 @@ void set_accel_exthr2_ULP(uint16_t val);
 /* get / set wake value 2 */
 uint16_t get_accel_wake2_ULP();
 void set_accel_wake2_ULP(uint16_t val);
+/* get / set interim value threshold values */
+uint16_t get_accel_interrim_thr_ULP(int which);
+void set_accel_interrim_thr_ULP(int which, uint16_t val);
+/* get / set interim counter 1 values */
+uint16_t get_accel_interrim_ct1_ULP(int which);
+void set_accel_interrim_ct1_ULP(int which, uint16_t val);
+/* get / set interim counter 2 values */
+uint16_t get_accel_interrim_ct2_ULP(int which);
+void set_accel_interrim_ct2_ULP(int which, uint16_t val);
+
+uint16_t get_accel_interrim_ct_ULP(int which_ct, int which_val);
+void set_accel_interrim_ct_ULP(int which_ct, int which_val, uint16_t value);
+uint16_t get_accel_ct_spreading(int which);
 
 uint16_t _getAccThresCnt(uint16_t dayThres);
 
-void set_IIC_request(uint16_t value);
-void set_IIC_lock(uint16_t value);
-bool IICisLocked(void);
-bool gotIIC(void);
+void set_ULP_request(uint16_t value);
+void set_ULP_lock(uint16_t value);
+bool ULPisLocked(void);
+bool gotULPlock(void);
 
 #if USE_MORE_THAN_128_INSN
 

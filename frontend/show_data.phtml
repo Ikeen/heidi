@@ -120,7 +120,7 @@ div.a {
     $sql .= "ORDER BY TimeStamp " . $direction ;
   } else {
     $sql  = "SELECT Latitude, Longitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode, FreeValue1, FreeValue2, FreeValue3, FreeValue4, FreeValue5, FreeValue6, FreeValue7 FROM TrackerData ";
-    $sql .= "WHERE TrackerID = '{$TrackerID}' ORDER BY idx " . $direction . " LIMIT 0,100";
+    $sql .= "WHERE TrackerID = '{$TrackerID}' ORDER BY TimeStamp " . $direction . " LIMIT 0,100";
   }
    
   if ($result=mysqli_query($conn,$sql))

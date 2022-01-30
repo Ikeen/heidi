@@ -111,13 +111,17 @@ void setGPIOInput(gpio_num_t which);
 void setGPIOInputHigh(gpio_num_t which);
 
 int MeasureVoltage(uint8_t pin);
-
+#ifdef USE_ULP
+bool getULPLock(void);
+void freeULP(void);
+#endif
 #ifdef I2C_SWITCH
 bool init_PCA9536(void);
 #endif
 #ifdef I2C_BUS
 bool getIIC(void);
 void freeIIC(void);
+bool gotIIC(void);
 
 i2c_err_t iic_readRegister(uint8_t devAdress, uint8_t regAdress, uint8_t *value);
 i2c_err_t iic_readRegister16(uint8_t devAdress, uint8_t regAdress, int16_t *value);

@@ -19,6 +19,7 @@
 #include "heidi-defines.h"
 #include <Arduino.h>
 #include <driver/gpio.h>
+#include <esp32-hal-gpio.h>
 #include "heidi-data.h"
 #include "heidi-sys.h"
 #include "heidi-gsm.h"
@@ -81,7 +82,7 @@ bool GSMsetup()
   if(!GSMsimUnlock(HEIDI_SIM_PIN)) { return false; };
   _D(DebugPrintln("SIM unlock OK", DEBUG_LEVEL_2));
   // connect to network
-  if (!GSMwaitForNetwork()){ return false; }
+  if (!GSMwaitForNetwork(15000)){ return false; }
   _D(DebugPrintln("Modem network OK", DEBUG_LEVEL_2);)
   //need to handle SMS alerts before setup GPRS (?)
   if(!GSMhandleAlerts()) { _D(DebugPrintln("GSM - Handle Alerts failed!", DEBUG_LEVEL_1);) }
@@ -93,6 +94,55 @@ bool GSMsetup()
   _DD(DebugPrintln("GPRS Connect OK", DEBUG_LEVEL_2));
   return true;
 }
+
+bool GSMopenHTTPconnection(String url)
+{
+  // Open the defined GPRS bearer context
+  if (!GSMopenGPRS()) { return false; }
+  int initRC = GSMinitiateHTTP(url);
+  if(initRC > 0) {
+    _D(DebugPrintln("HTTP init connection fails with: " + String(initRC), DEBUG_LEVEL_1);)
+    return false;
+  }
+  return true;
+}
+bool GSMcloseHTTPconnection(void)
+{
+  // Terminate HTTP/S session
+  int termRC = GSMterminateHTTP();
+  if(termRC > 0) {
+    _D(DebugPrintln("HTTP termination fails", DEBUG_LEVEL_1);)
+    return false;
+  }
+  termRC = GSMterminateGPRS();
+  if(termRC > 0) {
+    _D(DebugPrintln("GPRS termination fails", DEBUG_LEVEL_1);)
+    return false;
+  }
+  return true;
+}
+
+bool GSMsendLine(String line){
+  _DD(DebugPrintln("SEND: " + line, DEBUG_LEVEL_3);)
+  int HTTPtimeOut = line.length() * 10 + 5000;
+  if (HTTPtimeOut < 20000) {HTTPtimeOut = 20000;}
+  int HTTPrc = GSMdoPost("application/x-www-form-urlencoded",
+                         line,
+                         HTTPtimeOut,
+                         HTTPtimeOut);
+  _D(
+    String httpResponse = GSMGetLastResponse();
+    if (HTTPrc == 200){
+      DebugPrintln("HTTP send Line OK.", DEBUG_LEVEL_2);
+      DebugPrintln("HTTP response: " + httpResponse.substring(0, 10) + (httpResponse.length()>10?"..":""), DEBUG_LEVEL_3);
+    } else {
+      DebugPrintln("HTTP send Line failed!. Error code: " + String(HTTPrc), DEBUG_LEVEL_1);
+      DebugPrintln("HTTP response: " + httpResponse, DEBUG_LEVEL_1);
+    }
+   )
+  return (HTTPrc == 200);
+}
+
 
 bool GSMhandleAlerts(void){
   //alerts
@@ -134,13 +184,9 @@ bool GSMhandleAlerts(void){
 /**
  * Do HTTP/S POST to a specific URL
  */
-int GSMdoPost(String url, String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs) {
+int GSMdoPost(String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs) {
   String response ="";
   unsigned int t = millis();
-  // Open the defined GPRS bearer context
-  if (!GSMopenGPRS()) { return false; }
-  int initRC = GSMinitiateHTTP(url);
-  if(initRC > 0) { return initRC; }
   // Define the content type
   if(!GSMsendCommand("AT+HTTPPARA=CONTENT," + contentType)){ return 702; }
 
@@ -169,6 +215,7 @@ int GSMdoPost(String url, String contentType, String payload, unsigned int clien
   int i = response.indexOf("+HTTPACTION: 1,");
   if(i < 0) {
     _D(DebugPrintln("SIM800L : doPost() - Invalid answer on HTTP POST", DEBUG_LEVEL_1));
+    _DD(DebugPrintln("--> " + response, DEBUG_LEVEL_3));
     return 703;
   }
   // Get the HTTP return code
@@ -185,19 +232,10 @@ int GSMdoPost(String url, String contentType, String payload, unsigned int clien
     httpResponseData = ATresponse.substring(startPayload, startPayload + dataSize);
     httpResponseData.trim();
     _DD(DebugPrintln("SIM800L : doPost() - Received from HTTP GET : \n"  + httpResponseData, DEBUG_LEVEL_3));
-    if(httpResponseData.indexOf("OK;") == -1){ // is there an "OK" from server?
+    if(httpResponseData.indexOf("OK") == -1){ // is there an "OK" from server?
       _D(DebugPrintln("SIM800L : doPost() - server does not accept data", DEBUG_LEVEL_1));
       httpRC = 406;
     }
-  }
-  // Terminate HTTP/S session
-  int termRC = GSMterminateHTTP();
-  if(termRC > 0) {
-    return termRC;
-  }
-  termRC = GSMterminateGPRS();
-  if(termRC > 0) {
-    return termRC;
   }
   return httpRC;
 }
@@ -276,7 +314,7 @@ bool GSMwaitForNetwork(uint32_t timeOutMS){
   GSMsendCommand("AT+CGREG=1");
   while (millis()-t < timeOutMS){
     if (GSMsendCommand("AT+CGREG?")){
-      int status = _responseGetIntKeyWord(2, "+CGREG");
+      int status = _responseGetIntKeyWord(2, "+CGREG", 2000);
       switch (status) {
         case 1: {
           _DD(DebugPrintln("SIM800L : registered to home network", DEBUG_LEVEL_3);)
@@ -378,15 +416,16 @@ bool GSMsendCommand(const String command) {return GSMsendCommand(command, "OK", 
 bool GSMsendCommand(const String command, const String okPhrase, int timeOutMs){
   String response = "";
   unsigned int t = millis();
-  int localTimeOut = timeOutMs;
+  int localTimeOut = timeOutMs / 2;
   while(SerialGSM.available() > 0){ SerialGSM.read(); delay(1); }
-  while(millis() - t < timeOutMs){
+  while((millis() - t < timeOutMs) && (response.indexOf(okPhrase) == -1)){
     _DD(DebugPrintln("SIM800L : " + command, DEBUG_LEVEL_3); delay(10);)
     SerialGSM.println(command);
-    while((!SerialGSM.available()) && ((millis() - t) < localTimeOut)) { delay(1); };
-    response = SerialGSM.readString();
-    if(response.indexOf(okPhrase) > -1){ break; }
-    delay(1000); //wait and try again;
+    while((response.indexOf(okPhrase) == -1) && ((millis() - t) < localTimeOut)) {
+      if (SerialGSM.available() > 0) { response += SerialGSM.readString(); }
+      else { delay(1); }
+    }
+    if (millis() - t < timeOutMs) { localTimeOut = timeOutMs; }
   }
   ATresponse = response;
   ATresponse.trim();
@@ -443,11 +482,10 @@ void testGSM(void){
       Serial.println("SEND: " + Sendline);
       int HTTPtimeOut = Sendline.length() * 20 + 1000;
       if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
-      int HTTPrc = GSMdoPost(HEIDI_SERVER_PUSH_URL,
-                          "application/x-www-form-urlencoded",
-                          Sendline,
-                           HTTPtimeOut,
-                           HTTPtimeOut);
+      int HTTPrc = GSMdoPost( "application/x-www-form-urlencoded",
+                              Sendline,
+                              HTTPtimeOut,
+                              HTTPtimeOut);
       if (HTTPrc == 200){
         Serial.println("HTTP send Line OK.");
         Serial.println("HTTP response: " + GSMGetLastResponse());

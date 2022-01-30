@@ -51,7 +51,7 @@ bool GPSGetPosition(t_SendData* DataSet, int requiredAccuracy, int maxWorse, int
   double acc_mn = -1.0;
   locationSet_t curLocation;
   int worse   = 0;
-  bool extendMeas = (heidiConfig->gpsStatus >= GPS_GOT_3D_LOCK);
+  bool extendMeas = (heidiConfig->gpsStatus < GPS_GOT_3D_LOCK);
 
   setError(E_COULD_NOT_FETCH_GPS);
   setError(E_WRONG_GPS_VALUES);
@@ -71,10 +71,13 @@ bool GPSGetPosition(t_SendData* DataSet, int requiredAccuracy, int maxWorse, int
               if(gpsData.data->navPVT.fixType == GPS_FIX_TYPE_2D_FIX){ curLocation.alt = 0; } else { curLocation.alt = GPS_GET_ALT; }
               curLocation.acc   = GPS_GET_ACC;
               curLocation.hdop  = GPS_GET_DOP;
-              //_DD(DebugPrintln("ACC: " + String(GPS_GET_ACC), DEBUG_LEVEL_3);)
+              _DD(DebugPrintln("ACC: " + String(GPS_GET_ACC), DEBUG_LEVEL_3);)
             } else {
               if(!extendMeas){
-                worse++; //_DD( DebugPrintln("ACC: " + String(GPS_GET_ACC, 1) + ", unUsedSets: " + String(worse),  DEBUG_LEVEL_3);)
+                if(GPS_GET_ACC < (curLocation.acc *2)){ //check for accuracy value leap
+                  //no leap
+                  worse++; _DD( DebugPrintln("ACC: " + String(GPS_GET_ACC, 1) + ", unUsedSets: " + String(worse),  DEBUG_LEVEL_3);)
+                }
               } //else use full time to get ephemeris data
             }
             if(curLocation.acc <= requiredAccuracy) { RESET_GPS_DATA; break; }

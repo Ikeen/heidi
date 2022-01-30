@@ -4,24 +4,7 @@
  *  Created on: 14.12.2020
  *      Author: frank
  *
- *  and code from
- *  2008 The Android Open Source Project
- *  updated by K. Townsend (Adafruit Industries)
- *
- *  and code from
- *  SparkFun_ADXL345.cpp
- *  E.Robert @ SparkFun Electronics
- *
  */
-
-
- /*
- Europe:
-         433,05 MHz - 434,79 MHz (ISM-Band Region 1)
-         863,00 MHz - 870,00 MHz (SRD-Band Europa)
- North America:
-         902,00 MHz - 928,00 MHz (ISM-Band Region 2)
-*/
 
 
 
@@ -46,7 +29,7 @@ bool _ADXL345_avail  = false;
 bool init_ADXL345(){
   byte _ID;
   //getIIC is done in the init-function above
-  if (!gotIIC()) { return false; }
+  if (!gotULPlock()) { return false; }
   _D(DebugPrint("Init ADXL345.. ", DEBUG_LEVEL_2));
   //check sensor
   if(iic_readRegister(ADXL345_DEFAULT_ADDRESS, ADXL345_DEVID, &_ID) != I2C_ERROR_OK){
@@ -199,14 +182,14 @@ void init_accel_ULP(uint32_t intervall_us) {
   ulp_set_wakeup_period(0, intervall_us);
   const ulp_insn_t ulp_accel[] = {
 
-  //check if iic is available
-  I_MOVI(R3,IIC_STATUS),
-  I_LD(R0,R3,IIC_REQUESTED),
-  M_BL(15,1),                             // R0 < 1?
-  I_HALT(),                               // iic requested by CPU
-  M_LABEL(15),
-  I_MOVI(R0,1),
-  I_ST(R0,R3,IIC_LOCKED),                 // set IIC_LOCKED to true
+  //check if iic is available / or configuration is accessed by main cpu
+  I_MOVI(R3,IIC_STATUS),           //load data structure offset
+  I_LD(R0,R3,IIC_REQUESTED),       //load request value
+  M_BL(1,1),                       //access requested by main CPU?
+  I_HALT(),                        //then end preocedure and halt ULP until
+  M_LABEL(1),
+  I_MOVI(R0,1),                    // set R0 to true
+  I_ST(R0,R3,IIC_LOCKED),          // store it to IIC_LOCKED
 
 #if ULP_LED_BLINK
   //LED flashing in debug mode for check "ULP is running"
@@ -226,7 +209,7 @@ void init_accel_ULP(uint32_t intervall_us) {
   I_WR_REG_BIT(RTC_IO_TOUCH_PAD2_REG, RTC_IO_TOUCH_PAD2_HOLD_S, 1), // HOLD on LED
 #endif
 
-
+    //setup GPIOs
     #if (RTC_GPIO_BIT_SDA == GPIO_NUM_0_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_0_RTC)
       I_WR_REG_BIT(RTC_IO_TOUCH_PAD1_REG, RTC_IO_TOUCH_PAD1_HOLD_S, 0), // HOLD off GPIO 0
     #endif
@@ -252,208 +235,243 @@ void init_accel_ULP(uint32_t intervall_us) {
       I_WR_REG_BIT(RTC_IO_TOUCH_PAD7_REG, RTC_IO_TOUCH_PAD7_HOLD_S, 0), // HOLD off GPIO 27
     #endif
 
-    SDA_INPUT, //(=HIGH)
-    SCL_INPUT, //(=HIGH)
-    SDA_DRIVE_L,
-    SCL_DRIVE_L,
-
-  M_LABEL(81), //loop for reading 3 registers
-
-    I_MOVI(R0,I2C_FAILED), //set status to failed
-    I_MOVI(R2,ACCEL_DATA_HEADER),
-    I_LD(R2,R2,ACCEL_DATA_CUR),
-    I_ST(R0,R2,I2C_TRNS_RES),
-    I_LD(R0,R2,CUR_READ_RES), //store last read result
-    I_ST(R0,R2,LST_READ_RES),
-    I_MOVI(R3,2),     //write 3 bytes
     /*
-     * 1st round: device Address
+     * initialize i²c bus
+     * we do not drive GPIOs actively high and low but switch from mode 'input' (=HIGH) to mode 'driven' (=LOW) instead.
      */
-    I_MOVI(R2,ADXL345_DEFAULT_ADDRESS),   // device address
-    I_LSHI(R2,R2,2),   // 1 more because of limited conditional branch capability
-    //I_ORI(R2,R2,0x00), // R/W - bit, write = 0;
-
-    M_LABEL(9),
-    //start condition
-    SDA_L,  //1.25us per I_WR_REG_BIT
-    SCL_L,
-
-  M_LABEL(1),
-     /*
-      *write byte in R2
-      */
-      I_MOVI(R0, 0x08),
-    M_LABEL(2),
-      I_RSHR(R1,R2,R0),
-      I_ANDI(R1,R1,0x01),
-      M_BXZ(3),  //1
-      SDA_H,
-      M_BX(4),   //2
-      M_LABEL(3),
-      SDA_L,
-    M_LABEL(4),
-      SCL_H,
-      SCL_L,
-      I_SUBI(R0,R0,1),
-      M_BGE(2,1),  //3
-    SDA_INPUT,
-    SCL_H,
-    SDA_READ,  //ACK
-    SCL_L,
-    M_BGE(99,1),  //4
-    I_SUBI(R3,R3,1),
-    M_BXZ(5),        //if loop-counter == 0   //5
-    M_BXF(6),        //if loop-counter == -1  //6
+    SDA_INPUT,                     //(=HIGHZ)
+    SCL_INPUT,                     //(=HIGHZ)
+    SDA_DRIVE_L,                   //set driven state of GPIO to 'low'
+    SCL_DRIVE_L,                   //set driven state of GPIO to 'low'
     /*
-    * write register to read next
-    */
-    I_MOVI(R2,ACCEL_DATA_HEADER),
-    I_LD(R2,R2,ACCEL_DATA_CUR),
-    I_LD(R2,R2,I2C_DATA_REG),        // current register address
-    I_LSHI(R2,R2,1),                 // 1 more because of limited conditional branches
-    M_BX(1),   //7
+     * Both GPIOs are 'high' now for a couple of microseconds during the following instructions.
+     * This is needed for a valid i²c start-condition, following up.
+     */
+
+  M_LABEL(2),                      //loop for reading 3 registers
+
+    I_MOVI(R0,I2C_FAILED),         //set status to failed
+    I_MOVI(R2,ACCEL_DATA_HEADER),  //load offset data sets start address
+    I_LD(R2,R2,ACCEL_DATA_CUR),    //load offset to current data structure
+    I_ST(R0,R2,I2C_TRNS_RES),      //store "failed" status to transfer result
+    I_LD(R0,R2,CUR_READ_RES),      //load last read result (still stored in 'current')
+    I_ST(R0,R2,LST_READ_RES),      //move it to 'last'
+    I_MOVI(R3,2),                  //prepare writing 2 bytes + 1 more (see below)
+    /*
+     * 1st: transfer device Address with R/W-bit = 'write' - we want to write the register address to device
+     */
+    I_MOVI(R2,ADXL345_DEFAULT_ADDRESS),   //load device address (7 bits)
+    I_LSHI(R2,R2,2),               // shift 1 more because we want use same value for shift and for loop counting
+                                   // so we start shifting with '8' and end with '1', means: we use bit 1 to 8, but not bit 0
+    //I_ORI(R2,R2,0x00),           // R/W - bit, write = 0 -> 'or' - operation would be senseless, but still noted here for understanding i²c protocol
+                                   // keep in mind: R/W - bit 'read' = 1 would mean 'OR 0x02' bit 0 is not used
+
+  M_LABEL(3),                      //start a new transfer, start condition = 1st drive SDA low, afterwards SCL
+    SDA_L,                         //SDA = low (1.25us per I_WR_REG_BIT)
+    SCL_L,                         //SCL = low
+
+  M_LABEL(4),                      //write byte in R2
+    I_MOVI(R0, 0x08),              //load loop count to R0 (need to write 8 bits -> device address + R/W)
   M_LABEL(5),
-
-    /*
-    * send read request
-    */
-    SCL_H, //prepare restart condition + a little delay done by the following instructions
-    I_MOVI(R2,ADXL345_DEFAULT_ADDRESS),   // device address
-    I_LSHI(R2,R2,2),   // 1 more because of limited conditional branches
-    I_ORI(R2,R2,0x02), // R/W - bit, read = 1;
-    M_BX(9),  //8
-  M_LABEL(6),
-
-    /*
-     * now read 2 bytes
-     */
-    I_MOVI(R3,2),     //write 2 bytes
-    SDA_INPUT, // maybe already done by reading ACK
-    I_MOVI(R1,0),
+    I_RSHR(R1,R2,R0),              //shift current bit into LSB position
+    I_ANDI(R1,R1,0x01),            //mask it
+    M_BXZ(6),                      // '1' or '0'?
+    SDA_H,                         // '1'
+    M_BX(7),
+    M_LABEL(6),
+    SDA_L,                         // '0'
+  M_LABEL(7),
+    SCL_H,                         // trigger SCL
+    SCL_L,
+    I_SUBI(R0,R0,1),               //decrement counter
+    M_BGE(5,1),                    //loop while not '0'
+    SDA_INPUT,                     //switch SDA to input
+    SCL_H,                         //trigger SCL
+    SDA_READ,                      //read ACK
+    SCL_L,
+    M_BGE(15,1),                   //break if ACK = '1' (means failed)
+    I_SUBI(R3,R3,1),               //decrement byte loop counter
+    M_BXZ(8),                      //if R3 == 0, 2 bytes are written, we need do write 'read'-request to device
+    M_BXF(9),                      //if R3 == -1, we are through, goto read
+                                   //otherwise prepare writing the register to be read out
+    I_MOVI(R2,ACCEL_DATA_HEADER),  //load offset data sets start address
+    I_LD(R2,R2,ACCEL_DATA_CUR),    //load offset to current data set
+    I_LD(R2,R2,I2C_DATA_REG),      //current register address
+    I_LSHI(R2,R2,1),               //shift 1 more (see above)
+    M_BX(4),                       //next turn
+  M_LABEL(8),                      //prepare 'read' request
+    SCL_H,                         //prepare restart condition + a little delay done by the following instructions
+    I_MOVI(R2,ADXL345_DEFAULT_ADDRESS),   //load device address
+    I_LSHI(R2,R2,2),               //shift 1 more (see above)
+    I_ORI(R2,R2,0x02),             //R/W - bit, read = 1;
+    M_BX(3),                       //start a read transfer on device, ...
+  M_LABEL(9),
+                                   //... but now we end up here after starting read transfer
+    I_MOVI(R3,2),                  //now we read 2 bytes
+    SDA_INPUT,                     //this should already be done by reading last ACK .. we want to be sure
+    I_MOVI(R1,0),                  //clear R1
   M_LABEL(11),
-    I_MOVI(R2, 0x08),
+    I_MOVI(R2, 0x08),              //load loop counter
   M_LABEL(12),
-    SCL_H,
-    SDA_READ,
+    SCL_H,                         //trigger SCL
+    SDA_READ,                      //read 1 bit
     SCL_L,
-    I_LSHI(R1,R1,1),
-    I_ORR(R1,R1,R0),
-    I_SUBI(R2,R2,1),
-    M_BXZ(13),  //9
-    M_BX(12),   //10
+    I_LSHI(R1,R1,1),               //shift R1
+    I_ORR(R1,R1,R0),               //add new bit
+    I_SUBI(R2,R2,1),               //decrement counter
+    M_BXZ(13),                     //if R2 == 0, we are through
+    M_BX(12),                      //otherwise next read bit
   M_LABEL(13),
-    I_SUBI(R3,R3,1),
-    M_BXZ(14),     //if loop-counter == 0  //11
-    SDA_L,         //ack fromMaser later on SDA_L = SDA_OUTPUT
-    SCL_H,
-    I_DELAY(2),    //give a little delay
+    I_SUBI(R3,R3,1),               //decrement byte counter
+    M_BXZ(14),                     //if byte-counter == 0  we are trough
+    SDA_L,                         //ACK fromMaser
+    SCL_H,                         //trigger it
+    I_DELAY(2),                    //give a little delay
     SCL_L,
-    SDA_H,         //SDA_H = SDA_INPUT
-    I_DELAY(2),    //give a little delay
-    M_BX(11),      //12
+    SDA_H,                         //SDA_H = SDA_INPUT
+    I_DELAY(2),                    //give a little delay
+    M_BX(11),                      //read next byte
 
   M_LABEL(14),
-    I_RSHI(R2,R1,8),
+    SDA_H,                         //NACK from master (want no more bytes)
+    SCL_H,                         //trigger it
+    I_DELAY(2),                    //give a little delay
+    SCL_L,
+    I_RSHI(R2,R1,8),               //swap low- and high-byte in R1
     I_LSHI(R1,R1,8),
     I_ORR(R1,R1,R2),
-    I_MOVI(R2,ACCEL_DATA_HEADER),
-    I_LD(R2,R2,ACCEL_DATA_CUR),
-    I_ST(R1,R2,CUR_READ_RES),
-    I_MOVI(R0,I2C_SUCCESS),
-    I_ST(R0,R2,I2C_TRNS_RES),
-  M_LABEL(99),
-    //stop condition
+    I_MOVI(R2,ACCEL_DATA_HEADER),  //load offset data sets start address
+    I_LD(R2,R2,ACCEL_DATA_CUR),    //load offset to current data set
+    I_ST(R1,R2,CUR_READ_RES),      //store read value
+    I_MOVI(R0,I2C_SUCCESS),        //load transfer success value
+    I_ST(R0,R2,I2C_TRNS_RES),      //store it
+  M_LABEL(15),                     //generate a stop condition
     SDA_L,
-    I_DELAY(10), //give a little delay
+    I_DELAY(10),                   //give a little delay
     SCL_H,
     I_DELAY(6),
     SDA_H,
-    //now calculations
-    //R0 still holds transmission result, R1 holds current acc value
-    M_BGE(83,1), //no calculation if transmission fails
-    I_MOVI(R3,ACCEL_DATA_HEADER),
-    I_LD(R3,R3,ACCEL_DATA_CUR),
-    I_LD(R2,R3,LST_READ_RES),
-    I_SUBR(R0,R2,R1),
-    I_ANDI(R3,R0,0x8000),
-    M_BXZ(82),
-    I_SUBR(R0,R1,R2),
-  M_LABEL(82),
-    I_MOVI(R3,ACCEL_DATA_HEADER),
-    I_LD(R3,R3,ACCEL_DATA_CUR),
-    I_ST(R0,R3,CUR_DIFF_VAL),
+    /*
+     * now calculations
+     * R0 still holds transmission result,
+     * if transmission was successful: R1 holds current acceleration value
+     */
+    M_BGE(16,1),                   //no calculation if transmission fails
+    I_MOVI(R3,ACCEL_DATA_HEADER),  //load data sets start address
+    I_LD(R3,R3,ACCEL_DATA_CUR),    //load offset to current data set (x=0,y=size,z=2*size)
+    I_LD(R2,R3,LST_READ_RES),      //load last measured value
+    I_SUBR(R0,R2,R1),              //calculate difference
+    I_ANDI(R3,R0,0x8000),          //negative ?
+    M_BXZ(17),
+    I_SUBR(R0,R1,R2),              //yes - then the opposite value
+    M_BX(17),                      //now we have the absolute value of difference - goto storing it
+  M_LABEL(16),
+    I_MOVI(R0,0),                  //transmission failed - set difference value to 0
+  M_LABEL(17),
+    I_MOVI(R3,ACCEL_DATA_HEADER),  //load data sets start address
+    I_LD(R3,R3,ACCEL_DATA_CUR),    //load offset to current data set
+    I_ST(R0,R3,CUR_DIFF_VAL),      //store the absolute value of difference
 
-  M_LABEL(83),
-    I_MOVI(R3,ACCEL_DATA_HEADER),
-    I_LD(R0,R3,ACCEL_LOOP_CUR),
-    I_ADDI(R0,R0,1),
-    M_BGE(84,3),        //3 loops - we're ready
-    I_ST(R0,R3,ACCEL_LOOP_CUR), //else prepare next loop
-    I_LD(R0,R3,ACCEL_DATA_CUR),
-    I_ADDI(R0,R0,ACCEL_DT_LEN),
-    I_ST(R0,R3,ACCEL_DATA_CUR),
-    M_BX(81),
+    I_MOVI(R3,ACCEL_DATA_HEADER),  //load data sets start address
+    I_LD(R0,R3,ACCEL_LOOP_CUR),    //load offset to loop counter
+    I_ADDI(R0,R0,1),               //increment
+    M_BGE(18,3),                   //3 loops? if yes - we're ready
+    I_ST(R0,R3,ACCEL_LOOP_CUR),    //else store loop counter
+    I_LD(R0,R3,ACCEL_DATA_CUR),    //load current data set offset
+    I_ADDI(R0,R0,ACCEL_DT_LEN),    //increment to next data set
+    I_ST(R0,R3,ACCEL_DATA_CUR),    //store it
+    M_BX(2),                       //loop to next read next register
 
     //end of transmissions
-    M_LABEL(84),
+  M_LABEL(18),                     //now we have 3 difference values for each axis (x,y,z)
+                                   //if transmission was failed for 1 value, we take the previous data
+    I_MOVI(R3,IIC_STATUS),         //release access lock
+    I_MOVI(R0,0),                  // ...
+    I_ST(R0,R3,IIC_LOCKED),        // set IIC_LOCKED to false
 
-    I_MOVI(R3,IIC_STATUS),
-    I_MOVI(R0,0),
-    I_ST(R0,R3,IIC_LOCKED),                 // set IIC_LOCKED to false
+    I_MOVI(R3,ACCEL_DATA_HEADER),  //load current data set offset
 
-    I_MOVI(R3,ACCEL_DATA_HEADER),
+    I_MOVI(R0,0),                  //zero R0
+    I_ST(R0,R3,ACCEL_LOOP_CUR),    //reset loop counter to zero
+    I_MOVI(R0,ACCEL_X_VALUES),     //load offset to 1st data set (x)
+    I_ST(R0,R3,ACCEL_DATA_CUR),    //reset data set pointer to 1st one
 
-    //count measures;
-    I_LD(R0,R3,ACCEL_MEAS_CNT),
-    I_ADDI(R0,R0,1),
-    I_ST(R0,R3,ACCEL_MEAS_CNT),
+    /* calculate averaged value
+     * this is a moving average calculated by new_avg = ((old_avg * 31) / 32) + diff_x + diff_y + diff_z
+     */
+    I_LD(R1,R3,AVR_DIFF_VAL),      //load old_avg
+    I_LSHI(R2,R1,4),               //old_avg * 32
+    I_SUBR(R2,R2,R1),              //(old_avg * 32) - old_avg [== old_avg * 31]
+    I_RSHI(R2,R2,4),               //(old_avg * 31) / 32
 
-    I_MOVI(R0,0),
-    I_ST(R0,R3,ACCEL_LOOP_CUR), //reset loop counter
-    I_MOVI(R0,ACCEL_X_VALUES),
-    I_ST(R0,R3,ACCEL_DATA_CUR), //reset data pointer
-
-    //calculate averaged values
-    I_LD(R1,R3,AVR_DIFF_VAL),
-    I_LSHI(R2,R1,4),
-    I_SUBR(R2,R2,R1),  //averaged value * 31
-    I_RSHI(R2,R2,4),   //averaged value / 32
-
-    I_MOVI(R1,ACCEL_X_VALUES),
-    I_LD(R0,R1,CUR_DIFF_VAL),
-    I_ADDR(R2,R2,R0),  //averaged value + current X value
-    I_LD(R0,R1,CUR_DIFF_VAL+ACCEL_DT_LEN),
-    I_ADDR(R2,R2,R0),  //averaged value + current Y value
-    I_LD(R0,R1,CUR_DIFF_VAL+ACCEL_DT_LEN+ACCEL_DT_LEN),
-    I_ADDR(R2,R2,R0),  //averaged value + current Z value
-    I_ST(R2,R3,AVR_DIFF_VAL),
+    I_MOVI(R1,ACCEL_X_VALUES),     //load offset to 1st data set (x)
+    I_LD(R0,R1,CUR_DIFF_VAL),      //load diff_x
+    I_ADDR(R2,R2,R0),              //((old_avg * 31) / 32) + diff_x
+    I_LD(R0,R1,CUR_DIFF_VAL+ACCEL_DT_LEN), //load diff_y
+    I_ADDR(R2,R2,R0),              //((old_avg * 31) / 32) + diff_x+ diff_y
+    I_LD(R0,R1,CUR_DIFF_VAL+ACCEL_DT_LEN+ACCEL_DT_LEN), //load diff_z
+    I_ADDR(R2,R2,R0),              //((old_avg * 31) / 32) + diff_x + diff_z
+    I_ST(R2,R3,AVR_DIFF_VAL),      //store new_avg
 
     //check thresholds
-    I_LD(R1,R3,AVR_EXCD_TH2),
-    I_SUBR(R0,R2,R1),
-    M_BXF(85),
-    I_LD(R1,R3,AVR_EXCD_CT2),
-    I_ADDI(R1,R1,1),
-    I_ST(R1,R3,AVR_EXCD_CT2),
-    I_LD(R0,R3,AVR_WAKE_TH2),
-    I_SUBR(R1,R1,R0),
-    M_BXF(85),
-    I_WAKE(),
-    M_BX(86),
-  M_LABEL(85),
-    I_LD(R1,R3,AVR_EXCD_TH1),
-    I_SUBR(R0,R2,R1),
-    M_BXF(86),
-    I_LD(R1,R3,AVR_EXCD_CT1),
-    I_ADDI(R1,R1,1),
-    I_ST(R1,R3,AVR_EXCD_CT1),
-    I_LD(R0,R3,AVR_WAKE_TH1),
-    I_SUBR(R1,R1,R0),
-    M_BXF(86),
-    I_WAKE(),
+    I_LD(R1,R3,AVR_EXCD_TH2),      //load threshold 2 (the higher one) for counter 2
+    I_SUBR(R0,R2,R1),              //check averaged value against threshold 2
+    M_BXF(19),                     //if less, goto next
+    I_LD(R1,R3,AVR_EXCD_CT2),      //otherwise load counter 2
+    I_ADDI(R1,R1,1),               //increment
+    I_ST(R1,R3,AVR_EXCD_CT2),      //store
+    I_LD(R0,R3,AVR_WAKE_TH2),      //load wake threshold 2
+    I_SUBR(R1,R1,R0),              //check averaged value against wake threshold 2
+    M_BXF(19),                     //if less, goto next
+    I_WAKE(),                      //otherwise alert - wake main CPU..
+    M_BX(20),                      //..and goto end
+  M_LABEL(19),
+    I_LD(R1,R3,AVR_EXCD_TH1),      //load threshold 1 (the lower one) for counter 1
+    I_SUBR(R0,R2,R1),              //check averaged value against threshold 1
+    M_BXF(20),                     //if less, goto end
+    I_LD(R1,R3,AVR_EXCD_CT1),      //otherwise load counter 1
+    I_ADDI(R1,R1,1),               //increment
+    I_ST(R1,R3,AVR_EXCD_CT1),      //store
+    I_LD(R0,R3,AVR_WAKE_TH1),      //load wake threshold 1
+    I_SUBR(R1,R1,R0),              //check averaged value against wake threshold 1
+    M_BXF(20),                     //if less, goto end
+    I_WAKE(),                      //otherwise alert - wake main CPU
+    /*
+     * now we have to take care for the interim results. Data header offset still resides in R3
+     */
+  M_LABEL(20),
+    I_LD(R0,R3,ACCEL_MEAS_CNT),    //load measurement counter
+    I_ADDI(R0,R0,1),               //increment it
+    I_ST(R0,R3,ACCEL_MEAS_CNT),    //store it
 
-    M_LABEL(86),
+    I_LD(R1,R3,AVR_INTERRIM_1),    //load threshold for 1st interim counter threshold[0]
+    I_SUBR(R2,R1,R0),              //check against current counter (threshold - current < 0?)
+    M_BXF(21),                     //current is above threshold - go ahead
+    I_LD(R1,R3,AVR_EXCD_CT1),      //load exceed-th1-counter
+    I_ST(R1,R3,AVR_EX_IR_CT1_1),   //copy it to interim 1 data set
+    I_LD(R1,R3,AVR_EXCD_CT2),      //load exceed-th2-counter
+    I_ST(R1,R3,AVR_EX_IR_CT2_1),   //copy it to interim 1 data set
+    M_BX(23),                      //goto end
+  M_LABEL(21),                     //current > threshold[0]
+    I_LD(R1,R3,AVR_INTERRIM_2),    //load threshold for 2nd interim counter threshold[1]
+    I_SUBR(R2,R1,R0),              //check against current counter (threshold - current < 0?)
+    M_BXF(22),                     //current is above threshold - go ahead
+    I_LD(R1,R3,AVR_EXCD_CT1),      //load exceed-th1-counter
+    I_ST(R1,R3,AVR_EX_IR_CT1_2),   //copy it to interim 2 data set
+    I_LD(R1,R3,AVR_EXCD_CT2),      //load exceed-th2-counter
+    I_ST(R1,R3,AVR_EX_IR_CT2_2),   //copy it to interim 2 data set
+    M_BX(23),                      //goto end
+  M_LABEL(22),                     //current > threshold[1]
+    I_LD(R1,R3,AVR_INTERRIM_3),    //load threshold for 3rd interim counter threshold[2]
+    I_SUBR(R2,R1,R0),              //check against current counter (threshold - current < 0?)
+    M_BXF(23),                     //current is above threshold - go ahead
+    I_LD(R1,R3,AVR_EXCD_CT1),      //load exceed-th1-counter
+    I_ST(R1,R3,AVR_EX_IR_CT1_3),   //copy it to interim 2 data set
+    I_LD(R1,R3,AVR_EXCD_CT2),      //load exceed-th2-counter
+    I_ST(R1,R3,AVR_EX_IR_CT2_3),   //copy it to interim 2 data set
+  M_LABEL(23),                     //current > threshold[3] - means: do nothing
 
+  //end procedure
     #if (RTC_GPIO_BIT_SDA == GPIO_NUM_0_RTC) || (RTC_GPIO_BIT_SCL == GPIO_NUM_0_RTC)
     I_WR_REG_BIT(RTC_IO_TOUCH_PAD1_REG, RTC_IO_TOUCH_PAD1_HOLD_S, 1), // HOLD on GPIO 0
     #endif
@@ -492,22 +510,17 @@ void init_accel_ULP(uint32_t intervall_us) {
   rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_OUTPUT_ONLY);
 #endif
 
-  _D(DebugPrintln("init ULP code", DEBUG_LEVEL_1); delay(50);)
-  //init variables for ULP
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_MEAS_CNT] = 0;
+  _D(DebugPrintln("initialize ULP code", DEBUG_LEVEL_1); delay(50);)
+  //initialize static variables for ULP
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_LOOP_CUR] = 0;
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_DATA_CUR] = ACCEL_X_VALUES;
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_CT1] = 0;
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_TH1] = heidiConfig->accThres1;
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH1] = _getAccThresCnt(heidiConfig->accAlertThres1);
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_CT2] = 0;
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD_TH2] = heidiConfig->accThres2;
-  RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH2] = _getAccThresCnt(heidiConfig->accAlertThres2);
   RTC_SLOW_MEM[ACCEL_X_REGISTER] = ADXL345_DATAX0;
   RTC_SLOW_MEM[ACCEL_Y_REGISTER] = ADXL345_DATAY0;
   RTC_SLOW_MEM[ACCEL_Z_REGISTER] = ADXL345_DATAZ0;
   RTC_SLOW_MEM[IIC_STATUS + IIC_REQUESTED] = 0;
   RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED]    = 0;
+
+  init_accel_data_ULP(intervall_us);
 
   size_t size = sizeof(ulp_accel) / sizeof(ulp_insn_t);
   _D(DebugPrintln("ULP code length: " + String(sizeof(ulp_accel) / sizeof(ulp_insn_t)), DEBUG_LEVEL_1); delay(50);)
@@ -520,6 +533,26 @@ void init_accel_ULP(uint32_t intervall_us) {
   ulp_run(0);
 
 }
+void init_accel_data_ULP(uint32_t intervall_us){
+  //initialize measurement cycle variables for ULP
+  if (getULPLock()) {
+    uint16_t interim_ticks = (uint16_t)((uint32_t)(_currentCyleLen_m() * 60000) / (intervall_us / 1000) / 4);
+    set_accel_exthr1_ULP(heidiConfig->accThres1); //set threshold 1 to current value
+    set_accel_exthr2_ULP(heidiConfig->accThres2); //set threshold 2 to current value
+    set_accel_excnt1_ULP(0);   //set threshold 1 exceeding counter to zero
+    set_accel_excnt2_ULP(0);   //set threshold 1 exceeding counter to zero
+    set_accel_wake1_ULP(_getAccThresCnt(heidiConfig->accAlertThres1)); //set wake (alert) threshold 1 to current value
+    set_accel_wake2_ULP(_getAccThresCnt(heidiConfig->accAlertThres2)); //set wake (alert) threshold 2 to current value
+    set_accel_meas_cnt_ULP(0); //set measurement counter to zero
+    for (int i=0; i<3; i++){
+      set_accel_interrim_ct1_ULP(i,0);
+      set_accel_interrim_ct2_ULP(i,0);
+      set_accel_interrim_thr_ULP(i,interim_ticks*(i+1));
+    }
+  }
+  freeULP();
+}
+
 /* get / set measure count value */
 uint16_t get_accel_meas_cnt_ULP(){  return (uint16_t)RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_MEAS_CNT]; }
 void set_accel_meas_cnt_ULP(uint16_t val){ RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_MEAS_CNT] = val; }
@@ -552,6 +585,79 @@ void set_accel_exthr2_ULP(uint16_t val){ RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EXCD
 uint16_t get_accel_wake2_ULP(){ return (uint16_t)RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH2]; }
 void set_accel_wake2_ULP(uint16_t val){ RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_WAKE_TH2] = val; }
 
+/* get / set interim threshold values */
+uint16_t get_accel_interrim_thr_ULP(int which){
+  if ((which < 3) && (which >= 0)) { return (uint16_t)(RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_INTERRIM+which]); }
+  _D( else { DebugPrintln("wrong index!", DEBUG_LEVEL_1);})
+  return 0;
+}
+void set_accel_interrim_thr_ULP(int which, uint16_t val){
+  if ((which < 3) && (which >= 0)) { RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_INTERRIM+which] = val; }
+  _D( else { DebugPrintln("wrong index!", DEBUG_LEVEL_1);})
+}
+
+/* get / set interim counter 1 values */
+uint16_t get_accel_interrim_ct1_ULP(int which){
+  if ((which < 3) && (which >= 0)) { return (uint16_t)(RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EX_IR_CT1+which]); }
+  else if (which == 3) { return get_accel_excnt1_ULP(); }
+  _D( else { DebugPrintln("wrong counter index!", DEBUG_LEVEL_1);})
+  return 0;
+}
+void set_accel_interrim_ct1_ULP(int which, uint16_t val){
+  if ((which < 3) && (which >= 0)) {RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EX_IR_CT1+which] = val; }
+  else if (which == 3) { set_accel_excnt1_ULP(val); }
+  _D( else { DebugPrintln("wrong counter index!", DEBUG_LEVEL_1);})
+}
+
+/* get / set interim counter 2 values */
+uint16_t get_accel_interrim_ct2_ULP(int which){
+  if ((which < 3) && (which >= 0)) { return (uint16_t)(RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EX_IR_CT2+which]); }
+  else if (which == 3) { return get_accel_excnt2_ULP(); }
+  _D( else { DebugPrintln("wrong counter index!", DEBUG_LEVEL_1);})
+  return 0;
+}
+void set_accel_interrim_ct2_ULP(int which, uint16_t val){
+  if ((which < 3) && (which >= 0)) { RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_EX_IR_CT2+which] = val; }
+  else if (which == 3) { set_accel_excnt2_ULP(val); }
+  _D( else { DebugPrintln("wrong counter index!", DEBUG_LEVEL_1);})
+}
+uint16_t get_accel_interrim_ct_ULP(int which_ct, int which_val){
+  if(which_ct == 1) { return get_accel_interrim_ct1_ULP(which_val);}
+  if(which_ct == 2) { return get_accel_interrim_ct2_ULP(which_val);}
+  return 0xffff;
+}
+void set_accel_interrim_ct_ULP(int which_ct, int which_val, uint16_t value){
+  if(which_ct == 1) { set_accel_interrim_ct1_ULP(which_val, value);}
+  if(which_ct == 2) { set_accel_interrim_ct2_ULP(which_val, value);}
+}
+/*
+ * If collecting interim acceleration values is used, this function calculates a 4x4bit representing
+ * of distribution of measured data. The measuring time is divided into 4 periods and each nibble of
+ * returned value represents the share of one period (1st period = highest nibble).
+ * The sum of all nibbles = 100%
+ * which = 1 or 2 -> ct1 or ct2
+ */
+uint16_t get_accel_ct_spreading(int which){
+  uint16_t s_value[4];
+  uint8_t  n_value;
+  uint16_t max_val, result = 0;
+  s_value[0] = get_accel_interrim_ct_ULP(which, 0);
+  max_val = s_value[0];
+  for(int i=1; i<4; i++){
+    s_value[i] =  get_accel_interrim_ct_ULP(which, i) - get_accel_interrim_ct_ULP(which, i-1);
+    if (s_value[i] > max_val){ max_val = s_value[i]; }
+  }
+  if (max_val> 0){
+    for(int i=0; i<4; i++){
+      result = result << 4;
+      n_value = (uint8_t)lround(((float)s_value[i] * 0x0f) / (float)max_val);
+      result |= (n_value & 0x0f);
+    }
+  }
+  return result;
+}
+
+
 uint16_t _getAccThresCnt(uint16_t dayThres){
   if (_night()){
     return (uint16_t)((uint32_t)(dayThres * heidiConfig->accNightFactor) / 100);
@@ -559,19 +665,19 @@ uint16_t _getAccThresCnt(uint16_t dayThres){
   return dayThres;
 }
 
-void set_IIC_request(uint16_t value){
+void set_ULP_request(uint16_t value){
   RTC_SLOW_MEM[IIC_STATUS + IIC_REQUESTED] = value;
 }
 
-void set_IIC_lock(uint16_t value){
+void set_ULP_lock(uint16_t value){
   RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED]    = value;
 }
 
-bool IICisLocked(void){
+bool ULPisLocked(void){
   return ((uint16_t)RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED] != 0);
 }
 
-bool gotIIC(void){
+bool gotULPlock(void){
   return ((uint16_t)RTC_SLOW_MEM[IIC_STATUS + IIC_REQUESTED] != 0);
 }
 
