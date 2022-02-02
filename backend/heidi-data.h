@@ -22,10 +22,10 @@
 
 #define TEL_NO_LEN 12
 #define TEL_NO_CNT 2
-#define HEX_BUFFER_OFFSET 3
-#define HEX_BUFFER_VALUES 16 //_t_SendData values + ID
-#define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 2 + 4 + 4 + (2 * (HEX_BUFFER_VALUES - 3)))
-
+#define HEX_BUFFER_OFFSET 3  //1. count, 2. herd id, 3. animal id
+#define HEX_BUFFER_DATA_VALUES 15 // = _t_SendData values
+#define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 4 + 4 + (2 * (HEX_BUFFER_DATA_VALUES - 2)) + 2)
+                                        //lat, lng,   all other data as uint16,      checksum (not used)
 typedef __attribute__((__packed__)) struct _t_ConfigData{
    int8_t bootCount;
    int8_t bootCycles; //...cycles between data transmission
@@ -48,7 +48,7 @@ typedef __attribute__((__packed__)) struct _t_ConfigData{
 }t_ConfigData;
 
 #define HEIDI_CONFIG_LENGTH (22+(TEL_NO_LEN*TEL_NO_CNT)) //must be a multiple of 4
-#define HEIDI_CONFIG_LENGTH_RTC (HEIDI_CONFIG_LENGTH >> 2)
+#define HEIDI_CONFIG_LENGTH_RTC (HEIDI_CONFIG_LENGTH >> 2) //counted as uint32
 
 typedef __attribute__((__packed__)) struct {
   int32_t  latitude;
@@ -143,7 +143,7 @@ extern bool newAccSettings;
 void     initConfig(bool reset);
 void     initRTCData(bool reset);
 void     initDataSet(t_SendData* DataSet);
-void     initDataSets(t_SendData* first, t_SendData* last);
+void     initDataSets(t_SendData** sets, int first, int last);
 bool     emptyDataSet(t_SendData* DataSet);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
 int      packUpDataSets(void);

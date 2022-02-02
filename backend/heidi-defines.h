@@ -53,6 +53,7 @@
 #define HEIDI_CONFIG_2
 
 #ifdef HEIDI_CONFIG_1
+#define LORA_V1_1_OLED
 #define GSM_MODULE
 #define GPS_MODULE
 #define TEMP_SENSOR
@@ -66,6 +67,7 @@
 #define MAX_AWAKE_TIME_TIMER        2         //  2 minutes
 #endif
 #ifdef HEIDI_CONFIG_2
+#define LORA_V1_3_OLED
 #define GSM_MODULE
 #define GPS_MODULE
 #define COMMON_SERIAL
@@ -88,11 +90,15 @@
 #define MAX_AWAKE_TIME_TIMER        2         //  2 minutes
 #endif
 #ifdef HEIDI_CONFIG_TEST
+#define LORA_V1_3_OLED
 //#define GSM_MODULE
 //#define GPS_MODULE
 #define COMMON_SERIAL
 //#define TEMP_SENSOR
 //#define CHECK_BATTERY
+#define USE_LORA
+#define USE_OLED
+#define USE_NO_MEASURES
 #define USE_VOLTAGE_MEAS_PIN
 //#define I2C_BUS
 //#define ACCELEROMETER
@@ -299,7 +305,14 @@
 #error "Timeout disabled!"
 #endif
 #endif
-
+#ifdef USE_OLED
+#ifndef USE_NO_MEASURES
+#define USE_NO_MEASURES
+#endif
+#ifndef HEIDI_CONFIG_TEST
+#error "Use OLED display for tests only"
+#endif
+#endif
 #ifndef HEIDI_ANIMAL
 #error "Please set a default value."
 #endif

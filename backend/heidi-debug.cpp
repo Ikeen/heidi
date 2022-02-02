@@ -39,25 +39,29 @@ void debugHeidiState(bool powerOnReset){
 }
 
 void _PrintDataSet(t_SendData* DataSet, int dLevel){
-  _D(DebugPrint("DataSet Lat= ", dLevel));
-  _D(DebugPrint(DataSet->latitude, dLevel));
-  _D(DebugPrint(" Lng= ", dLevel));
-  _D(DebugPrint(DataSet->longitude, dLevel));
-  _D(DebugPrint(" Alt= ", dLevel));
-  _D(DebugPrint(DataSet->altitude, dLevel));
-  _D(DebugPrint(" Time= ", dLevel));
-  _D(DebugPrint(String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))), dLevel));
-  _D(DebugPrint(" " + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), dLevel));
-  _D(DebugPrint(" Bat= ", dLevel));
-  _D(DebugPrint(String(double(DataSet->battery)/1000, 2), dLevel));
-  _D(DebugPrint(" Err= ", dLevel));
-  _D(DebugPrint(String(DataSet->errCode, HEX), dLevel));
-  _D(DebugPrint(" GPSHDOP= ", dLevel));
-  _D(DebugPrint(DataSet->GPShdop, dLevel));
-  _D(DebugPrint(" Sat= ", dLevel));
-  _D(DebugPrint(DataSet->satellites, dLevel));
-  _D(DebugPrint(" accTh1= ", dLevel));
-  _D(DebugPrintln(DataSet->accThresCnt1, dLevel));
+  _D(
+    DebugPrint("DataSet Lat= ", dLevel);
+    DebugPrint(DataSet->latitude, dLevel);
+    DebugPrint(" Lng= ", dLevel);
+    DebugPrint(DataSet->longitude, dLevel);
+    DebugPrint(" Alt= ", dLevel);
+    DebugPrint(DataSet->altitude, dLevel);
+    DebugPrint(" Time= ", dLevel);
+    DebugPrint(String(dosYear(DataSet->date)) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))), dLevel);
+    DebugPrint(" " + LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), dLevel);
+    DebugPrint(" Bat= ", dLevel);
+    DebugPrint(String(double(DataSet->battery)/1000, 2), dLevel);
+    DebugPrint(" Err= ", dLevel);
+    DebugPrint(String(DataSet->errCode, HEX), dLevel);
+    DebugPrint(" HDOP= ", dLevel);
+    DebugPrint(DataSet->GPShdop, dLevel);
+    DebugPrint(" Sat= ", dLevel);
+    DebugPrint(DataSet->satellites, dLevel);
+    DebugPrint(" acc1= ", dLevel);
+    DebugPrint(DataSet->accThresCnt1, dLevel);
+    DebugPrint(" acc2= ", dLevel);
+    DebugPrintln(DataSet->accThresCnt2, dLevel);
+  )
 }
 void _PrintShortSummary(int dLevel){
   for(int i=0; i<allDataSets; i++){
@@ -69,6 +73,7 @@ void _PrintShortSummary(int dLevel){
     }
   }
 }
+
 void _PrintFence(int dLevel){
   for(int i=0; i<FENCE_MAX_POS; i++){
     _t_FenceData* Fencepole = FenceDataSet[i];

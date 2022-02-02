@@ -51,7 +51,7 @@ void setup()
   #endif
 
   setupWatchDog(timeOut);
-
+  #ifndef USE_NO_MEASURES
   enableControls();
   /*check battery status and goto sleep, if too low (disables measuring and controls too)*/
   #ifdef USE_VOLTAGE_MEAS_PIN
@@ -63,6 +63,7 @@ void setup()
   enableMeasures();
   volt = checkBattery();
   #endif
+  #endif//USE_NO_MEASURES
 
   #ifdef PRE_MEASURE_HANDLING
   if(!powerOnReset){ handlePreMeasuring(); }
@@ -74,10 +75,6 @@ void setup()
 
   #ifdef HEIDI_CONFIG_TEST
   doTests(currentDataSet);
-  #endif
-
-  #ifdef USE_LORA
-  SetupLoRa();
   #endif
 
   #ifdef ACCELEROMETER
@@ -97,14 +94,7 @@ void setup()
     heidiConfig->bootCount = REFETCH_SYS_TIME;
     if(GPSalert()){ gotoSleep(SLEEP_DUR_ALERT); } else { gotoSleep(SLEEP_DUR_NOTIME); }
   }
-  _D(DebugPrintln("System boot time: " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1);)
-
-  _D(
-  PRINT_CYCLE_STATUS
-  #ifdef TEST_RTC
-  testRTC(currentDataSet, &bootTime);
-  #endif
-  )
+  _D( DebugPrintln("System boot time: " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1); PRINT_CYCLE_STATUS )
 
   if(!GPSalert()){ checkCycle(); }
 
@@ -127,13 +117,6 @@ void setup()
     currentDataSet->errCode |= getErrorCode(); //error codes from doDataTransmission !!!!!!!!!!!!!!!!!!
     _D( if(getState(POWER_SAVE_2)){ DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1); })
   }
-#endif
-
-//  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
-#ifdef USE_LORA
-  LoRa.end();
-  LoRa.sleep();
-  delay(100);
 #endif
 
   finalizeHeidiStatus(powerOnReset);
@@ -248,9 +231,9 @@ void transmitData(t_SendData* currentDataSet){
           if (nextBd > dataSets) { nextBd = dataSets; }
           sendLine = generateMulti64SendLine(availableDataSet, setsSent, nextBd - 1);
           if(GSMsendLine(sendLine)){
-            initDataSets(availableDataSet[setsSent], availableDataSet[nextBd - 1]);
+            initDataSets(availableDataSet, setsSent, nextBd - 1);
           } else {
-            setError(availableDataSet[setsSent], availableDataSet[nextBd - 1], E_GSM_TRANSMISSION_FAILED);
+            setError(availableDataSet, setsSent, nextBd - 1, E_GSM_TRANSMISSION_FAILED);
           }
           setsSent = nextBd;
         }
@@ -378,40 +361,6 @@ double checkBattery(void){
   return val;
 }
 
-#ifdef USE_LORA
-void SetupLoRa(){
-  _D(DebugPrint("LoRa init .. ", DEBUG_LEVEL_1);)
-  while(!Serial) { Serial.print("."); }
-  _D(DebugPrintln(" done", DEBUG_LEVEL_3));
-
-  _D(DebugPrint("Starting LoRa at ", DEBUG_LEVEL_3));
-  _D(DebugPrint(String(BAND/1E6,2), DEBUG_LEVEL_3));
-  _D(DebugPrint("MHz ", DEBUG_LEVEL_3));
-  SPI.begin(SCK,MISO,MOSI,SS);
-  LoRa.setPins(SS,RST,DI0);
-  if (!LoRa.begin(BAND)) {
-    _D(DebugPrintln(" failed!", DEBUG_LEVEL_3));
-    while (1);
-  }
-  _D(DebugPrintln(".. done", DEBUG_LEVEL_3));
-  _D(DebugPrintln("Configuring LoRa", DEBUG_LEVEL_3));
-  _D(DebugPrint(" - spreading factor: ", DEBUG_LEVEL_3));
-  _D(DebugPrintln(spreadingFactor, DEBUG_LEVEL_3));
-  LoRa.setSpreadingFactor(spreadingFactor);
-  _D(DebugPrint(" - signal bandwidth: ", DEBUG_LEVEL_3));
-  _D(DebugPrintln(SignalBandwidth, DEBUG_LEVEL_3));
-  LoRa.setSignalBandwidth(SignalBandwidth);
-  _D(DebugPrint(" - code rate: 4/", DEBUG_LEVEL_3));
-  _D(DebugPrintln(codingRateDenominator, DEBUG_LEVEL_3));
-  LoRa.setCodingRate4(codingRateDenominator);
-  _D(DebugPrint(" - preamble length: ", DEBUG_LEVEL_3));
-  _D(DebugPrintln(preambleLength, DEBUG_LEVEL_3));
-  LoRa.setPreambleLength(preambleLength);
-  _D(DebugPrintln("done", DEBUG_LEVEL_1);)
-  //LoRa.setTxPower(17);
-  //LoRa.receive();
-}
-#endif //USE_LORA
 
 void setupData(bool powerOnReset){
   initBootTimeMS();
@@ -456,8 +405,10 @@ bool setupSystemBootTime(tm* bootTime, int timeOut){
 
 void gotoSleep(int32_t mseconds){
   if (watchd != NULL) { esp_timer_delete(watchd); }
+  #ifndef USE_NO_MEASURES
   disableControls(true);
   disableGPIOs();
+  #endif
   #ifdef USE_RTC_FAST_MEM
   RTCfastMemWrite();
   #endif
@@ -532,6 +483,9 @@ void doTests(t_SendData* currentDataSet){
   _D(DebugPrintln("Boot: not in cycle.", DEBUG_LEVEL_1);)
   //testGeoFencing();
   //testData();
+  #ifdef TEST_RTC
+  testRTC(currentDataSet, &bootTime);
+  #endif
   #ifdef GSM_MODULE
   //if (volt >= GSM_MINIMUM_VOLTAGE){ GSMCheckSignalStrength(); }
   #endif
@@ -544,11 +498,13 @@ void doTests(t_SendData* currentDataSet){
   #ifdef TEST_ACC
   TEST_ACC_MACRO
   #endif
-
+  #ifdef USE_LORA
+  TestLoRa();
+  #endif
   /*
    * now just testing code...
    */
-
+      #ifndef USE_NO_MEASURES
       _D(DebugPrintln("Alles krass neu!!!!! " + String (millis()), DEBUG_LEVEL_1);)
       #ifdef ACCELEROMETER
       if(powerOnReset){
@@ -592,10 +548,17 @@ void doTests(t_SendData* currentDataSet){
       #ifdef SAVE_AOP_DATA
       GPSsaveAOPdata();
       #endif
-      disableMeasures();
-      disableControls(true);
-      delay(200);
-      gotoSleep((_currentCyleLen_m() * 60000) - millis());
+      #endif //USE_NO_MEASURES
+
+  /*
+   * now close all and sleep
+   */
+  #ifndef USE_NO_MEASURES
+  disableMeasures();
+  disableControls(true);
+  #endif
+  delay(200);
+  gotoSleep(30000 - millis());
 }
 
 #endif

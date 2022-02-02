@@ -40,7 +40,7 @@ void handleHook(){
   Serial.println("enter hook: press 'x'");
   String Rs232in = "";
   Serial.flush();
-  while((Rs232in.indexOf("x") == -1) && (millis()-t < 10000)){
+  while((Rs232in.indexOf("x") == -1) && (millis()-t < HOOK_WAIT_TIME_MS)){
     if (Serial.available() > 0) {Rs232in += (char)Serial.read();}
     delay(1);
   }

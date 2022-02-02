@@ -7,12 +7,14 @@
 
 #ifndef HEIDI_FLASH_H_
 #define HEIDI_FLASH_H_
-
+#include <Arduino.h>
 #include "heidi-debug.h"
+#include "heidi-defines.h"
+#include "heidi-data.h"
 
 #define FLASH_INT_UNSET -1
 #define FLASH_STR_UNSET ""
-
+#define HOOK_WAIT_TIME_MS 3000 // 10000
 typedef __attribute__((__packed__)) struct _t_flashRawData{
  byte herdeID[2];
  byte animalID[2];

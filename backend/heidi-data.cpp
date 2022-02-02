@@ -193,24 +193,24 @@ String generateMulti64SendLine(t_SendData** sets, int first, int last){
       // push_data.phtml expects 8 bit count of values, 16 bit ID, 2x32bit coordinates
       // and than count-3 16 bit values - always 16 bit - but values in data structure aren't always 16 bit
       uint8_t hexbuffer[64];
-      hexbuffer[0] = HEX_BUFFER_VALUES; //count of data values
+      hexbuffer[0] = HEX_BUFFER_DATA_VALUES + 1; //count of data values + animal id
       hexbuffer[1] = herdeID();
-      hexbuffer[2] = animalID();  //1
-      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  0, DataSet->latitude); //2
-      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  4, DataSet->longitude); //3
-      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  8, DataSet->altitude); //4
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 10, DataSet->date); //5
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 12, DataSet->time); //6
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 14, DataSet->battery); //7
-      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  + 16, DataSet->temperature); //8
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 18, DataSet->errCode); //9
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, DataSet->satellites); //10
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, DataSet->GPShdop); //11
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThresCnt1);  //12
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThresCnt2);  //13
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //14 = HEX_BUFFER_VALUES
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 30, DataSet->accThCnt1Spr);  //12
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 32, DataSet->accThCnt2Spr);  //13
+      hexbuffer[2] = animalID();
+      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  0, DataSet->latitude); //1
+      _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  4, DataSet->longitude); //2
+      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  8, DataSet->altitude); //3
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 10, DataSet->date); //4
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 12, DataSet->time); //5
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 14, DataSet->battery); //6
+      _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  + 16, DataSet->temperature); //7
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 18, DataSet->errCode); //8
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, DataSet->satellites); //9
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, DataSet->GPShdop); //10
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThresCnt1);  //11
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThresCnt2);  //12
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //13
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 30, DataSet->accThCnt1Spr);  //14
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 32, DataSet->accThCnt2Spr);  //15 = HEX_BUFFER_VALUES
       _DD(
         String HexStr = "";
         for(int i=0; i<HEX_BUFFER_LEN; i++){
@@ -345,6 +345,7 @@ int packUpDataSets(){
     }
     if(!emptyDataSet(availableDataSet[k])){ k++; }
   }
+  _DD( DebugPrintln("Data sets used: " + String(k) + " / "  + String(allDataSets), DEBUG_LEVEL_3);)
   return k;
 }
 void freeFirstDataSet(void){
@@ -360,10 +361,11 @@ void freeFirstDataSet(void){
 bool emptyDataSet(t_SendData* DataSet){
   return (DataSet->date == 0);
 }
-void initDataSets(t_SendData* first, t_SendData* last){
-  t_SendData* current = first;
+void initDataSets(t_SendData** sets, int first, int last){
+  int current = first;
   while (current <= last){
-    initDataSet(current);
+    t_SendData* set = sets[current];
+    initDataSet(set);
     current++;
   }
 }
