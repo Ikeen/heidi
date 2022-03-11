@@ -1,7 +1,4 @@
-/*
- *   -
- *
- */
+#include <Arduino.h>
 #include "heidi-backend.h"
 #include "heidi-measures.h"
 #include "heidi-sys.h"
@@ -27,30 +24,35 @@ static double volt;
 bool powerOnReset;
 int  timeOut;
 
-void setup()
-{
+HardwareSerial HeidiDBSerial(1);
+int i = 0;
+int l = 0;
 
+void setup() {
   t_SendData* currentDataSet;
   int  startMS = millis();
   timeOut = MAX_AWAKE_TIME_TIMER_MSEC;
-
   setCpuFrequencyMhz(80); //save power
-
-  powerOnReset = wasPowerOnReset();
-  if (wasbrownOut()) { setState(RESET_INITS); doSleepRTCon(MAX_CYCLE_DURATION_MSEC); }
+  //never change the following 3 lines in their position of code!
+  powerOnReset = wasPowerOnReset(); //add validation of setup data
   _D(setupDebug(startMS, powerOnReset);)
-  setupFlashData(powerOnReset);
+  setupData(powerOnReset); //the first thing we have to do before accessing any config data!!
+
+  if (sysWasbrownOut()) { setState(RESET_INITS); doSleepRTCon(MAX_SLEEP_TIME_MS); }
+
   setupError();
-  setupData(powerOnReset);
+  //setupFlashData(powerOnReset);
   setupCycleTable();
 
   _D(debugHeidiState(powerOnReset);)
-  if(heidiConfig->bootCount <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER_MSEC; }
+  if(heidiConfig->bootNumber <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER_MSEC; }
   #ifdef GPS_MODULE
   if(heidiConfig->gpsStatus < GPS_GOT_3D_LOCK) { timeOut = MAX_AWAKE_TIME_POWER_MSEC; _DD(DebugPrintln("extended meas. time.", DEBUG_LEVEL_3);)}
   #endif
 
-  setupWatchDog(timeOut);
+  if (isTransmissionCycle() || powerOnReset) {setupWatchDog(timeOut + AWAKE_TM_TRANSMIT_MSEC_OFFS); }
+  else { setupWatchDog(timeOut); }
+
   #ifndef USE_NO_MEASURES
   enableControls();
   /*check battery status and goto sleep, if too low (disables measuring and controls too)*/
@@ -69,13 +71,13 @@ void setup()
   if(!powerOnReset){ handlePreMeasuring(); }
   #endif
 
+  #ifdef USE_LORA
+  setupLoraTask();
+  #endif
+
   //prepare free data set
   freeFirstDataSet();
   currentDataSet = availableDataSet[0];
-
-  #ifdef HEIDI_CONFIG_TEST
-  doTests(currentDataSet);
-  #endif
 
   #ifdef ACCELEROMETER
   //need to set this here because getting position needs various time
@@ -88,24 +90,27 @@ void setup()
      DebugPrintln("accel threshold 2 count: " + String(currentDataSet->accThresCnt2), DEBUG_LEVEL_2);)
   #endif
 
-
   /*setupSystemDateTime opens / checks GPS*/
   if (!setupSystemBootTime(&bootTime, timeOut)) {
-    heidiConfig->bootCount = REFETCH_SYS_TIME;
+    heidiConfig->bootNumber = REFETCH_SYS_TIME;
     if(GPSalert()){ gotoSleep(SLEEP_DUR_ALERT); } else { gotoSleep(SLEEP_DUR_NOTIME); }
   }
   _D( DebugPrintln("System boot time: " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1); PRINT_CYCLE_STATUS )
 
-  if(!GPSalert()){ checkCycle(); }
+  #ifdef HEIDI_CONFIG_TEST
+  doTests(currentDataSet);
+  #endif
 
+  if(!GPSalert()){ checkCycle(); }
   // test alerts: comment in next line
   //_D(clrState(NEW_FENCE); DebugPrintln("!!!!!! NEW FENCE off !!!!!", DEBUG_LEVEL_1);) //!!!!!!!!
-
+  #ifndef USE_NO_POSITION
   checkGPSposition(currentDataSet, timeOut, powerOnReset); //closes GPS
+  #endif
   finalizeDataSet(currentDataSet); //does last measurements
   disableMeasures();
 
-#ifdef GSM_MODULE
+  #ifdef GSM_MODULE
   _D(PRINT_ALERT_STATUS)
   if (getState(TRSMT_DATA_ERROR)){ //there was an error on last received data
     currentDataSet->errCode |= E_RECEIVE_DATA_ERROR;
@@ -117,12 +122,21 @@ void setup()
     currentDataSet->errCode |= getErrorCode(); //error codes from doDataTransmission !!!!!!!!!!!!!!!!!!
     _D( if(getState(POWER_SAVE_2)){ DebugPrintln("GSM: low battery.", DEBUG_LEVEL_1); })
   }
-#endif
+  #else
+  #ifdef HEIDI_GATEWAY
+  _D(_PrintNotDoneGSMHandling(DEBUG_LEVEL_1);)
+  #endif
+  #endif
+
+  #ifdef USE_LORA
+  closeLoraTask();
+  #endif
 
   finalizeHeidiStatus(powerOnReset);
 
   _DD(DebugPrintln("Last diff: " + String(heidiConfig->lastTimeDiffMs) + " / current diff : " + String(currentTimeDiffMs), DEBUG_LEVEL_3);)
   _D(DebugPrintln("SLEEP: heidi state: 0x" + String(heidiConfig->status, HEX) ,DEBUG_LEVEL_1);)
+  if (heidiConfig->lastTimeDiffMs > 5000) { heidiConfig->lastTimeDiffMs = 0; }
   int diffTimeFinalMs = heidiConfig->lastTimeDiffMs + currentTimeDiffMs;
   heidiConfig->lastTimeDiffMs = diffTimeFinalMs;
   gotoSleep(timeToNextBootMS() + diffTimeFinalMs - millis());
@@ -131,7 +145,7 @@ void setup()
 void loop()
 {
   /* usually this should never happen */
-  heidiConfig->bootCount = REFETCH_SYS_TIME;
+  heidiConfig->bootNumber = REFETCH_SYS_TIME;
   doSleepRTCon(DEFAULT_CYCLE_DURATION_MSEC);
 }
 
@@ -153,9 +167,9 @@ void finalizeDataSet(t_SendData* currentDataSet){
   currentDataSet->errCode |= getErrorCode();
   _D(
     #ifdef MEAS_ACQUIRNG_TIME
-    if (millis() > 254500) { currentDataSet->GPShdop = 255; }
-    else { currentDataSet->GPShdop = (uint8_t)(millis() / 1000); }
-    DebugPrintln("set GPShdop to acquiring time: " + String(currentDataSet->GPShdop) + " ms", DEBUG_LEVEL_2);
+    if (millis() > 254500) { currentDataSet->GPSpDOP = 255; }
+    else { currentDataSet->GPSpDOP = (uint8_t)(millis() / 1000); }
+    DebugPrintln("set GPSpDOP to acquiring time: " + String(currentDataSet->GPSpDOP) + " s", DEBUG_LEVEL_2);
     #endif
     #ifdef TRACK_HEIDI_STATE
     currentDataSet->accThresCnt2 = heidiConfig->status;
@@ -164,13 +178,17 @@ void finalizeDataSet(t_SendData* currentDataSet){
     _DD(_PrintDataSet(currentDataSet, DEBUG_LEVEL_3);)
   )
 }
-
+/*
+ *  finalizes the status of Heidi before going to sleep
+ *  the boot number is set to the next cycle number, so on boot, before we get the time from GPS
+ *  some tasks can be done
+ */
 void finalizeHeidiStatus(bool powerOnReset){
 
   if (getState(NEW_SETTINGS)){ //NEW_SETTINGS state is set only when cycle data has changed
     _D( DebugPrintln("calculate new cycle table due to changed cycle data.", DEBUG_LEVEL_1); )
     setupCycleTable();
-    if(!isInCycle(&(heidiConfig->bootCount))){ setState(NOT_IN_CYCLE); }
+    if(!isInCycle()){ setState(NOT_IN_CYCLE); }
     clrState(NEW_SETTINGS);
   }
   #ifdef ACCELEROMETER
@@ -187,10 +205,10 @@ void finalizeHeidiStatus(bool powerOnReset){
   #endif
 
   if (GPSalert() && getState(NOT_IN_CYCLE)){
-    heidiConfig->bootCount = prevBootCycleNo();
+    heidiConfig->bootNumber = prevBootCycleNo();
   }
-  heidiConfig->bootCount++;
-  if (heidiConfig->bootCount >= _currentCycles()) { heidiConfig->bootCount = 0; }
+  heidiConfig->bootNumber++; //number for the next cycle
+  if (heidiConfig->bootNumber >= bootTableLength()) { heidiConfig->bootNumber = 0; }
 
   if (getState(NOT_IN_CYCLE)){
     heidiConfig->lastTimeDiffMs = 0;       //not useful out of regular cycles
@@ -203,12 +221,12 @@ void finalizeHeidiStatus(bool powerOnReset){
 void handlePreMeasuring(void){
   if(getState(PRE_MEAS_STATE)){
     clrState(PRE_MEAS_STATE);
-    _D(DebugPrintln("Pre-Measure running.", DEBUG_LEVEL_1); delay(50);)
+    _D(DebugPrintln("Pre-Measure running.", DEBUG_LEVEL_1); pause(50);)
     #ifdef GPS_MODULE
     openGPS();
     #endif
     enableHoldPin(MEASURES_ENABLE_PIN);
-    _D(DebugPrintln("Sleep for : " + String(uint32_t((PRE_CYCLE_TIME - millis())/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
+    _D(DebugPrintln("Sleep for : " + String(uint32_t((PRE_CYCLE_TIME - millis())/1000)) + " seconds", DEBUG_LEVEL_2); pause(50);)
     doSleepRTCon(PRE_CYCLE_TIME - millis());
   }
   _D(DebugPrintln("Pre-Measure off.", DEBUG_LEVEL_1);)
@@ -219,7 +237,7 @@ void handlePreMeasuring(void){
 void transmitData(t_SendData* currentDataSet){
   int HTTPrc = 0, setsSent = 0;
   String sendLine = "";
-  _D(DebugPrintln("GPRS send data", DEBUG_LEVEL_2);)
+  _D(DebugPrintln("GPRS send data", DEBUG_LEVEL_2); int cnt = 0;)
   _DD(_PrintShortSummary(DEBUG_LEVEL_3));
   if(openGSM()){
     if (GSMsetup()){
@@ -232,11 +250,13 @@ void transmitData(t_SendData* currentDataSet){
           sendLine = generateMulti64SendLine(availableDataSet, setsSent, nextBd - 1);
           if(GSMsendLine(sendLine)){
             initDataSets(availableDataSet, setsSent, nextBd - 1);
+            _D(cnt += setsSent);
           } else {
             setError(availableDataSet, setsSent, nextBd - 1, E_GSM_TRANSMISSION_FAILED);
           }
           setsSent = nextBd;
         }
+        _D(DebugPrintln("GSM: " + String(cnt) + " data sets sent successfully", DEBUG_LEVEL_1);)
         sendLine = "ID=" + _herdeID(); //get settings
         if(GSMsendLine(sendLine)){
           String httpResponse = GSMGetLastResponse();
@@ -246,7 +266,7 @@ void transmitData(t_SendData* currentDataSet){
             setState(TRSMT_DATA_ERROR);
           }
           clrState(RESET_INITS);
-        }
+        } _D( else {_D(DebugPrintln("GSM: config data transmission failed", DEBUG_LEVEL_1);)})
         GSMcloseHTTPconnection();
       }
       GSMshutDown();
@@ -259,7 +279,7 @@ void transmitData(t_SendData* currentDataSet){
 #endif
 
 void checkGPSalert(t_SendData* currentDataSet){
-  if (currentDataSet->metersOut > heidiConfig->distAlertThres) {
+  if (currentDataSet->metersOut > heidiConfig->c.distAlertThres) {
     if (!getState(NEW_FENCE)){
       if (getState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 ) && getState(GPS_ALERT_PSD)) { clrState(GPS_ALERT_PSD); } //stop pausing alerts
       if (getState(PRE_GPS_ALERT)){ clrState(PRE_GPS_ALERT); setState(GPS_ALERT_1); _D(DebugPrintln("GPS ALERT: 1", DEBUG_LEVEL_2);)}
@@ -279,7 +299,7 @@ void checkGPSalert(t_SendData* currentDataSet){
 void checkGPSposition(t_SendData* currentDataSet, int timeOut, bool force){
   if (!getState(NOT_IN_CYCLE) || GPSalert() || (timeOut == 0) || force){
     #ifdef GPS_MODULE
-    if (GPSGetPosition(currentDataSet, 8, 10, timeOut) > 0){
+    if (GPSGetPosition(currentDataSet, SUFFICIENT_DOP_VALUE, 10, timeOut) > 0){
       checkGPSalert(currentDataSet);
     } else {
       _D(DebugPrintln("GPS: Unable to fetch position.", DEBUG_LEVEL_1);)
@@ -288,7 +308,7 @@ void checkGPSposition(t_SendData* currentDataSet, int timeOut, bool force){
       setError(E_GPS_ALERT);
     }
     if(getState( GPS_ALERT_1 | GPS_ALERT_2 ) && !getState(GPS_ALERT_PSD)) {
-      setError(E_GPS_ALERT_SMS);
+      setError(E_ALERT_SMS);
     }
     #else
     clrState(PRE_GPS_ALERT | GPS_ALERT_1 | GPS_ALERT_2 | GPS_ALERT_PSD | NEW_FENCE);
@@ -303,7 +323,7 @@ void checkGPSposition(t_SendData* currentDataSet, int timeOut, bool force){
 
 void checkCycle(void){
   //find expected boot time
-  if(!isInCycle(&(heidiConfig->bootCount))){ //calculates expected boot time
+  if(!isInCycle()){ //calculates expected boot time
     setState(NOT_IN_CYCLE);
   } else {
     clrState(NOT_IN_CYCLE);
@@ -331,11 +351,11 @@ double checkBattery(void){
     #endif
     disableControls(true);
      if (val <= GSM_POWER_SAVE_4_VOLTAGE){ // low Battery?
-      _D(DebugPrintln("Battery much too low.", DEBUG_LEVEL_1); delay(100);)
-      doSleepRTCon(MAX_CYCLE_DURATION_MSEC);
+      _D(DebugPrintln("Battery much too low.", DEBUG_LEVEL_1); pause(100);)
+      doSleepRTCon(MAX_SLEEP_TIME_MS);
     }
     if (val <= GSM_POWER_SAVE_3_VOLTAGE){ // low Battery?
-      _D(DebugPrintln("Battery too low.", DEBUG_LEVEL_1); delay(100);)
+      _D(DebugPrintln("Battery too low.", DEBUG_LEVEL_1); pause(100);)
       int32_t sleeptime = getCycleTimeMS();
       doSleepRTCon(sleeptime - millis());
     }
@@ -375,7 +395,7 @@ void setupData(bool powerOnReset){
 }
 
 void restartCycling(){
-  heidiConfig->bootCount = REFETCH_SYS_TIME;
+  heidiConfig->bootNumber = REFETCH_SYS_TIME;
   gotoSleep(getCycleTimeMS());
 }
 
@@ -383,13 +403,13 @@ bool setupSystemBootTime(tm* bootTime, int timeOut){
   #ifdef GPS_MODULE
   _D(DebugPrintln("Get current time from GPS", DEBUG_LEVEL_1);)
   if (!openGPS()) {
-    if (heidiConfig->bootCount <= REFETCH_SYS_TIME){ return false; }
+    if (heidiConfig->bootNumber <= REFETCH_SYS_TIME){ return false; }
     return false;
   }
   if (!setBootTimeFromGPSTime(bootTime, timeOut)){
     closeGPS();
     _D(DebugPrintln("Unable to get time from GPS", DEBUG_LEVEL_1);)
-    if (heidiConfig->bootCount <= REFETCH_SYS_TIME){ return false; }
+    if (heidiConfig->bootNumber <= REFETCH_SYS_TIME){ return false; }
   }
   #else
   tm* sysTime;
@@ -414,20 +434,21 @@ void gotoSleep(int32_t mseconds){
   #endif
 
   int32_t sleeptime = mseconds;
-  _DD(DebugPrintln("Sleep requested for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_3); delay(50);)
-  if (sleeptime > MAX_CYCLE_DURATION_MSEC) { sleeptime = MAX_CYCLE_DURATION_MSEC; }
+  _DD(DebugPrintln("Sleep requested for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_3);)
+  if (sleeptime > MAX_SLEEP_TIME_MS) { sleeptime = MAX_SLEEP_TIME_MS; }
   #ifdef PRE_MEASURE_HANDLING
   if (sleeptime < (PRE_CYCLE_TIME + MIN_SLEEP_TIME_MS)){
     clrState(PRE_MEAS_STATE);
-    _D(DebugPrintln("Pre-Measure off - time's too short.", DEBUG_LEVEL_1); delay(50);)
+    _D(DebugPrintln("Pre-Measure off - time's too short.", DEBUG_LEVEL_1); pause(50);)
   } else {
     setState(PRE_MEAS_STATE);
-    _D(DebugPrintln("Pre-Measure on.", DEBUG_LEVEL_1); delay(50);)
+    _D(DebugPrintln("Pre-Measure on.", DEBUG_LEVEL_1); pause(50);)
     sleeptime -= PRE_CYCLE_TIME;
     disableHoldPin(MEASURES_ENABLE_PIN);
   }
   #endif
-  _D(DebugPrintln("Sleep for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_2); delay(50);)
+  _D(DebugPrintln("Heap water mark: " + String(uxTaskGetStackHighWaterMark(NULL)),  DEBUG_LEVEL_1);
+     DebugPrintln("Sleep for: " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_1); pause(50);)
   doSleepRTCon(sleeptime);
 }
 void IRAM_ATTR doSleepRTCon(int32_t ms){
@@ -442,27 +463,10 @@ void IRAM_ATTR doSleepRTCon(int32_t ms){
   esp_deep_sleep_start();
 }
 
-bool wasPowerOnReset(void){
-  _DD(DebugPrintln("RESET reason " + String(rtc_get_reset_reason(0)), DEBUG_LEVEL_3);)
-  return rtc_get_reset_reason(0) == POWERON_RESET;
-}
-bool wasbrownOut(void){
-  return (rtc_get_reset_reason(0) == RTCWDT_BROWN_OUT_RESET) || (rtc_get_reset_reason(0) == SW_CPU_RESET) ;
-}
-
-bool wasRegularWakeUp(void){
-  bool rst = rtc_get_reset_reason(0) == DEEPSLEEP_RESET;
-  bool tmr = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
-  bool ulp = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_ULP;
-  return (rst & (tmr | ulp));
-}
-bool wasULPWakeUp(void){
-  return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_ULP;
-}
 static void watchDog(void* arg)
 {
-	_D(DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1); delay(10); )
-	heidiConfig->bootCount = REFETCH_SYS_TIME;
+  _D(DebugPrintln("This is the watchDog - Howdy?! :-D",DEBUG_LEVEL_1); pause(10); )
+  heidiConfig->bootNumber = REFETCH_SYS_TIME;
   gotoSleep(10000);
 }
 
@@ -479,8 +483,17 @@ void setupWatchDog(uint32_t timeOutMs){
 
 
 #ifdef HEIDI_CONFIG_TEST
+//extern uint8_t bootTimeTable[MAX_CYCLES_PER_DAY][3];
+
 void doTests(t_SendData* currentDataSet){
-  _D(DebugPrintln("Boot: not in cycle.", DEBUG_LEVEL_1);)
+  //disable watchdog
+  /*
+  if (watchd != NULL) {
+    esp_timer_stop(watchd);
+    esp_timer_delete(watchd);
+    watchd = NULL;
+  }
+  */
   //testGeoFencing();
   //testData();
   #ifdef TEST_RTC
@@ -498,67 +511,36 @@ void doTests(t_SendData* currentDataSet){
   #ifdef TEST_ACC
   TEST_ACC_MACRO
   #endif
-  #ifdef USE_LORA
+  #ifdef TEST_LORA
   TestLoRa();
+  //uxTaskGetStackHighWaterMark(taskHandle)
   #endif
   /*
    * now just testing code...
    */
-      #ifndef USE_NO_MEASURES
-      _D(DebugPrintln("Alles krass neu!!!!! " + String (millis()), DEBUG_LEVEL_1);)
-      #ifdef ACCELEROMETER
-      if(powerOnReset){
-        _D(DebugPrintln("Init Accelerometer " + String(get_accel_excnt1_ULP()), DEBUG_LEVEL_2);)
-        wake_config_ADXL345();
-        heidiConfig->sleepMinutes = 1;
-        heidiConfig->nightSleepMin = 1;
-        init_accel_ULP(ULP_INTERVALL_US);
-      } else {
-        for(int i=0; i<4; i++){
-          _D(DebugPrintln("accel("+ String(i) + ") th1 cnt: " + String(get_accel_interrim_ct1_ULP(i)) + ", th2 cnt: " + String(get_accel_interrim_ct2_ULP(i)), DEBUG_LEVEL_2);)
-        }
-        _D(DebugPrintln("single("+ String(0) + ") th1 cnt: " + String(get_accel_interrim_ct1_ULP(0)) + ", th2 cnt: " + String(get_accel_interrim_ct2_ULP(0)), DEBUG_LEVEL_2);)
-        for(int i=1; i<4; i++){
-          _D(DebugPrintln("single("+ String(i) + ") th1 cnt: " + String(get_accel_interrim_ct1_ULP(i) - get_accel_interrim_ct1_ULP(i-1))
-                                               + ", th2 cnt: " + String(get_accel_interrim_ct2_ULP(i) - get_accel_interrim_ct2_ULP(i-1)), DEBUG_LEVEL_2);)
-        }
-        uint16_t ctspr_1 = get_accel_ct_spreading(1);
-        uint16_t ctspr_2 = get_accel_ct_spreading(2);
-        _D(DebugPrintln("spreading th1: " + String(ctspr_1, HEX) + ", th2: " + String(ctspr_2, HEX), DEBUG_LEVEL_2);)
-        uint16_t sum_1 = 0;
-        uint16_t sum_2 = 0;
-        for(int i=0; i<4; i++){
-          sum_1 += (ctspr_1 >> ((3-i) << 2)) & 0x000f;
-          sum_2 += (ctspr_2 >> ((3-i) << 2)) & 0x000f;
-        }
-        for(int i=0; i<4; i++){
-          uint16_t x, y;
-          if (sum_1 > 0) { x = (((ctspr_1 >> ((3-i) << 2)) & 0x000f) * get_accel_excnt1_ULP()) / sum_1; } else { x = 0; }
-          if (sum_2 > 0) { y = (((ctspr_2 >> ((3-i) << 2)) & 0x000f) * get_accel_excnt2_ULP()) / sum_2; } else { y = 0; }
-          _D(DebugPrintln("single("+ String(i) + ") th1 cnt: " + String(x) + ", th2 cnt: " + String(y), DEBUG_LEVEL_2);)
-        }
-        init_accel_data_ULP(ULP_INTERVALL_US);
-      }
-      #endif
-      #ifdef GPS_MODULE
-      openGPS();
-      GPSGetPosition(currentDataSet, 8, 10, timeOut);
-      _D(DebugPrintln("GPS end heidi gpsStatus:  " + String (heidiConfig->gpsStatus), DEBUG_LEVEL_1);)
-      #endif
-      #ifdef SAVE_AOP_DATA
-      GPSsaveAOPdata();
-      #endif
-      #endif //USE_NO_MEASURES
-
-  /*
-   * now close all and sleep
-   */
-  #ifndef USE_NO_MEASURES
-  disableMeasures();
-  disableControls(true);
-  #endif
-  delay(200);
-  gotoSleep(30000 - millis());
+#if 0
+  if(powerOnReset){
+    for(int i=0; i<bootTableLength(); i++){
+      _D(DebugPrintln("Table entry " + String (i) + ", " + LenTwo(String(bootTimeTable[i][1]))
+          + ":" + LenTwo(String(bootTimeTable[i][0])) + ", 0x"
+          + LenTwo(String(bootTimeTable[i][2], HEX)), DEBUG_LEVEL_1);)
+      pause(20);
+    }
+  }
+  _D(DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); )
+  _D(DebugPrintln("Boot Number: " + String(heidiConfig->bootNumber), DEBUG_LEVEL_1);)
+  if((heidiConfig->bootNumber >= 0) && (heidiConfig->bootNumber < bootTableLength())){
+    _D(DebugPrintln("Cycle: " + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][1]))
+        + ":" + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][0])) + ", 0x"
+        + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][2], HEX)), DEBUG_LEVEL_1);)
+     _D(DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); )
+  }
+  if(isTransmissionCycle()) { _D(DebugPrintln("Would transmit", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1);) }
+  if(isFixPointCycle()) {_D(DebugPrintln("Fixpoint", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1);) }
+  _D(DebugPrintln("setup_size = " + String(sizeof(_t_ConfigData)), DEBUG_LEVEL_1);)
+#endif
+  checkGPSposition(currentDataSet, timeOut, powerOnReset); //closes GPS
+  gotoSleep(30000);
 }
 
 #endif

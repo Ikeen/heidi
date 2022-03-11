@@ -230,13 +230,16 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
  * set CONFIG_ULP_COPROC_RESERVE_MEM in ".arduinocdt/packages/esp32/hardware/esp32/x.y.z/tools/sdk/include/config/sdkconfig.h"
  *   AND in ".arduinocdt/packages/esp32/hardware/esp32/x.y.z/tools/sdk/sdkconfig" to a higher value (512 = step size)
  */
-#define ULP_LED_BLINK          1
 #define USE_MORE_THAN_128_INSN 1
 
 #define I2C_DEBUG   0                  //need to increase code size if enabled
 #define I2C_SUCCESS 0
 #define I2C_FAILED  1
-#define ACCEL_ULP_CODE_SIZE 256 //232
+#ifdef ULP_LED_BLINK
+#define ACCEL_ULP_CODE_SIZE 256
+#else
+#define ACCEL_ULP_CODE_SIZE 232
+#endif
 #define ACCEL_DATA_HEADER ACCEL_ULP_CODE_SIZE
 #define ACCEL_MEAS_CNT 0
 #define ACCEL_LOOP_CUR 1

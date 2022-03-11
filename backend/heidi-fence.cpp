@@ -25,7 +25,7 @@ bool setFenceFromHTTPresponse(String response)
           clearFence();
           newFenceB64(fenceData);
           setState(NEW_FENCE);
-          _D(DebugPrintln("new fence set", DEBUG_LEVEL_2));
+          _D(DebugPrintln("new fence set", DEBUG_LEVEL_1));
         } _D(else DebugPrintln("new fence = old fence", DEBUG_LEVEL_2);)
         return true;
       } _D( else { DebugPrintln("check fence failed", DEBUG_LEVEL_1); } )

@@ -191,7 +191,7 @@ void init_accel_ULP(uint32_t intervall_us) {
   I_MOVI(R0,1),                    // set R0 to true
   I_ST(R0,R3,IIC_LOCKED),          // store it to IIC_LOCKED
 
-#if ULP_LED_BLINK
+#ifdef ULP_LED_BLINK
   //LED flashing in debug mode for check "ULP is running"
   I_WR_REG_BIT(RTC_IO_TOUCH_PAD2_REG, RTC_IO_TOUCH_PAD2_HOLD_S, 0), // HOLD off GPIO 2
   I_MOVI(R3,DEBUG_LED_MEM),               // #mem -> R3
@@ -499,18 +499,18 @@ void init_accel_ULP(uint32_t intervall_us) {
 
     I_HALT()                                // HALT COPROCESSOR
   };
-  _D( static_assert(sizeof(ulp_accel) <= (ACCEL_ULP_CODE_SIZE * 4), "ACCEL_ULP_CODE_SIZE TOO SMALL"); )
+  static_assert(sizeof(ulp_accel) <= (ACCEL_ULP_CODE_SIZE * 4), "ACCEL_ULP_CODE_SIZE TOO SMALL");
   getIIC();
   rtc_gpio_init(I2C_SDA);
   rtc_gpio_set_direction(I2C_SDA, RTC_GPIO_MODE_INPUT_OUTPUT);
   rtc_gpio_init(I2C_SCL);
   rtc_gpio_set_direction(I2C_SCL, RTC_GPIO_MODE_INPUT_OUTPUT);
-#if ULP_LED_BLINK
+#ifdef ULP_LED_BLINK
   rtc_gpio_init(GPIO_NUM_2);
   rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_OUTPUT_ONLY);
 #endif
 
-  _D(DebugPrintln("initialize ULP code", DEBUG_LEVEL_1); delay(50);)
+  _D(DebugPrintln("initialize ULP code", DEBUG_LEVEL_1); pause(50);)
   //initialize static variables for ULP
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_LOOP_CUR] = 0;
   RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_DATA_CUR] = ACCEL_X_VALUES;
@@ -523,7 +523,7 @@ void init_accel_ULP(uint32_t intervall_us) {
   init_accel_data_ULP(intervall_us);
 
   size_t size = sizeof(ulp_accel) / sizeof(ulp_insn_t);
-  _D(DebugPrintln("ULP code length: " + String(sizeof(ulp_accel) / sizeof(ulp_insn_t)), DEBUG_LEVEL_1); delay(50);)
+  _D(DebugPrintln("ULP code length: " + String(sizeof(ulp_accel) / sizeof(ulp_insn_t)), DEBUG_LEVEL_1); pause(50);)
 #if USE_MORE_THAN_128_INSN
   ulp_process_macros_and_load_big(0, ulp_accel, &size);
 #else
@@ -537,12 +537,12 @@ void init_accel_data_ULP(uint32_t intervall_us){
   //initialize measurement cycle variables for ULP
   if (getULPLock()) {
     uint16_t interim_ticks = (uint16_t)((uint32_t)(_currentCyleLen_m() * 60000) / (intervall_us / 1000) / 4);
-    set_accel_exthr1_ULP(heidiConfig->accThres1); //set threshold 1 to current value
-    set_accel_exthr2_ULP(heidiConfig->accThres2); //set threshold 2 to current value
+    set_accel_exthr1_ULP(heidiConfig->c.accThres1); //set threshold 1 to current value
+    set_accel_exthr2_ULP(heidiConfig->c.accThres2); //set threshold 2 to current value
     set_accel_excnt1_ULP(0);   //set threshold 1 exceeding counter to zero
     set_accel_excnt2_ULP(0);   //set threshold 1 exceeding counter to zero
-    set_accel_wake1_ULP(_getAccThresCnt(heidiConfig->accAlertThres1)); //set wake (alert) threshold 1 to current value
-    set_accel_wake2_ULP(_getAccThresCnt(heidiConfig->accAlertThres2)); //set wake (alert) threshold 2 to current value
+    set_accel_wake1_ULP(_getAccThresCnt(heidiConfig->c.accAlertThres1)); //set wake (alert) threshold 1 to current value
+    set_accel_wake2_ULP(_getAccThresCnt(heidiConfig->c.accAlertThres2)); //set wake (alert) threshold 2 to current value
     set_accel_meas_cnt_ULP(0); //set measurement counter to zero
     for (int i=0; i<3; i++){
       set_accel_interrim_ct1_ULP(i,0);
@@ -660,7 +660,7 @@ uint16_t get_accel_ct_spreading(int which){
 
 uint16_t _getAccThresCnt(uint16_t dayThres){
   if (_night()){
-    return (uint16_t)((uint32_t)(dayThres * heidiConfig->accNightFactor) / 100);
+    return (uint16_t)((uint32_t)(dayThres * heidiConfig->c.accNightFactor) / 100);
   }
   return dayThres;
 }

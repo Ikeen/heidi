@@ -31,7 +31,14 @@
 #include <HardwareSerial.h>
 bool GSMenabled = false;
 #ifdef GSM_MODULE
-HardwareSerial SerialGSM(GSM_UART_NO);
+
+#ifdef COMMON_SERIAL
+extern HardwareSerial heidiSerial1;
+#define SerialGSM heidiSerial1
+#else
+extern HardwareSerial heidiSerial2;
+#define SerialGSM heidiSerial2
+#endif
 String httpResponseData;
 String ATresponse;
 
@@ -43,20 +50,20 @@ String ATresponse;
 
 bool openGSM(){
   if (!CTLenabled){
-    _D(DebugPrintln("controls not enabled - cannot enable GSM", DEBUG_LEVEL_1); delay(50););
+    _D(DebugPrintln("controls not enabled - cannot enable GSM", DEBUG_LEVEL_1); pause(50););
     return false;
   }
   if (MEASenabled){
-    _D(DebugPrintln("MEAS still enabled - cannot open GSM", DEBUG_LEVEL_1); delay(50);)
+    _D(DebugPrintln("MEAS still enabled - cannot open GSM", DEBUG_LEVEL_1); pause(50);)
     return false;
   }
   if (!GSMenabled){
     GSMenabled = true;
-    SerialGSM.begin(GSM_BAUD, SERIAL_8N1, GSM_RXD, GSM_TXD, false);
-    pinMode(GSM_RXD, INPUT_PULLUP);
+    if (!openUart(GSM_UART_NO, GSM_BAUD)){_D(DebugPrintln("GSM: could not open UART", DEBUG_LEVEL_1);) return false; }
     SerialGSM.setTimeout(READ_STRING_TIMEOUT);
     GSMOn();
-    delay(3000); //GSM boot time
+    pause(3000); //GSM boot time
+    SerialGSM.flush();
     _D(DebugPrintln("GSM open", DEBUG_LEVEL_2);)
   } _D(else { DebugPrintln("GSM already open", DEBUG_LEVEL_2); })
   return true;
@@ -64,7 +71,7 @@ bool openGSM(){
 void closeGSM(){
   if (GSMenabled){
     while(SerialGSM.available() > 0){ SerialGSM.read(); }
-    SerialGSM.end();
+    //never use: SerialGSM.end();
     GSMOff();
     _D(DebugPrintln("GSM closed", DEBUG_LEVEL_2);)
   } _D(else { DebugPrintln("GSM already closed", DEBUG_LEVEL_2); })
@@ -192,7 +199,7 @@ int GSMdoPost(String contentType, String payload, unsigned int clientWriteTimeou
 
   if(!GSMsendCommand("AT+HTTPDATA=" + String(payload.length()) + "," + String(clientWriteTimeoutMs), "DOWNLOAD", 5000)){ return 707; }
   SerialGSM.println(payload);
-  while((SerialGSM.available() == 0) && (millis()-t < clientWriteTimeoutMs)) { delay(10); }
+  while((SerialGSM.available() == 0) && (millis()-t < clientWriteTimeoutMs)) { pause(10); }
   response = SerialGSM.readString();
   if(response.indexOf("OK") == -1){ return 703; }
   _DD(DebugPrintln("SIM800L : payload transmitted.", DEBUG_LEVEL_3);)
@@ -204,7 +211,7 @@ int GSMdoPost(String contentType, String payload, unsigned int clientWriteTimeou
   response = "";
   t = millis();
   while(millis() - t < serverReadTimeoutMs){
-    delay(1);
+    pause(1);
     response += SerialGSM.readString();
     if(response.indexOf("+HTTPACTION: 1,") > -1){ break; }
   }
@@ -249,7 +256,7 @@ bool GSMsendSMS(String TelNo, String Message){
   int msStart = millis();
   String response = "";
   while ((millis() - msStart) < 5000){
-    while((!SerialGSM.available()) && ((millis() - msStart) < 5000)) { delay(10); };
+    while((!SerialGSM.available()) && ((millis() - msStart) < 5000)) { pause(10); };
     if (SerialGSM.available()) { response += SerialGSM.readString(); }
     if (response.indexOf("OK") != -1) {return true;}
   }
@@ -273,7 +280,7 @@ bool GSMopenGPRS(){
       int j=ATresponse.indexOf('\"', i+1);
       DebugPrintln("SIM800L : IP - " + ATresponse.substring(i+1,j), DEBUG_LEVEL_3);
   )
-  //GSMsendCommand("AT+CIPRXGET=1");
+  pause(5000); //a little setup time
   return true;
 }
 
@@ -282,8 +289,8 @@ bool GSMshutDown()
   if(!GSMsendCommand("AT+CIPSHUT", "SHUT OK", 5000)){ return false;  }
   if(!GSMsendCommand("AT+CGREG=0")){ return false;  }
   if(!GSMsendCommand("AT+CREG=0")){ return false;  }
-  //GSMsendCommand("AT+CPOWD=1"); delay(100);
-  SerialGSM.end();
+  //GSMsendCommand("AT+CPOWD=1"); pause(100);
+  //never use: SerialGSM.end();
   return true;
 }
 
@@ -297,7 +304,7 @@ bool GSMsimUnlock(String pin){
   )
   if(ATresponse.indexOf("+CPIN: SIM PIN") != -1) {
     if(!GSMsendCommand("AT+CPIN=" + pin)) { return false; }
-    delay(1000); //some setup time
+    pause(1000); //some setup time
     if(!GSMsendCommand("AT+CPIN?", "+CPIN:", 5000)) { return false; }
   }
   if(ATresponse.indexOf("+CPIN: READY") == -1) {
@@ -332,7 +339,7 @@ bool GSMwaitForNetwork(uint32_t timeOutMS){
           _DD(DebugPrintln("SIM800L : registered to roaming network", DEBUG_LEVEL_3);)
           return true;
         }
-        default: { delay(1000); }
+        default: { pause(1000); }
       }
     }
   }
@@ -349,12 +356,12 @@ int GSMinitiateHTTP(String url) {
   // Init HTTP connection
   if (!GSMsendCommand("AT+HTTPINIT")) { return 701; }
   if (!GSMsendCommand("AT+HTTPPARA=CID,1")) { return 702; }
-  if (!GSMsendCommand("AT+HTTPPARA=URL," + url)) { return 702; }
+  if (!GSMsendCommand("AT+HTTPPARA=URL," + url)) { return 703; }
   // HTTP or HTTPS
   if(url.indexOf("https://") == 0) {
-    if (!GSMsendCommand("AT+HTTPSSL=1")) { return 702; }
+    if (!GSMsendCommand("AT+HTTPSSL=1")) { return 704; }
   } else {
-    if (!GSMsendCommand("AT+HTTPSSL=0")) { return 702; }
+    if (!GSMsendCommand("AT+HTTPSSL=0")) { return 705; }
   }
   return 0;
 }
@@ -363,12 +370,12 @@ int GSMterminateHTTP() {
   return 0;
 }
 int GSMterminateGPRS() {
-  if (!GSMsendCommand("AT+SAPBR=0,1")) { return 706; }
+  if (!GSMsendCommand("AT+SAPBR=0,1")) { return 707; }
   return 0;
 }
 bool GSMRestartModem(void){
   if (!GSMsendCommand("AT+CFUN=0")) { return false; }
-  delay(100);
+  pause(100);
   if (!GSMsendCommand("AT+CFUN=1")) { return false; }
   return true;
 }
@@ -379,12 +386,12 @@ bool GSMwaitForModem(uint32_t timeOutMS){
     SerialGSM.println("AT");
     for( int i=0; i< 200; i++){
       if(SerialGSM.available()) { break; }
-      delay(1);
+      pause(1);
     }
     if(SerialGSM.available()) {
       String response =  SerialGSM.readString();
       if (response.indexOf("OK") > -1) {
-        delay(1000); //some setup time
+        pause(1000); //some setup time
         return GSMsetCFUN(5000);
       }
     }
@@ -397,7 +404,7 @@ bool GSMsetCFUN(uint32_t timeOutMS){
   while((millis() - msStart) < timeOutMS){
     GSMsendCommand("AT+CFUN?");
     if (ATresponse.indexOf("+CFUN: 1") > -1) { return true; }
-    delay(500);
+    pause(500);
   }
   return false;
 }
@@ -406,7 +413,7 @@ bool GSMwaitPIN(uint32_t timeOutMS){
   while((millis() - msStart) < timeOutMS){
     GSMsendCommand("AT+CPIN?");
     if (ATresponse.indexOf("+CPIN:") > -1) { return true; }
-    delay(1000);
+    pause(1000);
   }
   return false;
 }
@@ -417,21 +424,21 @@ bool GSMsendCommand(const String command, const String okPhrase, int timeOutMs){
   String response = "";
   unsigned int t = millis();
   int localTimeOut = timeOutMs / 2;
-  while(SerialGSM.available() > 0){ SerialGSM.read(); delay(1); }
+  while(SerialGSM.available() > 0){ SerialGSM.read(); pause(1); }
   while((millis() - t < timeOutMs) && (response.indexOf(okPhrase) == -1)){
-    _DD(DebugPrintln("SIM800L : " + command, DEBUG_LEVEL_3); delay(10);)
+    _DD(DebugPrintln("SIM800L : " + command, DEBUG_LEVEL_3); pause(10);)
     SerialGSM.println(command);
     while((response.indexOf(okPhrase) == -1) && ((millis() - t) < localTimeOut)) {
       if (SerialGSM.available() > 0) { response += SerialGSM.readString(); }
-      else { delay(1); }
+      else { pause(1); }
     }
     if (millis() - t < timeOutMs) { localTimeOut = timeOutMs; }
   }
   ATresponse = response;
   ATresponse.trim();
-  _DD(DebugPrintln("SIM800L : " + ATresponse, DEBUG_LEVEL_3); delay(10);)
+  _DD(DebugPrintln("SIM800L : " + ATresponse, DEBUG_LEVEL_3); pause(10);)
   if(ATresponse.indexOf(okPhrase) == -1){
-    _D(DebugPrintln("SIM800L : " + command + " failed", DEBUG_LEVEL_1); delay(10);)
+    _D(DebugPrintln("SIM800L : " + command + " failed", DEBUG_LEVEL_1); pause(10);)
     return false;
   }
   return true;
@@ -513,7 +520,7 @@ void GSMCheckSignalStrength(){
 	    DebugPrint("SIM800L : response to \"AT+CGSN\": " + ATresponse, DEBUG_LEVEL_1);
       GSMsendCommand("AT+CSQ");
       DebugPrint("SIM800L : response to \"AT+CSQ\": " + ATresponse, DEBUG_LEVEL_1);
-  	  delay(500);
+  	  pause(500);
 	    GSMshutDown();
 	  }
   closeGSM();

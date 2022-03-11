@@ -15,13 +15,9 @@
 #include <WString.h>
 
 #ifdef COMMON_SERIAL
-#define GSM_RXD  GPIO_NUM_16
-#define GSM_TXD  GPIO_NUM_17
-#define GSM_UART_NO 1
+#define GSM_UART_NO UART1
 #else
-#define GSM_RXD  GPIO_NUM_23
-#define GSM_TXD  GPIO_NUM_4
-#define GSM_UART_NO 2
+#define GSM_UART_NO UART2
 #endif
 #define GSM_RST  GPIO_NUM_21
 //SIM800L max auto-bauding rate is 57600

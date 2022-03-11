@@ -17,14 +17,15 @@ typedef enum {
   DEBUG_LEVEL_3
 };
 
-#define DEBUG_LEVEL 3 //0 (no prints) .. 3 (all prints)
+#define DEBUG_LEVEL 0 //0 (no prints) .. 3 (all prints)
 #if (DEBUG_LEVEL > 0 )
 //#define DEBUG_SERIAL_GPS
-#define MEAS_ACQUIRNG_TIME
+//#define MEAS_ACQUIRNG_TIME
 //#define TRACK_HEIDI_STATE
 //#define TEST_ON_BOOT
 //#define TEST_RTC
 //#define TEST_ACC
+//#define TEST_LORA
 #endif
 
 #if (DEBUG_LEVEL > 0 )
@@ -50,21 +51,25 @@ void DebugPrintln(int number, int level);
 void DebugPrint(unsigned int number, int level);
 void DebugPrintln(unsigned int number, int level);
 
+bool dbgGetSem();
+void dbgFreeSem();
+
 void _PrintDataSet(t_SendData* DataSet, int dLevel);
 void _PrintShortSummary(int dLevel);
 void _PrintFence(int dLevel);
 void _PrintHeidiConfig(int dLevel);
+void _PrintNotDoneGSMHandling(int dLevel);
 #ifdef ACCELEROMETER
 void _PrintHeidiAccParams(int dLevel);
 #endif
 #endif
 
 #define PRINT_CYCLE_STATUS \
-    _D(DebugPrintln("Boot time:   " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1);) \
+    _D(DebugPrintln("Boot time:   " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_2);) \
     _DD( \
-      DebugPrintln("bootCycles day: " + String(heidiConfig->bootCycles) + ", night: " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); \
+      DebugPrintln("bootCycles day: " + String(heidiConfig->c.bootCycles) + ", night: " + String(heidiConfig->c.nightBootCycles), DEBUG_LEVEL_3); \
       DebugPrintln("_currentCycles: " + String(__currentCyclesD(_night())) + "( == " + String(_currentCycles()) + ")", DEBUG_LEVEL_3); \
-      DebugPrintln("night from: " + String(heidiConfig->nightHourStart) + " to: " + String(heidiConfig->nightHourEnd), DEBUG_LEVEL_3); \
+      DebugPrintln("night from: " + String(heidiConfig->c.nightHourStart) + " to: " + String(heidiConfig->c.nightHourEnd), DEBUG_LEVEL_3); \
       if (_night()) {DebugPrintln("_night = true", DEBUG_LEVEL_2);} else {DebugPrintln("_night = false", DEBUG_LEVEL_3);} \
       if (getState(POWER_SAVE_1)) {DebugPrintln("POWER_SAVE_1 = true", DEBUG_LEVEL_2);} else {DebugPrintln("POWER_SAVE_1 = false", DEBUG_LEVEL_3);} \
     )
@@ -82,7 +87,7 @@ void _PrintHeidiAccParams(int dLevel);
 
 #define PRINT_ALERT_STATUS \
   _DD( \
-    DebugPrintln("heidiConfig->bootCount: " + String(heidiConfig->bootCount), DEBUG_LEVEL_3); \
+    DebugPrintln("heidiConfig->bootNumber: " + String(heidiConfig->bootNumber), DEBUG_LEVEL_3); \
     if (GPSalert()) {DebugPrintln("GPSalert = true", DEBUG_LEVEL_3);} else {DebugPrintln("GPSalert = false", DEBUG_LEVEL_3);} \
     if (doDataTransmission()) {DebugPrintln("doDataTransmission = true", DEBUG_LEVEL_3);} else {DebugPrintln("doDataTransmission = false", DEBUG_LEVEL_3);} \
     if (getState(PRE_GPS_ALERT)) {DebugPrintln("PRE_GPS_ALERT = true", DEBUG_LEVEL_3);} else {DebugPrintln("PRE_GPS_ALERT = false", DEBUG_LEVEL_3);} \
@@ -92,3 +97,5 @@ void _PrintHeidiAccParams(int dLevel);
   )
 
 #endif /* HEIDI_DEBUG_H_ */
+
+

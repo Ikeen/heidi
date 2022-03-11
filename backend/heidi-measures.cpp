@@ -14,6 +14,7 @@
 #include "heidi-measures.h"
 #include "heidi-acc.h"
 #include "heidi-gsm.h"
+#include "heidi-sys.h"
 #ifdef TEMP_SENSOR
 #include "OneWire.h"
 #include "DallasTemperature.h"
@@ -22,6 +23,19 @@
 int  running_measures = 0;
 bool MEASenabled   = false;
 bool CTLenabled    = false;
+
+#ifdef COMMON_SERIAL
+HardwareSerial heidiSerial1(UART1);
+#define NUM_OF_UARTS 1
+static bool uart1Open = false;
+#else
+HardwareSerial heidiSerial1(UART1);
+HardwareSerial heidiSerial2(UART2);
+#define NUM_OF_UARTS 2
+static bool uart1Open = false;
+static bool uart2Open = false;
+#endif
+
 
 #ifdef TEMP_SENSOR
 OneWire oneWire(TEMP_SENSOR_PIN);
@@ -58,9 +72,9 @@ bool enableControls(void){
     digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
     #endif
     #endif
-    _D(if(!success){ DebugPrintln("open Measures failed", DEBUG_LEVEL_1); delay(10);})
+    _D(if(!success){ DebugPrintln("open Measures failed", DEBUG_LEVEL_1); pause(10);})
     CTLenabled = success;
-    _D(DebugPrintln("Controls enabled", DEBUG_LEVEL_1); )
+    _D(DebugPrintln("Controls enabled", DEBUG_LEVEL_2); )
   } _D(else { DebugPrintln("Controls already enabled", DEBUG_LEVEL_2); })
   return success;
 }
@@ -90,7 +104,7 @@ void disableControls(bool force){
     pinMode(VOLT_ENABLE_PIN,INPUT);
     #endif
     #endif
-    _D(DebugPrintln("Close measures", DEBUG_LEVEL_1));
+    _D(DebugPrintln("Close measures", DEBUG_LEVEL_2));
   } _D(else { DebugPrintln("Measures already closed", DEBUG_LEVEL_2); })
   CTLenabled = false;
 }
@@ -111,7 +125,7 @@ bool init_PCA9536(void){
 
 void disableULP(void){
   CLEAR_PERI_REG_MASK(RTC_CNTL_STATE0_REG, RTC_CNTL_ULP_CP_SLP_TIMER_EN);
-  #if ULP_LED_BLINK
+  #ifdef ULP_LED_BLINK
   rtc_gpio_set_direction(GPIO_NUM_2, RTC_GPIO_MODE_DISABLED);
   #endif
   clrState(ULP_RUNNING);
@@ -177,6 +191,41 @@ void setGPIOInputHigh(gpio_num_t which){
   pinMode(GPIO_NUM_27, INPUT_PULLUP);
   #endif
 }
+bool openUart(uint8_t uartNo, uint32_t baud){
+  int t = millis();
+  if (uartNo == UART1){
+    if(!uart1Open){
+      heidiSerial1.begin(baud, SERIAL_8N1, UART1_RXD, UART1_TXD, false);
+      heidiSerial1.setRxBufferSize(UART_RX_BUFFER_SIZE);
+      pinMode(UART1_RXD, INPUT_PULLDOWN);
+      pinMode(UART1_TXD, OUTPUT);
+      uart1Open = true;
+    } else {
+      heidiSerial1.flush();
+      heidiSerial1.updateBaudRate(baud);
+    }
+    heidiSerial1.flush();
+    return true;
+  }
+#ifndef COMMON_SERIAL
+  if (uartNo == UART2){
+    if(!uart2Open){
+      heidiSerial2.begin(baud, SERIAL_8N1, UART1_RXD, UART1_TXD, false);
+      heidiSerial2.setRxBufferSize(UART_RX_BUFFER_SIZE);
+      pinMode(UART2_RXD, INPUT_PULLDOWN);
+      pinMode(UART2_TXD, OUTPUT);
+      uart1Open = true;
+    } else {
+      heidiSerial2.flush();
+      heidiSerial2.updateBaudRate(baud);
+    }
+    heidiSerial2.flush();
+    return true;
+  }
+#endif
+  return false;
+}
+
 
 
 #ifdef TEMP_SENSOR
@@ -184,7 +233,7 @@ float measureTemperature(){
   float temp;
   int start = millis();
   tempSensor.begin();
-  _D(DebugPrintln("measure temperature", DEBUG_LEVEL_1); delay(50);)
+  _D(DebugPrintln("measure temperature", DEBUG_LEVEL_2);)
   for(int i=0; i<500; i++){
     tempSensor.requestTemperaturesByIndex(0);
     temp = tempSensor.getTempCByIndex(0);
@@ -210,11 +259,11 @@ int MeasureVoltage(uint8_t pin){
 
 bool enableMeasures(){
   if (!CTLenabled){
-    _D(DebugPrintln("controls not enabled - cannot measure", DEBUG_LEVEL_1); delay(50););
+    _D(DebugPrintln("controls not enabled - cannot measure", DEBUG_LEVEL_1);)
     return false;
   }
   if (GSMenabled){
-    _D(DebugPrintln("GSM still enabled - cannot open Measures", DEBUG_LEVEL_1); delay(50);)
+    _D(DebugPrintln("GSM still enabled - cannot open Measures", DEBUG_LEVEL_1);)
     return false;
   }
   if (running_measures == 0){
@@ -225,25 +274,17 @@ bool enableMeasures(){
     int i = 0;
     getIIC();
     while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_ON) != I2C_ERROR_OK) && (i < 100)){
-      delay(10); i++;
+      pause(10); i++;
     }
     freeIIC();
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
-    /*
-    for(int i=0; i<5; i++){
-      digitalWrite(MEASURES_ENABLE_PIN, MEASURES_OFF);
-      delayMicroseconds(50);
-      digitalWrite(MEASURES_ENABLE_PIN, MEASURES_ON);
-      delayMicroseconds(50);
-    }
-    */
     digitalWrite(MEASURES_ENABLE_PIN, MEASURES_ON);
     #endif
-    _D(DebugPrintln("Measures on", DEBUG_LEVEL_1));
+    _D(DebugPrintln("Measures on", DEBUG_LEVEL_2));
     MEASenabled = true;
   }
-  _D( else {DebugPrintln("Increment measures to " + String(running_measures + 1), DEBUG_LEVEL_1);})
+  _D( else {DebugPrintln("Increment measures to " + String(running_measures + 1), DEBUG_LEVEL_2);})
   running_measures++;
   return true;
 }
@@ -254,17 +295,17 @@ void disableMeasures(){
     int i = 0;
     getIIC();
     while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_MEAS_BIT, MEASURES_OFF) != I2C_ERROR_OK) && (i < 100)){
-      delay(10); i++;
+      pause(10); i++;
     }
     freeIIC();
     #else
     pinMode(MEASURES_ENABLE_PIN,OUTPUT);
     digitalWrite(MEASURES_ENABLE_PIN, MEASURES_OFF);
     #endif
-    _D(DebugPrintln("Measures off", DEBUG_LEVEL_1);)
+    _D(DebugPrintln("Measures off", DEBUG_LEVEL_2);)
     MEASenabled = false;
   }
-  _D( else {DebugPrintln("Decrement measures to " + String(running_measures), DEBUG_LEVEL_1);})
+  _D( else {DebugPrintln("Decrement measures to " + String(running_measures), DEBUG_LEVEL_2);})
   if (running_measures < 0) { running_measures = 0; }
 }
 
@@ -272,12 +313,12 @@ void disableMeasures(){
 void VoltOn(){
   pinMode(VOLT_ENABLE_PIN,OUTPUT);
   digitalWrite(VOLT_ENABLE_PIN, MEASURES_ON);
-  _D(DebugPrintln("Voltage measuring on", DEBUG_LEVEL_1));
+  _D(DebugPrintln("Voltage measuring on", DEBUG_LEVEL_2));
 }
 void VoltOff(){
   pinMode(VOLT_ENABLE_PIN,OUTPUT);
   digitalWrite(VOLT_ENABLE_PIN, MEASURES_OFF);
-  _D(DebugPrintln("Voltage measuring off", DEBUG_LEVEL_1));
+  _D(DebugPrintln("Voltage measuring off", DEBUG_LEVEL_2));
 }
 #endif
 #ifdef GSM_MODULE
@@ -291,7 +332,7 @@ void GSMOn(){
   int i = 0;
   getIIC();
   while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_ON) != I2C_ERROR_OK) && (i < 100)){
-    delay(10); i++;
+    pause(10); i++;
   }
   freeIIC();
   #else
@@ -305,7 +346,7 @@ void GSMOn(){
   digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
   #endif
   //_DD(DebugPrintln("GSM Voltage on", DEBUG_LEVEL_3));
-  delay(100); //setup voltage time
+  pause(100); //setup voltage time
   digitalWrite(GSM_RST, HIGH);
   //_DD(DebugPrintln("GSM Reset released", DEBUG_LEVEL_3));
 }
@@ -314,7 +355,7 @@ void GSMOff(){
   int i = 0;
   getIIC();
   while ((iic_setRegisterBit(PCA_9536_DEFAULT_ADDRESS, PCA_9536_PORT_REG, PCA_9536_GSM_BIT, MEASURES_OFF) != I2C_ERROR_OK) && (i < 100)){
-    delay(10); i++;
+    pause(10); i++;
   }
   freeIIC();
   #else
@@ -332,10 +373,10 @@ void LED_off(){
 bool getULPLock(void){
   set_ULP_request(1);
   //wait a short time - maybe ULP was just on the way to lock...
-  delay(1);
+  pause(1);
   int i = 0;
   while(ULPisLocked()){ //ULP may be running, wait until lock is released
-    delay(1); i++;
+    pause(1); i++;
     if(i >= 20){ set_ULP_request(0); _D(DebugPrintln("Can't get ULP lock.", DEBUG_LEVEL_1);) return false; }
   }
   if (i>0) { _DD(DebugPrintln("Got ULP lock after " + String(i) + " wait-loops.", DEBUG_LEVEL_3);) }
@@ -398,7 +439,7 @@ i2c_err_t iic_readRegister(uint8_t devAdress, uint8_t regAdress, uint8_t *value)
   byte cnt;
   if (!gotIIC) { return I2C_ERROR_BUSY; }
   for(int i=0; i<2; i++){
-    if(i == 1) { iic_clockFree(); delay(10); }
+    if(i == 1) { iic_clockFree(); pause(10); }
     Wire.beginTransmission(devAdress);  //begin does not touch device
     Wire.write(regAdress);            //write does not touch device
     if(Wire.endTransmission() != I2C_ERROR_OK){
@@ -419,7 +460,7 @@ i2c_err_t iic_writeRegister(uint8_t devAdress, uint8_t regAdress, uint8_t value)
   i2c_err_t rc = (i2c_err_t)I2C_ERROR_UNDEFINED;
   if (!gotIIC) { return I2C_ERROR_BUSY; }
   for(int i=0; i<2; i++){
-    if(i == 1) { iic_clockFree(); delay(10); }
+    if(i == 1) { iic_clockFree(); pause(10); }
     Wire.beginTransmission(devAdress); //begin does not touch device
     Wire.write(regAdress);  //write does not touch device
     Wire.write(value);      //write does not touch device
@@ -434,7 +475,7 @@ i2c_err_t iic_readRegister16(uint8_t devAdress, uint8_t regAdress, int16_t *valu
   i2c_err_t err;
   if (!gotIIC) { return I2C_ERROR_BUSY; }
   for(int i=0; i<2; i++){
-    if(i == 1) { iic_clockFree(); delay(10); }
+    if(i == 1) { iic_clockFree(); pause(10); }
     Wire.beginTransmission(devAdress); //begin does not touch device
     Wire.write(regAdress);             //write does not touch device
     if(Wire.endTransmission() != I2C_ERROR_OK){
@@ -456,17 +497,17 @@ void iic_clockFree(void) {
   pinMode(I2C_SDA,INPUT);
   pinMode(I2C_SCL,OUTPUT);
   digitalWrite(I2C_SCL, LOW);
-  delay(10);
+  pause(10);
   for(int i=0; i<10; i++){
     digitalWrite(I2C_SCL, HIGH);
-    delay(1);
+    pause(1);
     digitalWrite(I2C_SCL, LOW);
-    delay(1);
+    pause(1);
     _DD(DebugPrint(String(digitalRead(I2C_SDA)) + ",", DEBUG_LEVEL_3));
   }
   _DD(DebugPrintln("", DEBUG_LEVEL_3));
-  delay(10);
+  pause(10);
   pinMode(I2C_SCL,INPUT);
-  delay(10);
+  pause(10);
 }
 #endif

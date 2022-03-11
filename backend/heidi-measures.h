@@ -29,6 +29,19 @@
 #define I2C_SCL GPIO_NUM_4       //when change - take care for gotoSleep() - function settings
 #define I2C_FREQ 100000L
 
+#define UART1_RXD  GPIO_NUM_16
+#define UART1_TXD  GPIO_NUM_17
+#define UART1 1
+#define UART2_RXD  GPIO_NUM_23
+#define UART2_TXD  GPIO_NUM_4
+#define UART2 2
+#define UART_RX_BUFFER_SIZE 1024
+
+#ifdef COMMON_SERIAL
+#define NUM_OF_UARTS 1
+#else
+#define NUM_OF_UARTS 2
+#endif
 
 #define PCA_9536_DEFAULT_ADDRESS 0x41
 #define PCA_9536_CONFIG_REG      0x03
@@ -38,7 +51,7 @@
 #define PCA_9536_VOLT_BIT        0x02
 
 #ifndef I2C_SWITCH
-#ifdef HEIDI_CONFIG_1
+#ifdef USE_HEIDI_CONFIG_1_PINS
 #define GSM_ENABLE_PIN        GPIO_NUM_13
 #else
 #define GSM_ENABLE_PIN        GPIO_NUM_23
@@ -101,6 +114,8 @@ void disableULP(void);
 void enableHoldPin(gpio_num_t which);
 void disableHoldPin(gpio_num_t which);
 void disableGPIOs(void);
+
+bool openUart(uint8_t uartNo, uint32_t baud);
 
 void VoltOn(void);
 void VoltOff(void);

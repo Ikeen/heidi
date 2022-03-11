@@ -42,7 +42,7 @@ void handleHook(){
   Serial.flush();
   while((Rs232in.indexOf("x") == -1) && (millis()-t < HOOK_WAIT_TIME_MS)){
     if (Serial.available() > 0) {Rs232in += (char)Serial.read();}
-    delay(1);
+    pause(1);
   }
   if (Rs232in.indexOf('x') != -1){
     Serial.println("hook entered.");
@@ -51,7 +51,7 @@ void handleHook(){
     bool leave = false;
     while(!leave){
       printMenu(&flashData);
-      delay(100);
+      pause(100);
       key = getSerialKey();
       bool timeout = false;
       leave = handleMenu(key);
@@ -61,7 +61,7 @@ void handleHook(){
   } else {
     Serial.println("start Heidi - application");
   }
-  delay(100);
+  pause(100);
   #if DEBUG_LEVEL == DEBUG_LEVEL_0
   Serial.end();
   #endif
@@ -347,24 +347,24 @@ String readNewValue(const String prompt, bool* timeout){
         NewValue += c;
       }
     }
-    delay(1);
+    pause(1);
   }
   Serial.println("");
   if ((millis() - t) >= 60000) *timeout = true;
   Serial.setTimeout(100);
-  delay(1);
-  while(Serial.available() > 0){ Serial.read(); delay(1);}
+  pause(1);
+  while(Serial.available() > 0){ Serial.read(); pause(1);}
   NewValue.trim();
   return(NewValue);
 }
 
 char getSerialKey(void){
-  while(Serial.available() > 0){ Serial.read(); delay(1);}
+  while(Serial.available() > 0){ Serial.read(); pause(1);}
   while(Serial.available() == 0){
-    delay(1);
+    pause(1);
   }
   char ch = (char)Serial.read();
-  while(Serial.available() > 0){ Serial.read(); delay(1);}
+  while(Serial.available() > 0){ Serial.read(); pause(1);}
   return ch;
 }
 

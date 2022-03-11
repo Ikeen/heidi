@@ -12,6 +12,7 @@
 #include <WString.h>
 #include <esp_attr.h>
 #include <time.h>
+#include <assert.h>
 #include "heidi-defines.h"
 #ifdef ACCELEROMETER
 #include "heidi-acc.h"
@@ -26,28 +27,43 @@
 #define HEX_BUFFER_DATA_VALUES 15 // = _t_SendData values
 #define HEX_BUFFER_LEN (HEX_BUFFER_OFFSET + 4 + 4 + (2 * (HEX_BUFFER_DATA_VALUES - 2)) + 2)
                                         //lat, lng,   all other data as uint16,      checksum (not used)
+
+typedef __attribute__((__packed__)) struct _t_ConfigDataC{
+  uint8_t bootCycles;      //cycles between data transmission
+  uint8_t sleepMinutes;    //cycle duration - should match 180 minute big cycle
+  uint8_t nightHourStart;  //start night modus - GMT!
+  uint8_t nightHourEnd;    //end night modus - GMT!
+  uint8_t nightBootCycles; //cycles between data transmission night modus
+  uint8_t nightSleepMin;   //cycle duration night modus
+ uint16_t distAlertThres;  //distance for geo-fencing alert in meters
+ uint16_t accThres1;       //threshold for counting acceleration index 1
+ uint16_t accThres2;       //threshold for counting acceleration index 2
+ uint16_t accAlertThres1;  //alert threshold for acceleration index 1 counter
+ uint16_t accAlertThres2;  //alert threshold for acceleration index 2 counter
+  uint8_t accNightFactor;  //night modus accThres percent of day modus (100 -> night = day)
+}t_ConfigDataC;
+
 typedef __attribute__((__packed__)) struct _t_ConfigData{
-   int8_t bootCount;
-   int8_t bootCycles; //...cycles between data transmission
-  uint8_t sleepMinutes;
-  uint8_t nightHourStart;
-  uint8_t nightHourEnd;
-  uint8_t nightBootCycles;
-  uint8_t nightSleepMin;
-  uint8_t accNightFactor; //percent
- uint16_t accThres1;
- uint16_t accThres2;
- uint16_t accAlertThres1;
- uint16_t accAlertThres2;
- uint16_t distAlertThres;
- uint32_t status;
-  int32_t lastTimeDiffMs;
-  uint8_t alertFailCount;
+ t_ConfigDataC c;
+ uint32_t status;          //heidi status
+  int16_t bootNumber;      //current boot-table position
   uint8_t gpsStatus;
+  int32_t lastTimeDiffMs;
+#ifdef HEIDI_GATEWAY
   uint8_t telNo[TEL_NO_CNT][TEL_NO_LEN]; // BCD coded (A='+'; B=empty; C-F=not allowed)
+  uint8_t alertFailCount;
+  uint8_t lastClientTrig;  //last client asked for data
+ uint32_t clients;         //bit-field - marks present clients
+ uint32_t clientsNeedConf; //bit-field - marks clients not sending the right config CRC
+#endif
 }t_ConfigData;
 
-#define HEIDI_CONFIG_LENGTH (22+(TEL_NO_LEN*TEL_NO_CNT)) //must be a multiple of 4
+#ifdef HEIDI_GATEWAY
+#define HEIDI_CONFIG_LENGTH (44+(TEL_NO_LEN*TEL_NO_CNT))   //must be a multiple of 4
+#else
+#define HEIDI_CONFIG_LENGTH 32   //must be a multiple of 4
+#endif
+static_assert(sizeof(t_ConfigData) <= HEIDI_CONFIG_LENGTH, "HEIDI_CONFIG_LENGTH too small");
 #define HEIDI_CONFIG_LENGTH_RTC (HEIDI_CONFIG_LENGTH >> 2) //counted as uint32
 
 typedef __attribute__((__packed__)) struct {
@@ -59,7 +75,7 @@ typedef __attribute__((__packed__)) struct {
   uint16_t battery; //1/1000 volt
   int16_t  temperature; //1/100 °C
   uint16_t errCode; //
-  uint8_t  GPShdop; //horizontal position dilution
+  uint8_t  GPSpDOP; //horizontal position dilution
   uint8_t  satellites;
   uint16_t metersOut;
   uint16_t accThresCnt1;
@@ -82,6 +98,7 @@ typedef __attribute__((__packed__)) struct {
 #endif
 
 #define DATA_SET_LEN     32 //must be a multiple of 4
+static_assert(sizeof(t_SendData) <= DATA_SET_LEN, "DATA_SET_LEN too small");
 
 #ifdef USE_RTC_FAST_MEM
 #define FAST_MEM_DATA_SETS    252
@@ -148,7 +165,6 @@ bool     emptyDataSet(t_SendData* DataSet);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
 int      packUpDataSets(void);
 void     freeFirstDataSet(void);
-String   getTelNo(int which);
 
 bool     getState(uint32_t which);
 void     setState(uint32_t which);
@@ -157,9 +173,14 @@ void     clrState(uint32_t which);
 String   generateMulti64SendLine(t_SendData** sets, int first, int last);
 
 bool     setSettingsFromHTTPresponse(String response);
-bool     setTelNoFromHTTPresponse(String response);
-bool     newSettingsB64(String b64);
+bool     newSettingsB64(String b64, t_ConfigDataC* dataBuffer);
+uint16_t clientConfigCRC(t_ConfigDataC* data);
+
+#ifdef HEIDI_GATEWAY
 bool     newTelNoB64(String b64);
+bool     setTelNoFromHTTPresponse(String response);
+String   getTelNo(int which);
+#endif
 
 void     setNewSetting8(uint8_t *buffer, int pufferPos, int8_t *setting, uint32_t status);
 void     setNewSettingU8(uint8_t *buffer, int pufferPos, uint8_t *setting, uint32_t status);

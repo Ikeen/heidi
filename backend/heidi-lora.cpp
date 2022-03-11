@@ -10,6 +10,7 @@
 #include "heidi-defines.h"
 #include "heidi-data.h"
 #include "heidi-lora.h"
+#include "heidi-sys.h"
 #ifdef USE_OLED
 #include "SSD1306.h"
 #ifdef LORA_V1_3_OLED
@@ -26,6 +27,72 @@ SSD1306 display(DISPLAY_ADD, DISPLAY_SDA, DISPLAY_SCL);
 #endif
 #ifdef USE_LORA
 
+TaskHandle_t LoRaTaskHandle = NULL;
+bool stopLoraTask = false;
+loraSetupResult_t setupLoraRc = LORA_SETUP_NOT_DONE;
+uint32_t loraTaskWaterMark = 0;
+
+#ifdef HEIDI_GATEWAY
+void loraGatewayTask(void *pvParameters) {
+  if (SetupLoRa()){
+    if(loraDoGeneralCall()){ loraGeneralCall(); }
+
+    CloseLoRa();
+  }
+  _D(DebugPrintln("LORA: end task ",   DEBUG_LEVEL_1);)
+  loraTaskWaterMark = uxTaskGetStackHighWaterMark(NULL);
+  LoRaTaskHandle = NULL;
+  vTaskDelete(NULL);
+}
+#else
+/*
+ * LoRa Client task just listens and acts if there was something
+ */
+void loraClientTask(void *pvParameters) {
+  if (SetupLoRa()){
+    while(!stopLoraTask){
+
+    }
+    CloseLoRa();
+  }
+  _D(DebugPrintln("LORA: end task ", DEBUG_LEVEL_1);)
+  loraTaskWaterMark = uxTaskGetStackHighWaterMark(NULL);
+  task_lora = NULL;
+  vTaskDelete(NULL);
+}
+#endif
+
+/*
+ * starts the LoRa handling task
+ *  - no return code, because there is nothing to do for main task, if this fails
+ */
+void setupLoraTask(void){
+  loraTaskWaterMark = 0;
+  #ifdef HEIDI_GATEWAY
+  BaseType_t rc = xTaskCreatePinnedToCore(loraGatewayTask, "HeidiLoraTask", LORA_TASK_HEAP_SIZE, NULL, 1, &LoRaTaskHandle, 0);
+  #else
+  BaseType_t rc = xTaskCreatePinnedToCore(loraClientTask, "HeidiLoraTask", LORA_TASK_HEAP_SIZE, NULL, 1, &LoRaTaskHandle, 0);
+  #endif
+  if (rc != pdPASS){
+    _D(DebugPrintln("LORA: unable to create LoRa Task. " + String(rc), DEBUG_LEVEL_1);)
+    LoRaTaskHandle = NULL;
+  } _D( else { DebugPrintln("LORA: Task up and running. ", DEBUG_LEVEL_2); })
+}
+
+/*
+ * stops the LoRa handling task
+ */
+void closeLoraTask(void){
+  if (LoRaTaskHandle != NULL){
+    stopLoraTask = true;
+    while (LoRaTaskHandle != NULL){ vTaskDelay(100); }
+  } _DD(else { DebugPrintln("LORA: Task was not running (anymore) ", DEBUG_LEVEL_3); })
+  _D(DebugPrintln("LORA: task closed, heap water mark: " + String(loraTaskWaterMark),DEBUG_LEVEL_2);)
+  loraTaskWaterMark = 0;
+}
+/*
+ * sets up LoRa hardware
+ */
 bool SetupLoRa(void){
   _D(DebugPrint("setup LoRa at " + String(BAND/1E6,2) + "MHz ", DEBUG_LEVEL_1);)
   SPI.begin(SCK,MISO,MOSI,SS);
@@ -35,16 +102,17 @@ bool SetupLoRa(void){
     return false;
   }
   _DD(DebugPrintln("Configuring LoRa", DEBUG_LEVEL_3);
-      DebugPrintln(" - spreading factor: " + String(spreadingFactor), DEBUG_LEVEL_3);)
-  LoRa.setSpreadingFactor(spreadingFactor);
-  _DD(DebugPrintln(" - signal bandwidth: " + String(SignalBandwidth), DEBUG_LEVEL_3);)
-  LoRa.setSignalBandwidth(SignalBandwidth);
-  _DD(DebugPrintln(" - code rate: 4/" + String(codingRateDenominator), DEBUG_LEVEL_3);)
-  LoRa.setCodingRate4(codingRateDenominator);
-  _DD(DebugPrintln(" - preamble length: " + String(preambleLength), DEBUG_LEVEL_3);)
-  LoRa.setPreambleLength(preambleLength);
-  LoRa.setTxPower(TX_POWER);
+      DebugPrintln(" - spreading factor: " + String(LORA_SPERADING_F), DEBUG_LEVEL_3);)
+  LoRa.setSpreadingFactor(LORA_SPERADING_F);
+  _DD(DebugPrintln(" - signal bandwidth: " + String(LORA_BANDWIDTH), DEBUG_LEVEL_3);)
+  LoRa.setSignalBandwidth(LORA_BANDWIDTH);
+  _DD(DebugPrintln(" - code rate: 4/" + String(LORA_CR_DENOMNTR), DEBUG_LEVEL_3);)
+  LoRa.setCodingRate4(LORA_CR_DENOMNTR);
+  _DD(DebugPrintln(" - preamble length: " + String(LORA_PREAMB_LEN), DEBUG_LEVEL_3);)
+  LoRa.setPreambleLength(LORA_PREAMB_LEN);
+  LoRa.setTxPower(LORA_TX_POWER);
   LoRa.disableCrc();
+  //LoRa.setSyncWord(herdeID());
   //LoRa.receive();
   _D(DebugPrintln(".. done", DEBUG_LEVEL_1);)
   return true;
@@ -53,44 +121,251 @@ bool SetupLoRa(void){
 void CloseLoRa(void){
   LoRa.end();
   LoRa.sleep();
+  SPI.end();
 }
-
-bool waitForACK(uint8_t* code, int* rssi){
+/*
+ * waits for ack / nack by a fix timeout: LORA_ACK_TIMEOUT_MS
+ *   *rssi: pointer for write RSSI to, defaults to NULL
+ *   returns true, if a valid ACK was recognized otherwise false
+ */
+bool loraWaitForACK(int* rssi){ //add return of animal ID
   int t = millis();
+  bool rc = false;
+  uint8_t buffer[LORA_PKG_ACK_LEN];
   if (rssi != NULL) { *rssi = 0; }
+  #if LORA_SPERADING_F != LORA_SPERADING_F
+  LoRa.setSpreadingFactor(LORA_ACK_SPREAD_F);
+  #endif
+  #if LORA_ACK_PREA_LEN != LORA_ACK_PREA_LEN
+  LoRa.setPreambleLength(LORA_ACK_PREA_LEN);
+  #endif
   while (millis() - t <= LORA_ACK_TIMEOUT_MS){
+    int packetSize = 0;
+    packetSize = loraWaitForDataPackage(LORA_PKG_ID_ACK, buffer, sizeof(buffer), LORA_ACK_TIMEOUT_MS, rssi);
+    if (packetSize > 0) {
+      if (rssi != NULL) { *rssi = LoRa.packetRssi(); }
+      if (buffer[1] == animalID()){
+        if(buffer[2] == LORA_ACK){
+          rc = true;
+          break;
+        }
+      }
+    }
+  }
+  _DD(if (!rc) { DebugPrintln("got no ACK [" + String(millis()-t) + " ms]", DEBUG_LEVEL_3); })
+  #if LORA_SPERADING_F != LORA_SPERADING_F
+  LoRa.setSpreadingFactor(LORA_SPERADING_F);
+  #endif
+  #if LORA_ACK_PREA_LEN != LORA_ACK_PREA_LEN
+  LoRa.setPreambleLength(LORA_PREAMB_LEN);
+  #endif
+  return rc;
+}
+/*
+ * sends ack / nack
+ *   recID: ID of client/gateway who needs it
+ *   ack;   if true - ACK, if false - NACK
+ *   returns true, if successful
+ */
+
+bool loraSendACK(uint8_t recID, bool ack){
+  uint8_t buffer[LORA_PKG_ACK_LEN];
+  bool rc = false;
+  _DD(int t = millis();)
+  #if LORA_ACK_TX_PWR  != LORA_TX_POWER
+  LoRa.setTxPower(LORA_ACK_TX_PWR);
+  #endif
+  #if LORA_SPERADING_F != LORA_SPERADING_F
+  LoRa.setSpreadingFactor(LORA_ACK_SPREAD_F);
+  #endif
+  #if LORA_ACK_CR_DEN != LORA_CR_DENOMNTR
+  LoRa.setCodingRate4(LORA_ACK_CR_DEN);
+  #endif
+  #if LORA_ACK_PREA_LEN != LORA_ACK_PREA_LEN
+  LoRa.setPreambleLength(LORA_ACK_PREA_LEN);
+  #endif
+  buffer[0] = LORA_PKG_ID_ACK;
+  buffer[1] = recID;
+  buffer[2] = ack ? LORA_ACK : LORA_NACK;
+  rc = loraSendPackage(buffer, sizeof(buffer));
+  #if LORA_ACK_TX_PWR  != LORA_TX_POWER
+  LoRa.setTxPower(LORA_TX_POWER);
+  #endif
+  #if LORA_SPERADING_F != LORA_SPERADING_F
+  LoRa.setSpreadingFactor(LORA_SPERADING_F);
+  #endif
+  #if LORA_ACK_CR_DEN != LORA_CR_DENOMNTR
+  LoRa.setCodingRate4(LORA_CR_DENOMNTR);
+  #endif
+  #if LORA_ACK_PREA_LEN != LORA_ACK_PREA_LEN
+  LoRa.setPreambleLength(LORA_PREAMB_LEN);
+  #endif
+  return rc;
+}
+/*
+ * waits for a LoRa data transmission and copies the payload into buffer
+ *   pkgID:      expected package ID
+ *   buffer:     buffer where to write data
+ *   bufferSize: size of buffer
+ *   tmOutMs:    maximum wait time in milliseconds
+ *   *rssi:      pointer for write RSSI to, defaults to NULL
+ *
+ *   returns bytes read if package was found, otherwise -1
+ *   the buffer contains the whole message including msgID on buffer[0]
+ */
+int loraWaitForDataPackage(loraPackageID_t pkgID, uint8_t *buffer, int bufferSize, int tmOutMs, int *rssi  = NULL){
+  int t = millis();
+  int rc = -1;
+  if (rssi != NULL) { *rssi = 0; }
+  if (buffer == NULL) { return rc; }
+  while (millis() - t <= tmOutMs){
     int packetSize = 0;
     while(packetSize == 0){
       packetSize = LoRa.parsePacket();
-      if(packetSize == 0) { delay(1); }
+      if(packetSize == 0) { pause(1); }
       if (millis() - t > LORA_ACK_TIMEOUT_MS) {
-        _DD(DebugPrintln("got no ACK [" + String(millis()-t) + " ms]", DEBUG_LEVEL_3);)
-        return false;
+        //_DD(DebugPrintln("LORA package [" + String(pkgID, HEX) + "] timed out after " + String(millis()-t) + " ms", DEBUG_LEVEL_3);)
+        break;
       }
     }
-    if (rssi != NULL) { *rssi = LoRa.packetRssi(); }
-    if (LoRa.available() == 2){
-      if(LoRa.read() == LORA_ACK_PKG_CODE){
-        *code = LoRa.read();
-        //_DD(DebugPrintln("got ACK: 0x" +  String(*code, HEX) + " [" + String(millis()-t) + " ms]", DEBUG_LEVEL_3);)
-        return true;
-      } _DD( else{DebugPrintln("(ACK) got wrong code", DEBUG_LEVEL_3); })
-    } _DD( else{DebugPrintln("(ACK) got wrong length: " + String(LoRa.available()), DEBUG_LEVEL_3); })
-    while (LoRa.available()>0) { LoRa.read(); }
+    if (packetSize > 0) {
+      if (rssi != NULL) { *rssi = LoRa.packetRssi(); }
+      if (LoRa.available() > 0){
+        if(LoRa.read() == pkgID){
+          int i = 0;
+          buffer[i++] = pkgID;
+          while((i<bufferSize) && (LoRa.available() > 0)){
+            buffer[i++] = LoRa.read();
+          }
+          rc = i;
+          //_DD(DebugPrintln("LORA got package [" + String(pkgID, HEX) + "] length " + String(i) + "; " + hexString2(buffer[0]) + ", " + hexString2(buffer[1]), DEBUG_LEVEL_1); )
+          if (LoRa.available()>0){
+            _D(DebugPrintln("LORA package [" + String(pkgID, HEX) + "] length " +String(LoRa.available()) + " exceeds buffer size " + String(bufferSize), DEBUG_LEVEL_1); )
+            while (LoRa.available()>0) { LoRa.read(); }
+          }
+          return i;
+        }
+      }
+    }
   }
-  _DD(DebugPrintln("got no ACK [" + String(millis()-t) + " ms]", DEBUG_LEVEL_3);)
+  return LORA_RC_TIME_OUT;
+}
+/*
+ * sends a message (2 tries)
+ *   buffer: where the message is stored
+ *   size:   lenght of message
+ *   returns true if successful, false is device was busy.
+ */
+
+bool loraSendPackage(uint8_t *buffer, int size){
+  for(int i=0; i<2; i++){
+    if (LoRa.beginPacket()) {
+      LoRa.write(buffer, sizeof(buffer));
+      LoRa.endPacket();
+      return true;
+    } else { pause(100); }
+  }
+  _D(DebugPrintln("LORA device busy", DEBUG_LEVEL_1);)
   return false;
 }
-void sendACK(uint8_t code){
-  uint8_t buffer[2];
-  buffer[0] = LORA_ACK_PKG_CODE;
-  buffer[1] = code;
-  LoRa.beginPacket();
-  LoRa.write(buffer, 2);
-  LoRa.endPacket();
+#ifdef HEIDI_GATEWAY
+/*
+ * sends a data request to client
+ *   recID:   which client
+ *   maxSets: maximum count of data sets may be sent
+ *   minRSSI: minimum RSSI for transfer; usually -90 .. -120; 0 = no limit
+ *
+ *   Client will answer with a dataReady message which needs to be acknowledged.
+ *   If all is fine, the function returns the amount of data sets the client intends to
+ *   transfer, otherwise 0
+ */
+int loraRequestData(uint8_t recID, uint8_t maxSets, int minRSSI){
+  uint8_t buffer[LORA_PKG_DATA_RDY_LEN];
+  bool rc = false;
+  int rssi = minRSSI-1;
+  buffer[0] = LORA_PKG_ID_DATA_REQ;
+  buffer[1] = recID;
+  buffer[2] = maxSets;
+  buffer[3] = maxSets;
+  if(loraSendPackage(buffer, LORA_PKG_DATA_REQ_LEN)){
+    if (loraWaitForDataPackage(LORA_PKG_ID_DATA_RDY, buffer, LORA_PKG_DATA_RDY_LEN, 30, &rssi) != LORA_RC_TIME_OUT){
+      if(buffer[1] == recID){ //check client ID
+        if((rssi >= minRSSI) || (minRSSI ==0)){
+          if(buffer[2] == buffer[3]){
+            if(loraSendACK(recID, true)) { return (int)buffer[2]; }
+          }
+        } _DD( else {DebugPrintln("LORA got too less RSSI to request", DEBUG_LEVEL_3);} )
+      } _DD( else {DebugPrintln("LORA got wrong answer to request", DEBUG_LEVEL_3);} )
+    } _DD( else {DebugPrintln("LORA got no answer to request", DEBUG_LEVEL_3);} )
+  }
+  return 0;
 }
 
+/*
+ * returns true if a general call should be performed
+ */
+bool loraDoGeneralCall(){
+  if(heidiConfig->clients == 0){
+    _DD( DebugPrintln("LORA: heidiConfig->clients == 0 -> general call", DEBUG_LEVEL_3);)
+    return true;
+  }
+  if(isFixPointCycle()){
+    _DD( DebugPrintln("LORA: isFixPointCycle() -> general call", DEBUG_LEVEL_3);)
+    return true;
+  }
+  _DD( DebugPrintln("LORA: no general call", DEBUG_LEVEL_3);)
+  return false;
+}
 
+/*
+ * performs a general call, waits for answers and sets up the found new clients
+ * in heidiConfig
+ */
+void loraGeneralCall(void){
+  uint8_t buffer[LORA_PKG_GEN_CALL_LEN];
+  int bytesAvailable;
+  buffer[0] = LORA_PKG_ID_GEN_CALL;
+  _D( DebugPrintln("LORA: general call...", DEBUG_LEVEL_1);)
+  _copyUint32toBuffer(buffer, 1, heidiConfig->clients);
+  _copyUint32toBuffer(buffer, 5, heidiConfig->clients);
+  if(loraSendPackage(buffer, LORA_PKG_GEN_CALL_LEN)){
+    _D(bool newClientsFound = false;)
+    while(loraWaitForDataPackage(LORA_PKG_ID_GEN_ANSW, buffer, LORA_PKG_GEN_ANSW_LEN, 200) != LORA_RC_TIME_OUT){
+      if(buffer[1] == buffer[2]){
+        uint32_t newClient = 1 << (buffer[1] - 1); //bit 0 represents client 1 - client address 0x00 is not allowed
+        heidiConfig->clients |= newClient;
+        uint16_t cCRC = _copyBufferToUInt16(buffer, 3);
+        _D( DebugPrintln("LORA: new client: 0x" + LenTwo(String(buffer[1], HEX)), DEBUG_LEVEL_2); newClientsFound = true;)
+        if (cCRC != clientConfigCRC(&heidiConfig->c)){
+          heidiConfig->clientsNeedConf |= newClient;
+          _DD( DebugPrintln("LORA: new client needs new config.", DEBUG_LEVEL_3);)
+        }
+      }
+    }
+    _D(if(!newClientsFound) {DebugPrintln("LORA: no new clients.", DEBUG_LEVEL_2);})
+  }
+}
+
+#else //HEIDI_GATEWAY
+/*
+ * send Data ready message
+ *    dataSetCount - amount of data sets intended to send
+ *    returns true if the message was acknowledged by gateway
+ */
+bool loraDataReady(uint8_t dataSetCount){
+  uint8_t buffer[LORA_PKG_DATA_RDY_LEN];
+  bool rc = false;
+  buffer[0] = LORA_PKG_ID_DATA_RDY;
+  buffer[1] = animalID();
+  buffer[2] = dataSetCount;
+  buffer[3] = dataSetCount;
+  buffer[4] = 0; //currently not used
+  if(loraSendPackage(buffer, LORA_PKG_DATA_RDY_LEN)){
+    if(loraWaitForACK()){ return true; }
+  }
+  return false;
+}
+#endif
 #ifdef HEIDI_CONFIG_TEST
 #define TEST_DATA_COUNT 96
 t_SendData loRaTestData[TEST_DATA_COUNT] = {
@@ -194,14 +469,239 @@ t_SendData loRaTestData[TEST_DATA_COUNT] = {
 
 uint8_t  message[sizeof(t_SendData)];
 const int msglen = sizeof(message);
-const uint8_t ECC_LENGTH = 4;  //Max message lenght, and "guardian bytes", Max corrected bytes ECC_LENGTH/2
-uint8_t  message_frame[msglen];    //The message size would be different, so need a container
+const uint8_t ECC_LENGTH_ONE_SET = 3;  //Max message lenght, and "guardian bytes", Max corrected bytes ECC_LENGTH/2
+//uint8_t  message_frame[msglen];      //The message size would be different, so need a container
 uint8_t  repaired[msglen];
-uint8_t  encoded[msglen + ECC_LENGTH];
-RS::ReedSolomon<msglen, ECC_LENGTH> rs;
+uint8_t  encoded[msglen + ECC_LENGTH_ONE_SET + 2];
+RS::ReedSolomon<msglen, ECC_LENGTH_ONE_SET> rs;
 
-#define LORA_SENDER
+TaskHandle_t task_lora_test;
 
+bool TestLoRa(void){
+  stopLoraTask = false;
+  setupLoraRc = LORA_SETUP_NOT_DONE;
+
+  #ifdef HEIDI_GATEWAY
+  BaseType_t rc = xTaskCreatePinnedToCore(loraTestGatewayTask, "loraGatewayTask", LORA_TASK_HEAP_SIZE, NULL, 1, &task_lora_test, 0);
+  #else
+  BaseType_t rc = xTaskCreatePinnedToCore(loraTestClientTask, "loraGatewayTask", LORA_TASK_HEAP_SIZE, NULL, 1, &task_lora_test, 0);
+  #endif
+  if (rc != pdPASS){
+    _D(DebugPrintln("unable to create LoRa Task. " + String(rc), DEBUG_LEVEL_1); pause(50);)
+    return false;
+  }
+  for(int i=0; i<60; i++) { pause(60000); }
+  stopLoraTask = true;
+  while (task_lora_test != NULL){ vTaskDelay(100); }
+  _D(DebugPrintln("lora task heap water mark: " + String(loraTaskWaterMark),DEBUG_LEVEL_1);)
+  pause(4000);
+}
+
+#ifdef HEIDI_GATEWAY
+void loraTestGatewayTask(void *pvParameters) {
+  uint8_t* data = (uint8_t*)(&loRaTestData[0]);
+  t_SendData dummy;
+  uint8_t* dataSetBuffer = (uint8_t*)(&dummy);
+
+  _D(DebugPrintln("LORA: start gateway task ",   DEBUG_LEVEL_1);)
+  #ifdef USE_OLED
+  //reset OLED display via software
+  pinMode(DISPLAY_RST, OUTPUT);
+  digitalWrite(OLED_RST, LOW);
+  pause(40);
+  digitalWrite(DISPLAY_RST, HIGH);
+  //initialize OLED
+  display.init();
+  //display.displayOn();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_16);
+  display.clear();
+  display.drawString(0, 0,  "Wait for data" );
+  display.display();
+  #endif
+  if (SetupLoRa()){
+    setupLoraRc = LORA_SETUP_DONE_OK;
+    uint8_t buffer[LORA_PKG_ONE_SET_LEN];
+    uint8_t clientID = 0x02;
+    while(!stopLoraTask){
+      int packetSize = 0;
+      int cnt = 0;
+      int current = 0;
+      int last    = 0;
+      int twice   = 0;
+      int overAll = 0;
+      int lost    = 0;
+      int RSSIsum = 0;
+      bool package = false;
+      int t= millis();
+       _D(DebugPrintln("LORA: SEND REQUEST ",   DEBUG_LEVEL_1);)
+      int dataSets = loraRequestData(clientID, LORA_MIN_TRANS_RSSI);
+      if (dataSets > 0){
+        _D(DebugPrintln("LORA: load "+ String(dataSets) + " sets ",   DEBUG_LEVEL_1);)
+        #ifdef USE_OLED
+        display.drawString(0, 20, "receive data");
+        display.display();
+        #endif
+        int x = 0;
+        int rssi = 0;
+        bool ack = false;
+        while(current < dataSets){
+          if ((packetSize = loraWaitForDataPackage(LORA_PKG_ID_ONE_SET, buffer, sizeof(buffer), 50, &rssi)) != LORA_RC_TIME_OUT){
+            int dt = millis();
+            package = true;
+            if(cnt == 0){ DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); t= millis(); }
+            //DebugPrintln("package received len: " + String(packetSize)+ " [" + hexString2(encoded[0]) + "]", DEBUG_LEVEL_1);
+            current = buffer[1] + 1;
+            int rc = rs.Decode(&buffer[2], repaired);
+            if (rc > 0) {
+              DebugPrintln("Decoding failed: " + String(rc), DEBUG_LEVEL_1);
+            } else {
+              cnt++;
+              RSSIsum += rssi;
+              ack = true;
+              String corrected = "";
+              for(int i = 0; i < msglen; i++) { if (buffer[i+2] != repaired[i]) { corrected = " - corrected!"; break; } }
+              for(int i = 0; i < (msglen); i++) { dataSetBuffer[i] = repaired[i]; }
+              if (current == last) { twice++; } else { lost += current-last-1; }
+              last = current;
+              //if(corrected != ""){
+                DebugPrintln("No. " + String(cnt) + ", twice: " + String(twice) + ", lost: " + String(lost) + " -  pkg-No: " + String(current) + corrected, DEBUG_LEVEL_1);
+              //}
+              //_PrintDataSet(&dummy, DEBUG_LEVEL_1);
+            }
+            loraSendACK(clientID, ack);
+            //DebugPrintln("LORA ack takes: " + String(millis() - dt), DEBUG_LEVEL_1);
+            packetSize = 0;
+            overAll = millis()-t;
+          }
+        }
+        #ifdef USE_OLED
+        display.clear();
+        display.drawString(0, 0,  "Sets " + String(cnt) );
+        display.drawString(0, 20, "lost/twice " + String(lost) + "/" + String(twice) );
+        display.drawString(0, 40, "rssi " + String(int(RSSIsum / cnt)));
+        display.display();
+        #else
+        _D(DebugPrintln("rssi: " + String(int(RSSIsum / cnt)), DEBUG_LEVEL_1);)
+        #endif
+      }
+      pause(120000 - ( millis() - t ));
+    }
+    CloseLoRa();
+  } else { setupLoraRc = LORA_SETUP_FAILED; }
+  pause(10000);
+  #ifdef USE_OLED
+  display.clear();
+  display.displayOff();
+  display.end();
+  #endif
+  _D(DebugPrintln("LORA: end task ",   DEBUG_LEVEL_1);)
+  loraTaskWaterMark = uxTaskGetStackHighWaterMark(NULL);
+  task_lora_test = NULL;
+  vTaskDelete(NULL);
+}
+#else
+void loraTestClientTask(void *pvParameters) {
+  uint8_t buffer[LORA_PKG_DATA_REQ_LEN];
+  int cnt = 0;
+  int fail = 0;
+  int rssi = -255;
+  int RSSIsum = 0;
+  int t = millis();
+  _D(DebugPrintln("LORA: start client task ",   DEBUG_LEVEL_1);)
+  #ifdef USE_OLED
+  //reset OLED display via software
+  pinMode(DISPLAY_RST, OUTPUT);
+  digitalWrite(OLED_RST, LOW);
+  pause(40);
+  digitalWrite(DISPLAY_RST, HIGH);
+  //initialize OLED
+  display.init();
+  //display.displayOn();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_16);
+  #endif
+  if (SetupLoRa()){
+    _D(DebugPrintln("LORA: data message length: " + String(sizeof(encoded)),   DEBUG_LEVEL_1);)
+    setupLoraRc = LORA_SETUP_DONE_OK;
+    _DD(DebugPrintln("LORA: wait for request",   DEBUG_LEVEL_3);)
+    while(!stopLoraTask){
+      #ifdef USE_OLED
+      display.clear();
+      display.drawString(0, 0, "wait for request");
+      display.display();
+      #endif
+      if(loraWaitForDataPackage(LORA_PKG_ID_DATA_REQ, buffer, sizeof(buffer), 50, &rssi) == LORA_PKG_DATA_REQ_LEN){
+        _DD(DebugPrintln("LORA: got request",   DEBUG_LEVEL_3);)
+        #ifdef USE_OLED
+        display.drawString(0, 20, "got, request");
+        display.display();
+        #endif
+        if (buffer[2] == buffer[3]){
+          uint8_t setsToSend = buffer[2]:
+          if (TEST_DATA_COUNT < setsToSend) { setsToSend = TEST_DATA_COUNT; }
+          if(loraDataReady(setsToSend)) {
+            for(int m = TEST_DATA_COUNT-1; m >= (TEST_DATA_COUNT - setsToSend); m--){
+              bool ack = false;
+              uint8_t* data = (uint8_t*)(&loRaTestData[m]);
+              for(int i = 0; i < msglen; i++) { message[i] = data[i]; } // Fill with the message
+              rs.Encode(message, &encoded[2]);
+              encoded[0] = LORA_PKG_ID_ONE_SET;
+              encoded[1] = m;
+              int repeats = 0;
+              while((!ack) && (repeats < LORA_MAX_REPEATS)){
+                fail++;
+                // send packet
+                int dt = millis();
+                for(int i=0; i<2; i++){
+                  if (LoRa.beginPacket()) {
+                    LoRa.write(encoded, sizeof(encoded));
+                    LoRa.endPacket();
+                    break;
+                  } else { pause(10); }
+                }
+                DebugPrintln(" package [" + String(encoded[1]) + "] sent [" + String(millis()-dt) + " ms]", DEBUG_LEVEL_1);
+                dt = millis();
+                ack = loraWaitForACK(&rssi);
+                if (ack){
+                  fail--; cnt++; RSSIsum += rssi;
+                  _DD(DebugPrintln(String(m) + ": got ACK [rssi :" + String(rssi) + ", " + String(millis()-dt) + " ms]", DEBUG_LEVEL_3);)
+                } else {
+                  _DD(DebugPrintln(String(m) + ": got no ACK [" + String(millis()-t) + " ms]", DEBUG_LEVEL_3);)
+                }
+                repeats++;
+              }
+              if(repeats >= LORA_MAX_REPEATS) { DebugPrintln("package sent failed [" + String(millis()-t) + " ms]", DEBUG_LEVEL_1); }
+              //delay(50);
+            }
+            DebugPrintln(String(cnt) + " packages sent successfully [" + String(millis()-t) + " ms]", DEBUG_LEVEL_1);
+            if (cnt > 0) { RSSIsum /= cnt; }
+            #ifdef USE_OLED
+            display.clear();
+            display.drawString(0, 0, String(cnt) + " good, " + String(fail) + " bad");
+            display.drawString(0, 20, "rssi: "+ String(RSSIsum));
+            display.drawString(0, 40, String((millis()-t) / 1000) + " sec");
+            display.display();
+            #endif
+          } _DD( else {DebugPrintln("LORA send data ready message failed", DEBUG_LEVEL_3);} )
+        } _DD( else {DebugPrintln("LORA invalis data request message", DEBUG_LEVEL_3);} )
+      }
+    } //while stop lora task
+  } else { setupLoraRc = LORA_SETUP_FAILED; }
+  _D(DebugPrintln("LORA: end task ",   DEBUG_LEVEL_1);)
+  #ifdef USE_OLED
+  display.clear();
+  display.displayOff();
+  display.end();
+  #endif
+  loraTaskWaterMark = uxTaskGetStackHighWaterMark(NULL);
+  task_lora_test = NULL;
+  vTaskDelete(NULL);
+}
+#endif
+
+
+#if 0
 void TestLoRa(void){
   uint8_t* data = (uint8_t*)(&loRaTestData[0]);
   t_SendData dummy;
@@ -211,7 +711,7 @@ void TestLoRa(void){
   //reset OLED display via software
   pinMode(DISPLAY_RST, OUTPUT);
   digitalWrite(OLED_RST, LOW);
-  delay(40);
+  pause(40);
   digitalWrite(DISPLAY_RST, HIGH);
   //initialize OLED
   display.init();
@@ -225,46 +725,63 @@ void TestLoRa(void){
     #ifndef LORA_SENDER
     int packetSize = 0;
     int cnt = 0;
+    int current = 0;
+    int last    = 0;
+    int twice   = 0;
+    int fakeNACK = 4;
     int overAll = 0;
+    int lost = 0;
+    bool package = false;
     while(1){
       int x = 0;
-      uint8_t ackCode = LORA_ACK_NACK;
+      bool ack = false;
       while(packetSize == 0){
         packetSize = LoRa.parsePacket();
-        if(packetSize == 0) { delay(1); }
+        if(packetSize == 0) { pause(5); } else { break; }
         x++;
         if (x > 1000) {
-          if (cnt >0){
+          if (package){
             DebugPrintln("", DEBUG_LEVEL_1);
-            DebugPrintln(String(cnt) + " done in " + String(overAll) + "ms, " + String(96-cnt) + " lost."  , DEBUG_LEVEL_1);
+            DebugPrintln(String(cnt) + " done in " + String(overAll) + "ms, " + String(lost) + " lost."  , DEBUG_LEVEL_1);
+            cnt = 0;
+            current = 0;
+            last    = 0;
+            twice = 0;
+            lost = 0;
+            package = false;
           }
-          cnt = 0;
+          DebugPrint(".", DEBUG_LEVEL_1);
+          x=0;
         }
       }
+      package = true;
       if(cnt == 0){ DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); t= millis(); }
-      cnt++;
       //DebugPrintln("package received len: " + String(packetSize)+ " [" + String(millis()-t) + " ms]", DEBUG_LEVEL_1);
-      DebugPrint(".", DEBUG_LEVEL_1);
       if (LoRa.readBytes(encoded, packetSize) != packetSize){
         DebugPrintln("could not read " + String(packetSize) + " bytes from package", DEBUG_LEVEL_1);
       } else {
         int dt = millis();
         int rc = rs.Decode(encoded, repaired);
         dt = millis() - dt;
-        if (rc > 0){
+        fakeNACK--;
+        if ((rc > 0) || (fakeNACK == 0)){
           DebugPrintln("Decoding failed: " + String(rc), DEBUG_LEVEL_1);
         } else {
-          ackCode = LORA_ACK_ACK;
+          cnt++;
+          ack = true;
           String corrected = "";
           for(int i = 0; i < msglen; i++) { if (encoded[i] != repaired[i]) { corrected = " - corrected!"; break; } }
-          for(int i = 0; i < msglen; i++) { buffer[i] = repaired[i]; }
+          for(int i = 0; i < (msglen -1); i++) { buffer[i] = repaired[i+1]; }
+          current = repaired[0]+1;
+          if (current == last) { twice++; } else { lost += current-last-1; }
+          last = current;
           //if(corrected != ""){
-            DebugPrintln("No. " + String(cnt) + " - Decoding success [" + String(dt) + "] " + corrected, DEBUG_LEVEL_1);
+            DebugPrintln("No. " + String(cnt) + ", twice: " + String(twice) + ", lost: " + String(lost) + " -  pkg-No: " + String(current) + " Dec success [" + String(dt) + "] " + corrected, DEBUG_LEVEL_1);
           //}
           //_PrintDataSet(&dummy, DEBUG_LEVEL_1);
         }
       }
-      sendACK(ackCode);
+      sendACK(ack);
       packetSize = 0;
       overAll = millis()-t;
     }
@@ -272,36 +789,43 @@ void TestLoRa(void){
     int cnt = 0;
     int fail = 0;
     int RSSIsum = 0;
-    for(int m = 0; m < TEST_DATA_COUNT; m++){
-      uint8_t ackCode = LORA_ACK_NACK;
+    for(int m = 0; m < (TEST_DATA_COUNT); m++){
+      bool ack = false;
       uint8_t* data = (uint8_t*)(&loRaTestData[m]);
-      for(int i = 0; i < msglen; i++) { message[i] = data[i]; } // Fill with the message
+      message[0] = m; //LORA_PKG_ID_ONE_SET;
+      for(int i = 0; i < msglen; i++) { message[i+1] = data[i]; } // Fill with the message
       rs.Encode(message, encoded);
-      int x = 0;
+      int repeats = 0;
       int rssi = 0;
-      while((ackCode == LORA_ACK_NACK) && (x < 3)){
+      while((!ack) && (repeats < LORA_MAX_REPEATS)){
         fail++;
         // send packet
-        LoRa.beginPacket();
-        LoRa.write(encoded, sizeof(encoded));
-        LoRa.endPacket();
-        //DebugPrintln(String(m+1) + " packages sent [" + String(millis()-t) + " ms]", DEBUG_LEVEL_1);
-        if (waitForACK(&ackCode, &rssi)){
-          _DD(DebugPrintln(String(m) + ": got ACK: 0x" +  String(ackCode, HEX) + " [rssi :" + String(rssi) + ", " + String(millis()-t) + " ms]", DEBUG_LEVEL_3);)
-          if(ackCode == LORA_ACK_ACK) { cnt++; RSSIsum += rssi; fail--; }
+        int dt = millis();
+        for(int i=0; i<2; i++){
+          if (LoRa.beginPacket()) {
+            LoRa.write(encoded, sizeof(encoded));
+            LoRa.endPacket();
+            break;
+          } else { pause(10); }
+        }
+        DebugPrintln(" package sent [" + String(millis()-dt) + " ms]", DEBUG_LEVEL_1);
+        dt = millis();
+        ack = waitForACK(&rssi);
+        if (ack){
+          fail--; cnt++; RSSIsum += rssi;
+          _DD(DebugPrintln(String(m) + ": got ACK [rssi :" + String(rssi) + ", " + String(millis()-dt) + " ms]", DEBUG_LEVEL_3);)
         } else {
-          ackCode = LORA_ACK_NACK;
           _DD(DebugPrintln(String(m) + ": got no ACK [" + String(millis()-t) + " ms]", DEBUG_LEVEL_3);)
         }
-        x++;
+        repeats++;
       }
-      if(x >= 3) { DebugPrintln("package sent failed [" + String(millis()-t) + " ms]", DEBUG_LEVEL_1); }
+      if(repeats >= LORA_MAX_REPEATS) { DebugPrintln("package sent failed [" + String(millis()-t) + " ms]", DEBUG_LEVEL_1); }
       #ifdef USE_OLED
       display.clear();
       display.drawString(0, 0, String(m+1) + " sent");
       display.display();
       #endif
-      delay(100);
+      //delay(50);
     }
     DebugPrintln(String(cnt) + " packages sent successfully [" + String(millis()-t) + " ms]", DEBUG_LEVEL_1);
     if (cnt > 0) { RSSIsum /= cnt; }
@@ -311,7 +835,10 @@ void TestLoRa(void){
     display.drawString(0, 20, "rssi: "+ String(RSSIsum));
     display.drawString(0, 40, String((millis()-t) / 1000) + " sec");
     display.display();
-    delay(4000);
+
+    while(1);
+
+    pause(4000);
     display.clear();
     display.displayOff();
     display.end();
@@ -389,6 +916,8 @@ void transformTestDate(void){
  }
 }
 */
+
+#endif //0
 
 #endif // HEIDI_CONFIG_TEST
 

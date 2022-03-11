@@ -14,7 +14,6 @@
 #include <esp_deep_sleep.h>
 #include <esp_timer.h>
 #include <driver/adc.h>
-#include <rom/rtc.h>
 #include "heidi-defines.h"
 #include "heidi-data.h"
 #include "heidi-debug.h"
@@ -43,11 +42,6 @@ void   checkCycle(void);
 void restartCycling();
 void gotoSleep(int32_t mseconds);
 void doSleepRTCon(int32_t ms);
-
-bool wasPowerOnReset(void);
-bool wasbrownOut(void);
-bool wasRegularWakeUp(void);
-bool wasULPWakeUp(void);
 
 static void watchDog(void* arg);
 

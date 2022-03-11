@@ -14,7 +14,8 @@
 #include "heidi-debug.h"
 #include "heidi-sys.h"
 
-t_ConfigData* heidiConfig;
+t_ConfigData*  heidiConfig = NULL;
+t_ConfigDataC* newClientConfig;
 t_SendData*   availableDataSet[MAX_DATA_SETS];
 t_FenceData*  FenceDataSet[FENCE_MAX_POS];
 #ifdef SAVE_AOP_DATA
@@ -33,25 +34,43 @@ void initConfig(bool reset){
   heidiConfig = (t_ConfigData*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
   if(reset) {
     _D(DebugPrintln("Power on reset: reset all RTC data", DEBUG_LEVEL_1);)
-    heidiConfig->bootCount       = START_FROM_RESET;
-    heidiConfig->bootCycles      = DEFAULT_BOOT_CYCLES;
-    heidiConfig->sleepMinutes    = DEFAULT_CYCLE_DURATION;
-    heidiConfig->nightHourStart  = DEFALUT_NIGHT_HOUR_START_UTC;
-    heidiConfig->nightHourEnd    = DEFALUT_NIGHT_HOUR_END_UTC;
-    heidiConfig->nightBootCycles = (DEFAULT_BOOT_CYCLES * 2);
-    heidiConfig->nightSleepMin   = DEFAULT_CYCLE_DURATION;
+    heidiConfig->bootNumber      = START_FROM_RESET;
+    heidiConfig->c.bootCycles      = DEFAULT_BOOT_CYCLES;
+    heidiConfig->c.sleepMinutes    = DEFAULT_CYCLE_DURATION;
+    heidiConfig->c.nightHourStart  = DEFALUT_NIGHT_HOUR_START_UTC;
+    heidiConfig->c.nightHourEnd    = DEFALUT_NIGHT_HOUR_END_UTC;
+    heidiConfig->c.nightBootCycles = (DEFAULT_BOOT_CYCLES * 2);
+    heidiConfig->c.nightSleepMin   = DEFAULT_CYCLE_DURATION;
     heidiConfig->lastTimeDiffMs  = 0;
     heidiConfig->status          = (NEW_FENCE | RESET_INITS);
-    heidiConfig->accThres1       = DEFALUT_ACCELERATION_THRESHOLD_1;
-    heidiConfig->accAlertThres1  = DEFALUT_ACCEL_THRES_MAX_COUNT;
-    heidiConfig->accThres2       = DEFALUT_ACCELERATION_THRESHOLD_2;
-    heidiConfig->accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT;
-    heidiConfig->accNightFactor  = 100;  //equals to 1
-    heidiConfig->alertFailCount  = 0;
+    heidiConfig->c.accThres1       = DEFALUT_ACCELERATION_THRESHOLD_1;
+    heidiConfig->c.accAlertThres1  = DEFALUT_ACCEL_THRES_MAX_COUNT;
+    heidiConfig->c.accThres2       = DEFALUT_ACCELERATION_THRESHOLD_2;
+    heidiConfig->c.accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT;
+    heidiConfig->c.accNightFactor  = 100;  //equals to 1
     heidiConfig->gpsStatus       = 0;
+    #ifdef HEIDI_GATEWAY
+    heidiConfig->alertFailCount  = 0;
+    heidiConfig->clients         = 0;
+    heidiConfig->lastClientTrig  = 0;
+    heidiConfig->clientsNeedConf = 0;
     heidiConfig->telNo[0][0]     = 0xBB; //empty
     heidiConfig->telNo[1][0]     = 0xBB; //empty
+    #endif
+    int t1 = xTaskGetTickCount();
+    pause(1000);
+    int t2 = xTaskGetTickCount();
+
   }
+}
+
+/*
+ * calculate current client setup CRC
+ */
+uint16_t clientConfigCRC(t_ConfigDataC* data){
+  _D(if(data == NULL){DebugPrintln("!!ERROR!! - null pinter clientConfigCRC", DEBUG_LEVEL_1);})
+  uint8_t* buffer = (uint8_t*)data;
+  return crc16D(buffer, sizeof(t_ConfigDataC));
 }
 
 void initRTCData(bool reset){
@@ -60,7 +79,7 @@ void initRTCData(bool reset){
   #endif
   initConfig(reset);
   uint8_t* curSet;
-  //_D(DebugPrintln("Init data sets", DEBUG_LEVEL_1); delay(50));
+  //_D(DebugPrintln("Init data sets", DEBUG_LEVEL_1); pause(50));
   #ifdef USE_RTC_FAST_MEM
   RTCfastMemRead();
   curSet = (uint8_t*)fastMemBuffer;
@@ -99,7 +118,7 @@ void initRTCData(bool reset){
   #ifdef USE_ULP
   //init ULP Variables
   if(reset){
-    _D(DebugPrintln("Power on reset: reset all ULP vars!", DEBUG_LEVEL_1);)
+    _D(DebugPrintln("Power on reset: reset all ULP vars", DEBUG_LEVEL_1);)
     RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_DATA_CUR] = 0;
     RTC_SLOW_MEM[ACCEL_DATA_HEADER+AVR_DIFF_VAL]   = 0;
     RTC_SLOW_MEM[ACCEL_X_VALUES + I2C_TRNS_RES] = 0;
@@ -142,7 +161,7 @@ void initDataSet(t_SendData* DataSet){
   DataSet->date        = 0;
   DataSet->time        = 0;
   DataSet->battery     = 0;
-  DataSet->GPShdop     = 0;
+  DataSet->GPSpDOP     = 0;
   DataSet->temperature = TEMPERATURE_NOT_SET; //-273,15 .. if this is the real temperature, the sheep is dead.. definitely ;-)
   DataSet->errCode     = 0;
   DataSet->satellites  = 0;
@@ -163,7 +182,7 @@ void copyDataSet(t_SendData* _from, t_SendData* _to){
   _to->battery      = _from->battery   ;
   _to->temperature  = _from->temperature;
   _to->satellites   = _from->satellites;
-  _to->GPShdop      = _from->GPShdop   ;
+  _to->GPSpDOP      = _from->GPSpDOP   ;
   _to->errCode      = _from->errCode   ;
   _to->metersOut    = _from->metersOut ;
   _to->accThresCnt1 = _from->accThresCnt1;
@@ -205,7 +224,7 @@ String generateMulti64SendLine(t_SendData** sets, int first, int last){
       _copyInt16toBuffer(hexbuffer,HEX_BUFFER_OFFSET  + 16, DataSet->temperature); //7
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 18, DataSet->errCode); //8
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 20, DataSet->satellites); //9
-      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, DataSet->GPShdop); //10
+      _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 22, DataSet->GPSpDOP); //10
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 24, DataSet->accThresCnt1);  //11
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 26, DataSet->accThresCnt2);  //12
       _copyUint16toBuffer(hexbuffer,HEX_BUFFER_OFFSET + 28, DataSet->metersOut);  //13
@@ -237,7 +256,7 @@ bool setSettingsFromHTTPresponse(String response)
   if (settingsData.length() > 3){
     uint16_t t_crc = (uint16_t)hex2int(settingsCRC);
     if(t_crc == c_crc){
-      if(newSettingsB64(settingsData)){
+      if(newSettingsB64(settingsData, &heidiConfig->c)){
         _D(DebugPrintln("new settings set", DEBUG_LEVEL_1));
         return true;
       } _D( else { DebugPrintln("setting settings failed", DEBUG_LEVEL_1); } )
@@ -246,6 +265,90 @@ bool setSettingsFromHTTPresponse(String response)
   return false;
 }
 
+bool newSettingsB64(String b64, t_ConfigDataC* dataBuffer){
+  unsigned char buffer[256];
+  int dataLen = b64Decode(b64, buffer);
+  if (dataLen < 3) { return false; };
+  if ( buffer[0] >= 1  ) { setNewSettingU8( buffer, 1, &dataBuffer->bootCycles, NEW_SETTINGS); }
+  if ( buffer[0] >= 2  ) { setNewSettingU8( buffer, 3, &dataBuffer->nightBootCycles, NEW_SETTINGS); }
+  if ( buffer[0] >= 3  ) { setNewSettingU8( buffer, 5, &dataBuffer->sleepMinutes, NEW_SETTINGS); }
+  if ( buffer[0] >= 4  ) { setNewSettingU8( buffer, 7, &dataBuffer->nightSleepMin, NEW_SETTINGS); }
+  if ( buffer[0] >= 5  ) { setNewSettingU8( buffer, 9, &dataBuffer->nightHourStart, NEW_SETTINGS); }
+  if ( buffer[0] >= 6  ) { setNewSettingU8( buffer,11, &dataBuffer->nightHourEnd, NEW_SETTINGS); }
+  if ( buffer[0] >= 7  ) { setNewSettingU16(buffer,13, &dataBuffer->distAlertThres, NEW_SETTINGS); }
+
+  if ( buffer[0] >= 8  ) { setNewSettingU16(buffer,15, &dataBuffer->accThres1, NEW_ACC_DATA); }
+  if ( buffer[0] >= 9  ) { setNewSettingU16(buffer,17, &dataBuffer->accAlertThres1, NEW_ACC_DATA); }
+  if ( buffer[0] >= 10 ) { setNewSettingU16(buffer,19, &dataBuffer->accThres2, NEW_ACC_DATA); }
+  if ( buffer[0] >= 11 ) { setNewSettingU16(buffer,21, &dataBuffer->accAlertThres2, NEW_ACC_DATA); }
+  if ( buffer[0] >= 12 ) { setNewSettingU8( buffer,23, &dataBuffer->accNightFactor, NEW_ACC_DATA); }
+
+  if (dataBuffer->sleepMinutes < MIN_CYCLE_DURATION) { dataBuffer->sleepMinutes = MIN_CYCLE_DURATION; }
+  if (dataBuffer->nightSleepMin < MIN_CYCLE_DURATION) { dataBuffer->nightSleepMin = MIN_CYCLE_DURATION; }
+  if (dataBuffer->sleepMinutes > MAX_CYCLE_DURATION) { dataBuffer->sleepMinutes = MAX_CYCLE_DURATION; }
+  if (dataBuffer->nightSleepMin > MAX_CYCLE_DURATION) { dataBuffer->nightSleepMin = MAX_CYCLE_DURATION; }
+  if (dataBuffer->bootCycles > MAX_BOOT_CYCLES) { dataBuffer->bootCycles = MAX_BOOT_CYCLES; }
+  if (dataBuffer->nightBootCycles > MAX_BOOT_CYCLES) { dataBuffer->nightBootCycles = MAX_BOOT_CYCLES; }
+  if (dataBuffer->bootCycles < 1) { dataBuffer->bootCycles = DEFAULT_BOOT_CYCLES; }
+  if (dataBuffer->nightBootCycles < 1) { dataBuffer->nightBootCycles = DEFAULT_BOOT_CYCLES; }
+  if ((dataBuffer->nightHourStart < 0) || (dataBuffer->nightHourStart > 23)) { dataBuffer->nightHourStart = 0; }
+  // if we have a bad night end-Value we set start = end, means no night modus
+  if ((dataBuffer->nightHourEnd < 0) || (dataBuffer->nightHourEnd > 23)) { dataBuffer->nightHourEnd = dataBuffer->nightHourStart; }
+  // if no night modus - set them to zero
+  if (dataBuffer->nightHourStart == dataBuffer->nightHourEnd) { dataBuffer->nightHourStart = 0; dataBuffer->nightHourEnd = 0; }
+  return true;
+}
+
+void setNewSetting8(uint8_t *buffer, int pufferPos, int8_t *setting, uint32_t status){
+  int8_t dummy = _copyBufferToUInt16(buffer, pufferPos);
+  if(dummy != *setting){
+    *setting = dummy;
+    setState(status);
+    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(*setting), DEBUG_LEVEL_3); )
+  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
+}
+void setNewSettingU8(uint8_t *buffer, int pufferPos, uint8_t *setting, uint32_t status){
+  uint8_t dummy = _copyBufferToUInt16(buffer, pufferPos);
+  if(dummy != *setting){
+    *setting = dummy;
+    setState(status);
+    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(*setting), DEBUG_LEVEL_3); )
+  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
+}void setNewSettingU16(uint8_t *buffer, int pufferPos, uint16_t *setting, uint32_t status){
+  uint16_t dummy = _copyBufferToUInt16(buffer, pufferPos);
+  if(dummy != *setting){
+    *setting = dummy;
+    setState(status);
+    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(*setting), DEBUG_LEVEL_3); )
+  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
+}
+#ifdef HEIDI_GATEWAY
+bool newTelNoB64(String b64){
+  unsigned char buffer[256];
+  int dataLen = b64Decode(b64, buffer);
+  if (( buffer[0] == 0 ) || ( buffer[0] > 2 )) { return false; }
+  for(int n=0; n<buffer[0]; n++){
+    if (n >= TEL_NO_CNT){ break; }
+    for(int i=0; i<TEL_NO_LEN; i++) { heidiConfig->telNo[n][i] = buffer[n*12+i+1]; }
+  }
+  return true;
+}
+String getTelNo(int which){
+  static String TelNo;
+  TelNo = "";
+  if(which >= TEL_NO_CNT) { return TelNo; }
+  for(int i=0; i<TEL_NO_LEN; i++){
+    uint8_t b = heidiConfig->telNo[which][i];
+    for(int j=0; j<2; j++){
+      uint8_t n = b & 0xf;
+      if (n >= 0x0B) { return TelNo; }
+      else if (n == 0x0A) { TelNo = TelNo + '+'; }
+      else if (n <= 0x09) { TelNo = TelNo + String(n); }
+      b = b >> 4;
+    }
+  }
+  return TelNo;
+}
 bool setTelNoFromHTTPresponse(String response)
 {
   String settingsData = getCSVvalue(response, 6);
@@ -264,74 +367,7 @@ bool setTelNoFromHTTPresponse(String response)
   } _D( else { DebugPrintln("tel. number data error", DEBUG_LEVEL_1); } )
   return false;
 }
-
-bool newSettingsB64(String b64){
-  unsigned char buffer[256];
-  int dataLen = b64Decode(b64, buffer);
-  if (dataLen < 3) { return false; };
-  if ( buffer[0] >= 1  ) { setNewSetting8(  buffer, 1, &heidiConfig->bootCycles, NEW_SETTINGS); }
-  if ( buffer[0] >= 2  ) { setNewSettingU8( buffer, 3, &heidiConfig->nightBootCycles, NEW_SETTINGS); }
-  if ( buffer[0] >= 3  ) { setNewSettingU8( buffer, 5, &heidiConfig->sleepMinutes, NEW_SETTINGS); }
-  if ( buffer[0] >= 4  ) { setNewSettingU8( buffer, 7, &heidiConfig->nightSleepMin, NEW_SETTINGS); }
-  if ( buffer[0] >= 5  ) { setNewSettingU8( buffer, 9, &heidiConfig->nightHourStart, NEW_SETTINGS); }
-  if ( buffer[0] >= 6  ) { setNewSettingU8( buffer,11, &heidiConfig->nightHourEnd, NEW_SETTINGS); }
-  if ( buffer[0] >= 7  ) { setNewSettingU16(buffer,13, &heidiConfig->distAlertThres, NEW_SETTINGS); }
-
-  if ( buffer[0] >= 8  ) { setNewSettingU16(buffer,15, &heidiConfig->accThres1, NEW_ACC_DATA); }
-  if ( buffer[0] >= 9  ) { setNewSettingU16(buffer,17, &heidiConfig->accAlertThres1, NEW_ACC_DATA); }
-  if ( buffer[0] >= 10 ) { setNewSettingU16(buffer,19, &heidiConfig->accThres2, NEW_ACC_DATA); }
-  if ( buffer[0] >= 11 ) { setNewSettingU16(buffer,21, &heidiConfig->accAlertThres2, NEW_ACC_DATA); }
-  if ( buffer[0] >= 12 ) { setNewSettingU8( buffer,23, &heidiConfig->accNightFactor, NEW_ACC_DATA); }
-
-  if (heidiConfig->sleepMinutes < MIN_CYCLE_DURATION) { heidiConfig->sleepMinutes = MIN_CYCLE_DURATION; }
-  if (heidiConfig->nightSleepMin < MIN_CYCLE_DURATION) { heidiConfig->nightSleepMin = MIN_CYCLE_DURATION; }
-  if (heidiConfig->sleepMinutes > MAX_CYCLE_DURATION) { heidiConfig->sleepMinutes = MAX_CYCLE_DURATION; }
-  if (heidiConfig->nightSleepMin > MAX_CYCLE_DURATION) { heidiConfig->nightSleepMin = MAX_CYCLE_DURATION; }
-  if (heidiConfig->bootCycles > MAX_BOOT_CYCLES) { heidiConfig->bootCycles = MAX_BOOT_CYCLES; }
-  if (heidiConfig->nightBootCycles > MAX_BOOT_CYCLES) { heidiConfig->nightBootCycles = MAX_BOOT_CYCLES; }
-  if (heidiConfig->bootCycles < 1) { heidiConfig->bootCycles = DEFAULT_BOOT_CYCLES; }
-  if (heidiConfig->nightBootCycles < 1) { heidiConfig->nightBootCycles = DEFAULT_BOOT_CYCLES; }
-  if ((heidiConfig->nightHourStart < 0) || (heidiConfig->nightHourStart > 23)) { heidiConfig->nightHourStart = 0; }
-  // if we have a bad night end-Value we set start = end, means no night modus
-  if ((heidiConfig->nightHourEnd < 0) || (heidiConfig->nightHourEnd > 23)) { heidiConfig->nightHourEnd = heidiConfig->nightHourStart; }
-  // if no night modus - set them to zero
-  if (heidiConfig->nightHourStart == heidiConfig->nightHourEnd) { heidiConfig->nightHourStart = 0; heidiConfig->nightHourEnd = 0; }
-  return true;
-}
-
-void setNewSetting8(uint8_t *buffer, int pufferPos, int8_t *setting, uint32_t status){
-  int8_t dummy = _copyBufferToUInt16(buffer, pufferPos);
-  if(dummy != *setting){
-    *setting = dummy;
-    setState(status);
-    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
-  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
-}
-void setNewSettingU8(uint8_t *buffer, int pufferPos, uint8_t *setting, uint32_t status){
-  uint8_t dummy = _copyBufferToUInt16(buffer, pufferPos);
-  if(dummy != *setting){
-    *setting = dummy;
-    setState(status);
-    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
-  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
-}void setNewSettingU16(uint8_t *buffer, int pufferPos, uint16_t *setting, uint32_t status){
-  uint16_t dummy = _copyBufferToUInt16(buffer, pufferPos);
-  if(dummy != *setting){
-    *setting = dummy;
-    setState(status);
-    _DD( DebugPrintln("set [" + String(pufferPos) + "] to " + String(heidiConfig->nightBootCycles), DEBUG_LEVEL_3); )
-  } _DD( else { DebugPrintln("setting " + String(pufferPos) +  "keeps the same", DEBUG_LEVEL_3); } )
-}
-bool newTelNoB64(String b64){
-  unsigned char buffer[256];
-  int dataLen = b64Decode(b64, buffer);
-  if (( buffer[0] == 0 ) || ( buffer[0] > 2 )) { return false; }
-  for(int n=0; n<buffer[0]; n++){
-    if (n >= TEL_NO_CNT){ break; }
-    for(int i=0; i<TEL_NO_LEN; i++) { heidiConfig->telNo[n][i] = buffer[n*12+i+1]; }
-  }
-  return true;
-}
+#endif
 /*
  * packUpDataSets removes free data sets between used ones and returns count of used data sets
  * Parameter: start position of packing
@@ -370,22 +406,6 @@ void initDataSets(t_SendData** sets, int first, int last){
   }
 }
 
-String getTelNo(int which){
-  static String TelNo;
-  TelNo = "";
-  if(which >= TEL_NO_CNT) { return TelNo; }
-  for(int i=0; i<TEL_NO_LEN; i++){
-    uint8_t b = heidiConfig->telNo[which][i];
-    for(int j=0; j<2; j++){
-      uint8_t n = b & 0xf;
-      if (n >= 0x0B) { return TelNo; }
-      else if (n == 0x0A) { TelNo = TelNo + '+'; }
-      else if (n <= 0x09) { TelNo = TelNo + String(n); }
-      b = b >> 4;
-    }
-  }
-  return TelNo;
-}
 void testData()
 {
   _D(
@@ -408,20 +428,24 @@ void getRTCDataSpace(uint8_t** buffer){
 }
 
 bool getState(uint32_t which){
+  _D(if(heidiConfig == NULL){DebugPrintln("!!ERROR!! - null pinter getState", DEBUG_LEVEL_1);})
   return((heidiConfig->status & which) != 0);
 }
 void setState(uint32_t which){
+  _D(if(heidiConfig == NULL){DebugPrintln("!!ERROR!! - null pinter setState", DEBUG_LEVEL_1);})
   heidiConfig->status |= which;
 }
 void clrState(uint32_t which){
+  _D(if(heidiConfig == NULL){DebugPrintln("!!ERROR!! - null pinter clrState", DEBUG_LEVEL_1);})
   heidiConfig->status &= ~which;
 }
 
 int32_t getCycleTimeMS(void){
+  _D(if(heidiConfig == NULL){DebugPrintln("!!ERROR!! - null pinter getCycleTimeMS", DEBUG_LEVEL_1);})
   if(_night()){
-    return heidiConfig->nightSleepMin * 60000;
+    return heidiConfig->c.nightSleepMin * 60000;
   }
-  return heidiConfig->sleepMinutes * 60000;
+  return heidiConfig->c.sleepMinutes * 60000;
 }
 
 int32_t  GeoToInt(double geo)
@@ -505,9 +529,14 @@ bool taskRunning;
 
 #ifdef USE_RTC_FAST_MEM
 bool RTCfastMemRead(void){
+  fastMemBuffer = (uint32_t*)malloc(RTC_MAX_FAST_DATA_SPACE);
+  if(fastMemBuffer == NULL){
+    _D(DebugPrintln("unable to allocate fast mem buffer. ", DEBUG_LEVEL_1); pause(50);)
+    return false;
+  }
   BaseType_t rc = xTaskCreatePinnedToCore(fastMemReadTask, "fastMemReadTask", FAST_MEM_TASK_HEAP_SIZE, NULL, 1, &task_fmem_read, 0);
   if (rc != pdPASS){
-    _D(DebugPrintln("unable to create fast mem read Task. " + String(rc), DEBUG_LEVEL_1); delay(50);)
+    _D(DebugPrintln("unable to create fast mem read Task. " + String(rc), DEBUG_LEVEL_1); pause(50);)
     return false;
   }
   while (task_fmem_read != NULL){ vTaskDelay(100); }
@@ -517,15 +546,16 @@ bool RTCfastMemRead(void){
 bool RTCfastMemWrite(void){
   BaseType_t rc = xTaskCreatePinnedToCore(fastMemWriteTask, "fastMemWriteTask", FAST_MEM_TASK_HEAP_SIZE, NULL, 1, &task_fmem_write, 0);
   if (rc != pdPASS){
-    _D(DebugPrintln("unable to create fast mem read Task. " + String(rc), DEBUG_LEVEL_1); delay(50);)
+    _D(DebugPrintln("unable to create fast mem read Task. " + String(rc), DEBUG_LEVEL_1); pause(50);)
     return false;
   }
   while (task_fmem_write != NULL){ vTaskDelay(100); }
+  free(fastMemBuffer);
+  fastMemBuffer = NULL;
   return true;
 }
 
 void fastMemReadTask(void *pvParameters) {
-  fastMemBuffer = (uint32_t*)malloc(RTC_MAX_FAST_DATA_SPACE);
   if(fastMemBuffer != NULL){
     for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ fastMemBuffer[i] = _realFastMem[i];  }
   }
@@ -536,8 +566,6 @@ void fastMemReadTask(void *pvParameters) {
 void fastMemWriteTask(void *pvParameters) {
   if(fastMemBuffer != NULL){
     for(int i=0; i<RTC_FAST_MEM_SIZE_32; i++){ _realFastMem[i] = fastMemBuffer[i]; }
-    free(fastMemBuffer);
-    fastMemBuffer = NULL;
   }
   task_fmem_write = NULL;
   vTaskDelete(NULL);
@@ -550,13 +578,13 @@ void PrintRTCFastMemBufferBoundaries(void){
     if ((a++) == 8) {DebugPrintln(hexString8(fastMemBuffer[i]), DEBUG_LEVEL_1); a = 0; }
     else { DebugPrint(hexString8(fastMemBuffer[i]) + ", ", DEBUG_LEVEL_1); }
   }
-  delay(100);
+  pause(100);
   a = 0;
   for(int i=(RTC_FAST_MEM_SIZE_32-32); i<RTC_FAST_MEM_SIZE_32; i++){
     if ((a++) == 8) { DebugPrintln(hexString8(fastMemBuffer[i]), DEBUG_LEVEL_1); a = 0; }
     else { DebugPrint(hexString8(fastMemBuffer[i]) + ", ", DEBUG_LEVEL_1); }
   }
-  delay(100);
+  pause(100);
 }
 )
 */

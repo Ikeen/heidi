@@ -19,7 +19,7 @@
 #define E_NEW_FENCE_STATE          0x0020
 #define E_GPS_ALERT                0x0040
 #define E_ACC_ALERT                0x0080
-#define E_GPS_ALERT_SMS            0x0100
+#define E_ALERT_SMS                0x0100
 #define E_IIC_ERROR                0x0200
 #define E_POWER_SAVE_1             0x0400
 #define E_GPS_LATE_LOCK            0x0800
