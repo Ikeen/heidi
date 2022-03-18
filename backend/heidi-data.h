@@ -179,7 +179,7 @@ int      addDataSets(t_SendData* buffer, int cnt);
 bool     eraseDataSet(t_SendData* _which);
 int      eraseDataSets(t_SendData* buffer, int cnt);
 int      packUpDataSets(void);
-int      getNextnDataSets(int n, t_SendData* buffer, int size);
+int      getNextnDataSets(int n, t_SendData* buffer, int size, t_SendData* lastSet = NULL);
 bool     freeDataSet(int _which);
 void     setErrorToDataSets(t_SendData* sets, int cnt, uint16_t code);
 

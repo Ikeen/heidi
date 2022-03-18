@@ -234,6 +234,7 @@ void handlePreMeasuring(void){
 #ifdef GSM_MODULE
 void transmitData(t_SendData* currentDataSet){
   int HTTPrc = 0, setsSent = 0;
+  int maxLoops = 5;
   String sendLine = "";
   _D(DebugPrintln("GPRS send data", DEBUG_LEVEL_2); int cnt = 0;)
   _DD(_PrintShortSummary(DEBUG_LEVEL_3));
@@ -242,10 +243,11 @@ void transmitData(t_SendData* currentDataSet){
       if (GSMopenHTTPconnection(HEIDI_SERVER_PUSH_URL)){
         int buffersize = (MAX_DATA_SETS_PER_SEND_LINE * sizeof(t_SendData));
         t_SendData* buffer = (t_SendData*)malloc(buffersize);
+        memset(buffer, 0, buffersize);
         if (buffer != NULL){
           setsSent = MAX_DATA_SETS_PER_SEND_LINE;
           while (setsSent > 0){
-            setsSent = getNextnDataSets(MAX_DATA_SETS_PER_SEND_LINE, buffer, buffersize);
+            setsSent = getNextnDataSets(MAX_DATA_SETS_PER_SEND_LINE, buffer, buffersize, &buffer[setsSent-1]);
             if(setsSent > 0){
               sendLine = generateMulti64SendLine(buffer, setsSent);
               if(GSMsendLine(sendLine)){
@@ -253,9 +255,9 @@ void transmitData(t_SendData* currentDataSet){
                 _D(cnt += setsSent;)
               } else {
                 setErrorToDataSets(buffer, setsSent, E_GSM_TRANSMISSION_FAILED);
-                break; //something to do: try next data... we need to remember which data was already tried
               }
             }
+            if(maxLoops-- <= 0){ break; }
           }
           free(buffer);
         }
@@ -488,8 +490,6 @@ void setupWatchDog(uint32_t timeOutMs){
 //extern uint8_t bootTimeTable[MAX_CYCLES_PER_DAY][3];
 
 void doTests(t_SendData* currentDataSet){
-  return;
-
   //disable watchdog
   if (watchd != NULL) {
     esp_timer_stop(watchd);

@@ -201,7 +201,7 @@ void copyDataSet(t_SendData* _from, t_SendData* _to){
 /*
  * find a data set in the RTC data set storage by its copy
  *   - _which points to a copy of the data set
- *   - returns the number of the data set
+ *   - returns the number of the data set or DATA_SET_NOT_FOUND
  *
  * Why this? Since more then one task can write/move/erase/add data sets we should
  * consider that the data set we read from one position may not longer be there
@@ -283,6 +283,7 @@ bool addDataSet(t_SendData* _new){
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
   return rc;
 }
+
 /*
  * add data sets in the RTC data set storage
  *   - _new points to an data set array
@@ -320,23 +321,35 @@ int packUpDataSets(){
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
   return k;
 }
+
 /*
  * copies n data sets (oldest first) from RTC data set storage to given buffer
  *   - n - amount of data
  *   - buffer - buffer where to copy
  *   - size - size of buffer
+ *   - lastSet - pointer to the last data set gotten - if set and not empty, getNextnDataSets
+ *     will search from the following one, if lastSet was found. Otherwise getNextnDataSets will
+ *     search all data sets. lastSet may be part of buffer.
  *   returns the actual copied data sets
  */
-int getNextnDataSets(int n, t_SendData* buffer, int size){
+int getNextnDataSets(int n, t_SendData* buffer, int size, t_SendData* lastSet){
   dtAcc_t dtAcc;
+  if(buffer == NULL){ return 0; }
   if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){_D(DebugPrintln("packUpDataSets: no data access ", DEBUG_LEVEL_1);) return 0; }
   int availSets = packUpDataSets();
+  int lastSetNo = availSets;
+  if(lastSet != NULL){
+    if(!isEmptyDataSet(lastSet)){
+      lastSetNo = findDataSet(lastSet);
+      if(lastSetNo == DATA_SET_NOT_FOUND) { lastSetNo = availSets; }
+    }
+  }
   int copiedSets = n;
   int k = 0;
-  if(copiedSets > availSets) { copiedSets = availSets; }
+  if(copiedSets > lastSetNo) { copiedSets = lastSetNo; }
   if(size >= (copiedSets * sizeof(t_SendData))){
     for(int i=0; i < copiedSets; i++){
-        copyDataSet(availableDataSet[availSets-i-1], &buffer[i]);
+        copyDataSet(availableDataSet[lastSetNo-i-1], &buffer[i]);
     }
   } else {copiedSets = 0; _D(DebugPrintln("packUpDataSets: buffer too small ", DEBUG_LEVEL_1);)}
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
@@ -344,8 +357,25 @@ int getNextnDataSets(int n, t_SendData* buffer, int size){
 }
 
 /*
+ * sets error in data sets in the RTC data set storage, identified by its copies in buffer
+ *   - buffer points to an array of the data sets
+ *   - code = error code
+ *
+ */
+void setErrorToDataSets(t_SendData* sets, int cnt, uint16_t code){
+  dtAcc_t dtAcc;
+  if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){_D(DebugPrintln("setErrorToDataSets: no data access ", DEBUG_LEVEL_1);) return; }
+  for(int i=0; i<cnt; i++){
+    int x = findDataSet(&sets[i]);
+    if(x != DATA_SET_NOT_FOUND){ setError(availableDataSet[x], code); }
+  }
+  if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
+}
+
+/*
  * freeDataSet shifts free the wanted data position
  *   - _which - position to be shifted free
+ *
  */
 bool freeDataSet(int _which){
   dtAcc_t dtAcc;
@@ -363,8 +393,6 @@ bool freeDataSet(int _which){
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
   return true;
 }
-
-
 
 bool isEmptyDataSet(t_SendData* DataSet){
   return (DataSet->animalID == 0);
@@ -384,15 +412,6 @@ void initDataSets(t_SendData** sets, int first, int last){
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
 }
 
-void setErrorToDataSets(t_SendData* sets, int cnt, uint16_t code){
-  dtAcc_t dtAcc;
-  if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){_D(DebugPrintln("setErrorToDataSets: no data access ", DEBUG_LEVEL_1);) return; }
-  for(int i=0; i<cnt; i++){
-    int x = findDataSet(&sets[i]);
-    if(x != DATA_SET_NOT_FOUND){ initDataSet(availableDataSet[x]); }
-
-  }
-}
 /*
  * following functions are needed to manage the access to data sets, which
  * may be written from main task and lora task in parallel
@@ -830,32 +849,27 @@ void PrintRTCFastMemBufferBoundaries(void){
 void testData(){
   int x;
   pause(3000);
-  //_D(DebugPrintln("t_ConfigDataC: " + String(sizeof(t_ConfigDataC)), DEBUG_LEVEL_1); pause(50);)
-  //_D(DebugPrintln("t_ConfigData: " + String(sizeof(t_ConfigData)), DEBUG_LEVEL_1); pause(50);)
-  //_D(DebugPrintln("lockhandle: " + String((uint32_t)accessLockHandle, HEX), DEBUG_LEVEL_1); pause(20);)
-  _D(DebugPrintln("Main taskhandle: " + String((uint32_t)xTaskGetCurrentTaskHandle(), HEX), DEBUG_LEVEL_1); pause(20);)
 
   loadTestData();
   _PrintShortSummary(DEBUG_LEVEL_3);
-  t_SendData* buffer = (t_SendData*)malloc(sizeof(t_SendData) * 16);
+  int maxSets = 10;
+  int bufferSize = sizeof(t_SendData) * maxSets;
+  t_SendData* buffer = (t_SendData*)malloc(bufferSize);
   if(buffer == NULL){ return; }
-  _D(DebugPrintln("----------------- copy 16 ----------------", DEBUG_LEVEL_1);)
-  x = getNextnDataSets(16, buffer, sizeof(t_SendData) * 16);
-  for(int i=0; i<x; i++){ _PrintShortSet(&buffer[i], i, DEBUG_LEVEL_3); }
-  _D(DebugPrintln("----------------- delete 4 and 7 ----------------", DEBUG_LEVEL_1);)
-  initDataSet(availableDataSet[4]);
-  initDataSet(availableDataSet[7]);
-  packUpDataSets();
-  _PrintShortSummary(DEBUG_LEVEL_3);
-  _D(DebugPrintln("----------------- add 1 ----------------", DEBUG_LEVEL_1);)
-  addDataSet(getTestData(80));
-  _PrintShortSummary(DEBUG_LEVEL_3);
-  _D(DebugPrintln("----------------- add 16 ----------------", DEBUG_LEVEL_1);)
-  addDataSets(buffer, 16);
-  _PrintShortSummary(DEBUG_LEVEL_3);
+  memset(buffer, 0, bufferSize);
+  int setsSent=maxSets;
+  while(setsSent > 0){
+    _D(DebugPrintln("", DEBUG_LEVEL_1);)
+    _D(DebugPrintln("----------------- xxxxxxx ----------------", DEBUG_LEVEL_1);)
+    setsSent = getNextnDataSets(maxSets, buffer, bufferSize, &buffer[setsSent-1]);
+    _D(DebugPrintln(String(setsSent) + " sets gotten", DEBUG_LEVEL_1);)
+    if(setsSent > 0){
+      for(int i=0; i<setsSent; i++){ _PrintShortSet(&buffer[i], i, DEBUG_LEVEL_3); }
+    }
+  }
   free(buffer);
-
 }
+
 #endif
 #ifdef TEST_RTC
 #define RTC_TEST_PATTERN 0x55AA55AA

@@ -17,7 +17,7 @@ typedef enum {
   DEBUG_LEVEL_3
 };
 
-#define DEBUG_LEVEL 3 //0 (no prints) .. 3 (all prints)
+#define DEBUG_LEVEL 0 //0 (no prints) .. 3 (all prints)
 
 #if (DEBUG_LEVEL > 0 )
 #  define _D(x) x
