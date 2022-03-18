@@ -50,7 +50,6 @@ void setError(uint16_t code);
 void rmError(uint16_t code);
 bool getError(uint16_t code);
 void setError(t_SendData* DataSet, uint16_t code);
-void setError(t_SendData** sets, int first, int last, uint16_t code);
 void rmError(t_SendData* DataSet, uint16_t code);
 bool getError(t_SendData* DataSet, uint16_t code);
 uint16_t getErrorCode();

@@ -68,6 +68,9 @@
  * for our setup we got:
  *
  *   1.. 3 bytes = 18.7 ms  (acknowledge  1 byte id = 63[ack] / 62[nack])
+ *   4.. 8 bytes = 23.8 ms  (acknowledge  1 byte id = 63[ack] / 62[nack])
+ *   9..12 bytes = 28.9 ms  (acknowledge  1 byte id = 63[ack] / 62[nack])
+ *  18..21 bytes = 39.2 ms
  *  33..37 bytes = 59.7 ms  (1 data set + 3 bytes EEC-length + id = 0xb1 + package number no)
  *  69..73 bytes = 100.6 ms (2 data sets + 8 bytes EEC-length + id = 0xb5 + 1st package number no)
  *
@@ -79,38 +82,41 @@
 #define LORA_ACK_OFFSET_TIME_MS  15
 #define LORA_ACK_PKG_DURATION_MS 30
 #define LORA_ACK_TIMEOUT_MS  (LORA_ACK_OFFSET_TIME_MS +  LORA_ACK_PKG_DURATION_MS) //package on air time + 30 ms
-#define LORA_MAX_REPEATS     3
+#define LORA_MAX_REPEATS       3
+#define LORA_MAx_PACKAGE_NO    254
+#define LORA_NO_PACKAGE_NO     0xff
+#define LORA_ECC_LENGTH        3      //"guardian bytes", Max corrected bytes ECC_LENGTH/2
 /*
- * ACK  package length = 3,
+ * ACK  package length = 3, (to addressed client only)
  *      byte0 = pkg-id (receiver),
  *      byte1 = animal-id of ack-receiver,
  *      byte2 = 1: ack, all other: nak
  *
- * DATA package length = 37,
+ * DATA package length = 37, (to gateway only)
  *      byte0 = pkg-id,
  *      byte1 = set number,
  *      byte2 ..byte33 = 32 bytes payload
  *      byte34..byte37 =  3 bytes reed solomon checksum
  *
- * DATA REQEST package length = 4,
- *      byte0 = pkg-id (receiver),
+ * DATA REQEST package length = 4, (to addressed client only)
+ *      byte0 = pkg-id,
  *      byte1 = animal-id of client
  *      byte2 = max data sets able to receive,
  *      byte3 = max data sets able to receive (double check),
  *
- * DATA READY package length = 5,
- *      byte0 = pkg-id (sender),
+ * DATA READY package length = 5, (to gateway only)
+ *      byte0 = pkg-id,
  *      byte1 = animal-id of client,
  *      byte2 = data sets intended to send,
  *      byte3 = data sets intended to send (double check),
  *      byte4 = 0 - one data set per package, 1 - two data sets per package - currently not used
  *
- * GENERAL CALL package length = 9,
+ * GENERAL CALL package length = 9, (to all clients)
  *      byte0 = pkg-id,
  *      byte1 ..byte4 = known client bit field,
  *      byte5 ..byte8 = known client bit field (double check),
  *
- * GENERAL ANSWER package length = 5
+ * GENERAL ANSWER package length = 5 (to gateway only)
  *      byte0 = pkg-id,
  *      byte1 = animal-id of client
  *      byte2 = animal-id of client (double check)
@@ -133,8 +139,10 @@ typedef enum _loraRC_t {
 }loraRC_t;
 
 typedef enum _loraPackageID_t {
+  LORA_PKG_ID_ALL_PKG  = 0x00,
   LORA_PKG_ID_GEN_CALL = 0x11,
   LORA_PKG_ID_GEN_ANSW = 0x12,
+  LORA_PKG_ID_CONFIG   = 0x21,
   LORA_PKG_ID_ACK      = 0x63,
   LORA_PKG_ID_DATA_REQ = 0xa1,
   LORA_PKG_ID_DATA_RDY = 0xa2,
@@ -148,8 +156,12 @@ typedef enum _loraPackageID_t {
 #define LORA_PKG_ONE_SET_LEN 37
 #define LORA_PKG_DATA_REQ_LEN 4
 #define LORA_PKG_DATA_RDY_LEN 5
+#define LORA_PKG_CONFIG_LEN (CONF_DATA_C_PAYLOAD_SIZE + LORA_ECC_LENGTH + 1) //+1 = ID
+#define LORA_BRDCST_MAX_LEN LORA_PKG_CONFIG_LEN
+#define LORA_CLIENT_RECEIVE_PKG_MAX_LEN LORA_BRDCST_MAX_LEN
 
 #define LORA_MIN_TRANS_RSSI -110
+#define LORA_GEN_CALL_INTERVAL 100
 
 #define LORA_ACK  1
 #define LORA_NACK 0
@@ -164,19 +176,21 @@ bool loraSendACK(uint8_t recID, bool ack);
 #ifdef HEIDI_GATEWAY
 void loraGatewayTask(void *pvParameters);
 bool loraDoGeneralCall(void);
-void loraGeneralCall(void);
+int loraGeneralCall(void);
 int  loraRequestData(uint8_t animalID, uint8_t maxSets, int minRSSI = -255);
 #else
 void loraClientTask(void *pvParameters);
 bool loraDataReady(uint8_t dataSetCount);
+void loraAnswerGenCall(uint8_t* recBuffer);
 #endif
-int  loraWaitForDataPackage(loraPackageID_t pkgID, uint8_t *buffer, int bufferSize, int tmOutMs, int *rssi);
+int  loraWaitForDataPackage(loraPackageID_t pkgID, uint8_t *buffer, int bufferSize, int tmOutMs, int *rssi = NULL);
 bool loraSendPackage(uint8_t *buffer, int size);
 
 #ifdef HEIDI_CONFIG_TEST
 bool TestLoRa(void);
 #ifdef HEIDI_GATEWAY
 void loraTestGatewayTask(void *pvParameters);
+void loraTestRequestData(void);
 #else
 void loraTestClientTask(void *pvParameters);
 #endif

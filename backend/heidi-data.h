@@ -42,6 +42,7 @@ typedef __attribute__((__packed__)) struct _t_ConfigDataC{
  uint16_t accAlertThres2;  //alert threshold for acceleration index 2 counter
   uint8_t accNightFactor;  //night modus accThres percent of day modus (100 -> night = day)
 }t_ConfigDataC;
+#define CONF_DATA_C_PAYLOAD_SIZE 17 //consider: there are many functions using this number!
 
 typedef __attribute__((__packed__)) struct _t_ConfigData{
  t_ConfigDataC c;
@@ -73,7 +74,8 @@ typedef __attribute__((__packed__)) struct {
   uint16_t date; // DOS-format: 0-4 Day of the month / 5-8 Month /  9-15 Year offset from 2020
   uint16_t time; // DOS-format: 0-4 Second divided by 2 / 5-10 Minute / 11-15 Hour
   uint16_t battery; //1/1000 volt
-  int16_t  temperature; //1/100 °C
+  int8_t   temperature; //°C
+  uint8_t  animalID;
   uint16_t errCode; //
   uint8_t  GPSpDOP; //horizontal position dilution
   uint8_t  satellites;
@@ -84,6 +86,12 @@ typedef __attribute__((__packed__)) struct {
   uint16_t accThCnt2Spr; //spreading of counter 2 values
   //total size: 32 Bytes;
 }t_SendData;
+
+typedef enum _dtAcc_t {
+  DATA_NO_ACCESS,
+  DATA_PRIMARY_ACCESS,
+  DATA_ACCESS
+}dtAcc_t;
 
 #ifdef SAVE_AOP_DATA
   typedef __attribute__((__packed__)) struct _t_aopData{
@@ -98,7 +106,7 @@ typedef __attribute__((__packed__)) struct {
 #endif
 
 #define DATA_SET_LEN     32 //must be a multiple of 4
-static_assert(sizeof(t_SendData) <= DATA_SET_LEN, "DATA_SET_LEN too small");
+static_assert(sizeof(t_SendData) == DATA_SET_LEN, "wrong DATA_SET_LEN");
 
 #ifdef USE_RTC_FAST_MEM
 #define FAST_MEM_DATA_SETS    252
@@ -147,6 +155,8 @@ extern uint32_t *fastMemBuffer;
 #pragma warning "low data set memory - you may enable RTC fast memory"
 #endif
 
+#define DATA_SET_NOT_FOUND  -1
+
 extern t_ConfigData* heidiConfig;
 extern t_SendData*   availableDataSet[MAX_DATA_SETS];
 extern t_FenceData*  FenceDataSet[FENCE_MAX_POS];
@@ -161,19 +171,34 @@ void     initConfig(bool reset);
 void     initRTCData(bool reset);
 void     initDataSet(t_SendData* DataSet);
 void     initDataSets(t_SendData** sets, int first, int last);
-bool     emptyDataSet(t_SendData* DataSet);
+bool     isEmptyDataSet(t_SendData* DataSet);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
+int      findDataSet(t_SendData* _which);
+bool     addDataSet(t_SendData* _new);
+int      addDataSets(t_SendData* buffer, int cnt);
+bool     eraseDataSet(t_SendData* _which);
+int      eraseDataSets(t_SendData* buffer, int cnt);
 int      packUpDataSets(void);
-void     freeFirstDataSet(void);
+int      getNextnDataSets(int n, t_SendData* buffer, int size);
+bool     freeDataSet(int _which);
+void     setErrorToDataSets(t_SendData* sets, int cnt, uint16_t code);
+
+bool     getPrimaryDataSetAccess(void);
+dtAcc_t  getDataSetAccess(void);
+void     freeDataSetAccess(void);
 
 bool     getState(uint32_t which);
 void     setState(uint32_t which);
 void     clrState(uint32_t which);
 
-String   generateMulti64SendLine(t_SendData** sets, int first, int last);
+String   generateMulti64SendLine(t_SendData* sets, int cnt);
 
 bool     setSettingsFromHTTPresponse(String response);
 bool     newSettingsB64(String b64, t_ConfigDataC* dataBuffer);
+bool     setSettingsFromBuffer(uint8_t* buffer, int size,t_ConfigDataC* dataBuffer);
+bool     setSettingsFromBuffer(uint8_t* buffer, int size,t_ConfigDataC* dataBuffer);
+bool     pushSettingsToBuffer(uint8_t* buffer, int size,t_ConfigDataC* dataBuffer);
+void     checkSettings(t_ConfigDataC* dataBuffer);
 uint16_t clientConfigCRC(t_ConfigDataC* data);
 
 #ifdef HEIDI_GATEWAY
@@ -193,9 +218,6 @@ int32_t  GeoToInt(double geo);
 double   IntToGeo(int32_t val);
 String   b64Encode(uint8_t* Buffer, int length);
 int      b64Decode(String Base64Str, uint8_t* Buffer);
-
-void     testData(void);
-
 String   DateString(tm* timestamp);
 String   TimeString(tm* timestamp);
 String   DOSdateString(uint16_t _dosDate);
@@ -218,13 +240,21 @@ void fastMemReadTask(void *pvParameters);
 void fastMemWriteTask(void *pvParameters);
 #endif
 
+#ifdef HEIDI_CONFIG_TEST
+#define TEST_DATA_COUNT 96
+#ifdef TEST_DATA
+void testData(void);
+#endif
+void loadTestData(void);
+t_SendData* getTestData(int _which);
+
 //void PrintRTCFastMemBufferBoundaries(void);
 #ifdef TEST_RTC
 void testRTC(t_SendData* currentDataSet, tm* bootTime);
 void fillRTCbounary();
 void testRTCbounary();
 #endif
-
+#endif //HEIDI_CONFIG_TEST
 
 
 

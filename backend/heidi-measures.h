@@ -98,8 +98,8 @@
  */
 
 #define TEMP_SENSOR_PIN        GPIO_NUM_22
-#define NO_TEMPERATURE        -127
-#define TEMPERATURE_NOT_SET   -27315
+#define NO_TEMPERATURE        -127 //sent by sensor
+#define TEMPERATURE_NOT_SET   -128 //(0xff)
 
 #ifdef TEMP_SENSOR
 float measureTemperature(void);

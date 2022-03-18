@@ -19,7 +19,7 @@
 #define GPS_HIGH_BAUD    57600   //19200,38400,57600,115200
 #define GPS_MAX_SILENCE_MS 10000 //max time [ms] between 2 position fixes before break measurement (position got lost)
 #define SUFFICIENT_DOP_VALUE 1.5
-#define REQUIRED_DOP_VALUE   8.0
+#define REQUIRED_DOP_VALUE   2.5
 
 #ifdef USE_CASIC_GPS
 #define GPS_GET_SAT gpsData.data->CASnavPV.numSV

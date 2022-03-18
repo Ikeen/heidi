@@ -20,6 +20,8 @@
 #include <Arduino.h>
 #include <stdint.h>
 #include "esp32/ulp.h"
+#include "heidi-defines.h"
+#include "heidi-data.h"
 
 #ifdef ACCELEROMETER
 

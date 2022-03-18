@@ -1,11 +1,11 @@
 <?php
     header("Access-Control-Allow-Origin: *");
-    header("Access-Control-Allow-Methods: POST"); //alles wieder zu POST machen!!!!!!!!!!!!
+    header("Access-Control-Allow-Methods: POST, GET"); //alles wieder zu POST machen!!!!!!!!!!!!
 
     //Connect to database
     $servername = "localhost";
     $username   = "HeidiTracker";
-    $password   = "";
+    $password   = "jETh4dBShgwFawQ";
     $dbname     = "Heidi";
     $herdeID    = '';
 
@@ -16,20 +16,22 @@
         echo "Database Connection failed: " . $conn->connect_error;
         die("Database Connection failed: " . $conn->connect_error);
     }
-    $urlmarker = "X01";
-    if(!empty($_POST[$urlmarker])){
-    //if(isset($_POST['X01']){
+    if(!empty($_GET["X01"]) || !empty($_POST["X01"])){
       //php.ini: max_input_var = 1000 by default; post_max_size = 8M by default
       $stateOK    = TRUE;
       $i          = 1;
       $rounds     = 0; //prevent from running wild
       while(($i > 0) && ($rounds < 100) && $stateOK){
+        if ($i < 10){ $urlmarker = "X0{$i}"; } else { $urlmarker = "X{$i}"; }
+        if (empty($_POST[$urlmarker]) && empty($_GET[$urlmarker])){ break; }
         $rounds++;
-        $urldata = $_POST[$urlmarker];
+        if (empty($_POST[$urlmarker])) { $urldata = $_GET[$urlmarker]; }
+        else { $urldata = $_POST[$urlmarker]; }
         //echo  $urldata . '<br>';
         $b64 = strtr($urldata, '-_', '+/');
         //echo $b64 . "<br>";
         $dec = base64_decode($b64, false);
+        if(!$dec) { continue; }
         //echo bin2hex($dec) . "<br>";
         $data = unpack("C*", $dec);
         $pos = 1;
@@ -38,6 +40,7 @@
         if($count < 7 ) { continue; }
         //uint_8
         $herde = $data[$pos++];
+        if($herde == 0) { continue; }
         if ($herde < 10) { $herde = '000' . $herde; }
         elseif ($herde < 100) { $herde = '00' . $herde; }
         elseif ($herde < 1000) { $herde = '0' . $herde; }
@@ -45,6 +48,7 @@
         //echo $herde . ", " . $pos . "<br>";
         //uint_8
         $animal = $data[$pos++];
+        if($animal == 0) { continue; }
         if ($animal < 10) { $animal = '000' . $animal; }
         elseif ($animal < 100) { $animal = '00' . $animal; }
         elseif ($animal < 1000) { $animal = '0' . $animal; } 
@@ -53,16 +57,22 @@
         //int_32 / 1000000
         $lat = (integer)($data[$pos++] + ($data[$pos++] << 8) + ($data[$pos++] << 16) + ($data[$pos++] << 24));
         $lat /= 1000000;
+        if($lat > 90) { continue; }
+        if($lat < -90) { continue; }
         //echo  $lat . ", " . $pos . "<br>";
         //int_32 / 1000000
         $lng = (integer)($data[$pos++] + ($data[$pos++] << 8) + ($data[$pos++] << 16) + ($data[$pos++] << 24));
         $lng /= 1000000;
+        if($lng > 180) { continue; }
+        if($lng < -180) { continue; }
         //echo  $lng . ", " . $pos . "<br>";
         //int_16 (needs special threadmet)
         if($data[$pos+1] > 127)
         { $alt = (integer)($data[$pos++] + ($data[$pos++] << 8) + (0xFF << 16) + (0xFF << 24)); }
         else
         { $alt = (integer)($data[$pos++] + ($data[$pos++] << 8)); }
+        if($alt > 10000) { continue; }
+        if($alt < -100) { continue; }
         //echo  $alt . ", " . $pos . "<br>";
         //16-bit DOS-date (may base on year 2020)
         $_date = $data[$pos++] + ($data[$pos++] << 8);
@@ -83,46 +93,25 @@
         if ($sec < 10) { $sec = '0' . $sec; }
         $time = $hour . ':' . $min . ':' . $sec;
         //echo  $time . ", " . $pos . "<br>";
+        if (!validateDate($date . " " . $time)){ $i++; continue; }
         //uint_16 / 1000
         $batt = (integer)($data[$pos++] + ($data[$pos++] << 8));
         $batt /= 1000;
+        if ($batt > 9){ $i++; continue; } //check database value boundaries
         //uint_16 / 100
         if($data[$pos+1] > 127)
         { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8) + (0xFF << 16) + (0xFF << 24)); }
         else
         { $temp = (integer)($data[$pos++] + ($data[$pos++] << 8)); }
-        $temp /= 100;
+        //$temp /= 100;
+        if (($temp > 999) || ($temp < -999)){ $i++; continue; } //check database value boundaries
         //echo  "temp: " . $temp . ", " . $pos . "<br>";
         $err = "0x" . strtoupper(dechex((integer)($data[$pos++] + ($data[$pos++] << 8))));
         //echo  "errc: " . $err . ", " . $pos . "<br>";
         $sql0 = "SELECT Count(*) FROM TrackerData WHERE TrackerID = '{$id}' AND TimeStamp = '{$date} {$time}';";
         $sql1 = "INSERT INTO TrackerData (TrackerID, Longitude, Latitude, Altitude, TimeStamp, Battery, Temperature, ErrorCode ";
         $sql2 = "VALUES ('{$id}', '{$lng}', '{$lat}', '{$alt}', '{$date} {$time}', '{$batt}', '{$temp}', '{$err}'";
-        /*
-        if ($count >= 10) {
-          //uint_16 satellites
-          $sql1 .= ', FreeValue1';
-          $sat = (integer)($data[$pos++] + ($data[$pos++] << 8));
-          //echo  "sat: " . $sat . ", " . $pos . "<br>";
-          $sql2 .= ", '{$sat}'";
-        }
-
-        if ($count >= 11) {
-          //int_16 GPShdop
-          $sql1 .= ', FreeValue2';
-          $GPShdop = (integer)($data[$pos++] + ($data[$pos++] << 8));
-          //echo  "GPShdop: " . $GPShdop . ", " . $pos . "<br>";
-          $sql2 .= ", '{$GPShdop}'";
-        }
-
-        if ($count >= 12) {
-          //uint_16 acc threshold 1 counter
-          $sql1 .= ', FreeValue3';
-          $acc1 = (integer)($data[$pos++] + ($data[$pos++] << 8));
-          //echo  "acc1: " . $acc1 . ", " . $pos . "<br>";
-          $sql2 .= ", '{$acc1}'";
-        }
-        */
+        //now add all other parameters
         for ($x = 1; $x <= $count-9; $x++) {
           //uint_16
           $sql1 .= ", FreeValue{$x}";
@@ -130,11 +119,10 @@
           //echo  'FreeValue ' . $x . ': ' . $free . ", " . $pos . "<br>";
           $sql2 .= ", '{$free}'";
         }
-
-        //echo "{$sql1}) {$sql2})" . '<br><br>';
+        //check, if the data set is already in
         if ($sqlres = $conn->query($sql0)){
           if ($row = $sqlres->fetch_row()){
-            if ($row[0] == 0){
+            if ($row[0] == 0){ //no? then push it in
               $sql = "{$sql1}) {$sql2})";
               $stateOK = $conn->query($sql);
             } else { $stateOK = TRUE; }
@@ -146,16 +134,14 @@
           $i = 0;
           $stateOK = FALSE;
         }
-        if ($i < 10){ $urlmarker = "X0{$i}"; } else { $urlmarker = "X{$i}"; }
-        if (empty($_POST[$urlmarker])){ $i = 0; }
       }
       $i=1;
       //$fence_data = array():
       if ($stateOK === TRUE) {
         echo "OK";
-        tellFence($conn, $herdeID);
-        tellSettings($conn, $herdeID);
-        tellTelNo($conn, $herdeID);
+        //tellFence($conn, $herdeID);
+        //tellSettings($conn, $herdeID);
+        //tellTelNo($conn, $herdeID);
       } else {
         echo "Error: " . $sql . "<br>" . $conn->error;
       }
@@ -179,7 +165,7 @@
 function tellFence($conn, $herdeID)
 {
   $sql0 = "SELECT Longitude, Latitude FROM Fence WHERE HerdeID = '{$herdeID}' AND Active = 1;";
-  error_log($sql0);
+  //error_log($sql0);
   if ($sqlres = $conn->query($sql0)){ 
     $fence_data = pack('C', (integer)$sqlres->num_rows);
     $i = 0;
@@ -188,7 +174,7 @@ function tellFence($conn, $herdeID)
       $fence_data .= pack('i', (integer)($row[1]*1000000));
       $i++;
     }
-    error_log("poles: " . $i);
+    //error_log("poles: " . $i);
     $sqlres->close();
     $b64n = base64_encode($fence_data);
     $b64n = strtr($b64n, '+/', '-_');
@@ -309,6 +295,16 @@ function console_log($output, $with_script_tags = true) {
         $js_code = '<script>' . $js_code . '</script>';
     }
     echo $js_code;
+}
+
+function validateDate($date)
+{
+    $d = DateTime::createFromFormat('Y-m-d H:i:s', $date);
+    if($d && $d->format('Y-m-d H:i:s') == $date){
+      return TRUE;
+    }
+    //error_log($date . " is invalid, " . $d->format('Y-m-d H:i:s'));
+    return FALSE;
 }
 
 ?>

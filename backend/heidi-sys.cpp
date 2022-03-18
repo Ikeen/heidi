@@ -499,6 +499,7 @@ uint8_t  _cyleMaxDiff_s(uint8_t hour){ //seconds (max 180 = 5% from 3600)
 uint8_t _currentCycles(){
   return __currentCycles(_night());
 }
+
 uint8_t __currentCycles(bool isNight){
   uint8_t result = heidiConfig->c.bootCycles;
   if(isNight){ result = heidiConfig->c.nightBootCycles;}

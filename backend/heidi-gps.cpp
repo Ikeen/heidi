@@ -921,7 +921,6 @@ int GPSuploadAOPdata(void){
  * Prints data sent by module during startup. maybe helpful to explore
  * hardware and firmware versions
  */
-#if (DEBUG_LEVEL > 0 )
 #ifdef DEBUG_SERIAL_GPS
 void GPSprintBootData(void){
 #ifndef I2C_SWITCH
@@ -945,6 +944,8 @@ if(powerOnReset){
 #endif //I2C_SWITCH
 }
 #endif //DEBUG_SERIAL_GPS
+
+#ifdef TEST_GPS
 void testGPS(){
   int startMs = millis();
   while ((SerialGPS.available() == 0) && ((millis() - startMs) < 60000)) { pause(10); }
@@ -971,21 +972,22 @@ void testGPS(){
     _D(DebugPrintln("Could not fetch GPS", DEBUG_LEVEL_1));
   }
 }
+#endif
 
+_DD(
 void _PrintDataGPS(){
-  _DD(DebugPrint("Latitude= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(GPS_GET_LAT, 6, DEBUG_LEVEL_3));
-  _DD(DebugPrint(" Longitude= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(GPS_GET_LON, 6, DEBUG_LEVEL_3));
-  _DD(DebugPrint(" Altitude= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(GPS_GET_ALT, 6, DEBUG_LEVEL_3));
-  _DD(DebugPrint(" Date= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(String(GPS_GET_YR) + "-" + String(GPS_GET_MO) + "-" + String(GPS_GET_DY), DEBUG_LEVEL_3));
-  _DD(DebugPrint(" Time= ", DEBUG_LEVEL_3));
-  _DD(DebugPrint(String(GPS_GET_HR) + ":" + String(GPS_GET_MI) + ":" + String(GPS_GET_SE), DEBUG_LEVEL_3));
-  _DD(DebugPrint(" Sat= ", DEBUG_LEVEL_3));
-  _DD(DebugPrintln(GPS_GET_SAT, DEBUG_LEVEL_3));
+  DebugPrint("Latitude= ", DEBUG_LEVEL_3);
+  DebugPrint(GPS_GET_LAT, 6, DEBUG_LEVEL_3);
+  DebugPrint(" Longitude= ", DEBUG_LEVEL_3);
+  DebugPrint(GPS_GET_LON, 6, DEBUG_LEVEL_3);
+  DebugPrint(" Altitude= ", DEBUG_LEVEL_3);
+  DebugPrint(GPS_GET_ALT, 6, DEBUG_LEVEL_3);
+  DebugPrint(" Date= ", DEBUG_LEVEL_3);
+  DebugPrint(String(GPS_GET_YR) + "-" + String(GPS_GET_MO) + "-" + String(GPS_GET_DY), DEBUG_LEVEL_3);
+  DebugPrint(" Time= ", DEBUG_LEVEL_3);
+  DebugPrint(String(GPS_GET_HR) + ":" + String(GPS_GET_MI) + ":" + String(GPS_GET_SE), DEBUG_LEVEL_3);
+  DebugPrint(" Sat= ", DEBUG_LEVEL_3);
+  DebugPrintln(GPS_GET_SAT, DEBUG_LEVEL_3);
 }
-#endif //(DEBUG_LEVEL > 0 )
-
+)
 #endif //GPS_MODULE

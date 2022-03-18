@@ -130,6 +130,7 @@ bool GSMcloseHTTPconnection(void)
 }
 
 bool GSMsendLine(String line){
+  if(line == ""){ return true; }
   _DD(DebugPrintln("SEND: " + line, DEBUG_LEVEL_3);)
   int HTTPtimeOut = line.length() * 10 + 5000;
   if (HTTPtimeOut < 20000) {HTTPtimeOut = 20000;}
@@ -481,11 +482,13 @@ int _responseGetInt(int position, String response, int errValue){
   }
   return errValue;
 }
-
+#ifdef TEST_GSM
 void testGSM(void){
   String Sendline = "ID=" + _herdeID();
   if(openGSM()){
     if (GSMsetup()){
+      GSMCheckSignalStrength();
+      /*
       Serial.println("SEND: " + Sendline);
       int HTTPtimeOut = Sendline.length() * 20 + 1000;
       if (HTTPtimeOut < 10000) {HTTPtimeOut = 10000;}
@@ -502,6 +505,7 @@ void testGSM(void){
       } else {
         Serial.println("HTTP send Line error: " + String(HTTPrc));
       }
+      */
     }
     GSMshutDown();
     closeGSM();
@@ -527,4 +531,5 @@ void GSMCheckSignalStrength(){
   }
 }
 )
+#endif //TEST_GSM
 #endif //GSM_MODULE

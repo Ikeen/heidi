@@ -23,14 +23,6 @@ bool getError(uint16_t code){
 void setError(t_SendData* DataSet, uint16_t code){
   DataSet->errCode |= code;
 }
-void setError(t_SendData** sets, int first, int last, uint16_t code){
-  int current = first;
-  while (current <= last){
-    t_SendData* set = sets[current];
-    setError(set, code);
-    current++;
-  }
-}
 void rmError(t_SendData* DataSet, uint16_t code){
   DataSet->errCode &= ~code;
 }

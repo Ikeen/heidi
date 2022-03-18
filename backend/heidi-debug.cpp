@@ -12,6 +12,7 @@
 #include "heidi-acc.h"
 #include "heidi-sys.h"
 #include "heidi-fence.h"
+#include "heidi-data.h"
 #include <esp32/ulp.h>
 
 static bool dbgInUse;
@@ -81,12 +82,16 @@ void _PrintDataSet(t_SendData* DataSet, int dLevel){
 void _PrintShortSummary(int dLevel){
   for(int i=0; i<allDataSets; i++){
     t_SendData* DataSet = availableDataSet[i];
-    if (!emptyDataSet(availableDataSet[i])){
-      DebugPrint("Data set " + String(i) + ": ", dLevel);
-      DebugPrint(LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), dLevel);
-      DebugPrintln("; " + String(DataSet->errCode, HEX), dLevel);
+    if (!isEmptyDataSet(availableDataSet[i])){
+      _PrintShortSet(availableDataSet[i], i, dLevel);
     }
   }
+}
+void _PrintShortSet(t_SendData* DataSet, int n, int dLevel){
+  DebugPrint("Data set " + String(n) + ": [" + LenTwo(String(DataSet->temperature)) + "] ", dLevel); //temperature = data set ID [0x01 .. 0x60] in test data
+  DebugPrint(LenTwo(String(dosYear(DataSet->date))) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))) + " ", dLevel);
+  DebugPrint(LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), dLevel);
+  DebugPrintln("; " + String(DataSet->errCode, HEX), dLevel);
 }
 
 void _PrintFence(int dLevel){
@@ -100,17 +105,40 @@ void _PrintFence(int dLevel){
 }
 void _PrintHeidiConfig(int dLevel){
   DebugPrintln("", dLevel);
-  DebugPrintln("heidi-config:", dLevel);
+  DebugPrintln("heidi-config [len = " + String(sizeof(t_ConfigDataC)) + "]:", dLevel);
   t_ConfigData* heidiConfig = (t_ConfigData*)&(RTC_SLOW_MEM[RTC_DATA_SPACE_OFFSET]);
-  DebugPrintln("bootNumber:      " + String(heidiConfig->bootNumber), dLevel);
   DebugPrintln("bootCycles:      " + String(heidiConfig->c.bootCycles), dLevel);
   DebugPrintln("sleepMinutes:    " + String(heidiConfig->c.sleepMinutes), dLevel);
-  DebugPrintln("nightHourStart:  " + String(heidiConfig->c.nightHourStart), dLevel);
-  DebugPrintln("nightHourEnd:    " + String(heidiConfig->c.nightHourEnd), dLevel);
   DebugPrintln("nightBootCycles: " + String(heidiConfig->c.nightBootCycles), dLevel);
   DebugPrintln("nightSleepMin:   " + String(heidiConfig->c.nightSleepMin), dLevel);
-  DebugPrintln("lastTimeDiffMs:  " + String(heidiConfig->lastTimeDiffMs), dLevel);
+  DebugPrintln("nightHourStart:  " + String(heidiConfig->c.nightHourStart), dLevel);
+  DebugPrintln("nightHourEnd:    " + String(heidiConfig->c.nightHourEnd), dLevel);
+
+  DebugPrintln("distAlertThres:  " + String(heidiConfig->c.distAlertThres), dLevel);
+  DebugPrintln("accThres1:       " + String(heidiConfig->c.accThres1), dLevel);
+  DebugPrintln("accAlertThres1:  " + String(heidiConfig->c.accAlertThres1), dLevel);
+  DebugPrintln("accThres2:       " + String(heidiConfig->c.accThres2), dLevel);
+  DebugPrintln("accAlertThres2:  " + String(heidiConfig->c.accAlertThres2), dLevel);
+  DebugPrintln("accNightFactor:  " + String(heidiConfig->c.accNightFactor), dLevel);
+  DebugPrintln("checksum:        " + String(clientConfigCRC(&heidiConfig->c), HEX), dLevel);
 }
+/*
+  buffer[0] = dataBuffer->bootCycles;
+  buffer[1] = dataBuffer->nightBootCycles;
+  buffer[2] = dataBuffer->sleepMinutes;
+  buffer[3] = dataBuffer->nightSleepMin;
+  buffer[4] = dataBuffer->nightHourStart;
+  buffer[5] = dataBuffer->nightHourEnd;
+  _copyUint16toBuffer(buffer, 6, dataBuffer->distAlertThres);
+  _copyUint16toBuffer(buffer, 8, dataBuffer->accThres1);
+  _copyUint16toBuffer(buffer,10, dataBuffer->accAlertThres1);
+  _copyUint16toBuffer(buffer,12, dataBuffer->accThres2);
+  _copyUint16toBuffer(buffer,14, dataBuffer->accAlertThres2);
+  buffer[16] = dataBuffer->accNightFactor;
+  return true;
+
+ */
+
 
 void checkWakeUpReason(){
   esp_sleep_wakeup_cause_t wakeup_reason = getWakeUpReason();
@@ -139,6 +167,20 @@ void _PrintNotDoneGSMHandling(int dLevel){
         #endif
       }
       DebugPrintln("[GSM]: would transmit " + String(dataSets) + " data sets to " + HEIDI_SERVER_PUSH_URL, dLevel);
+      int buffersize = (MAX_DATA_SETS_PER_SEND_LINE * sizeof(t_SendData));
+      t_SendData* buffer = (t_SendData*)malloc(buffersize);
+      if (buffer != NULL){
+        int setsSent = MAX_DATA_SETS_PER_SEND_LINE;
+        while (setsSent > 0){
+          setsSent = getNextnDataSets(MAX_DATA_SETS_PER_SEND_LINE, buffer, buffersize);
+          if(setsSent > 0){
+            String sendLine = generateMulti64SendLine(buffer, setsSent);
+            DebugPrintln("[GSM]: " + sendLine, dLevel);
+            eraseDataSets(buffer, setsSent);
+          }
+        }
+        free(buffer);
+      }
       clrState(RESET_INITS);
       clrState(TRSMT_DATA_ERROR);
       for(int i = 0; i < dataSets; i++) { initDataSet(availableDataSet[i]); }

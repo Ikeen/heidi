@@ -25,8 +25,6 @@ bool powerOnReset;
 int  timeOut;
 
 HardwareSerial HeidiDBSerial(1);
-int i = 0;
-int l = 0;
 
 void setup() {
   t_SendData* currentDataSet;
@@ -72,13 +70,12 @@ void setup() {
   #endif
 
   #ifdef USE_LORA
-  setupLoraTask();
+  //setupLoraTask();
   #endif
 
   //prepare free data set
-  freeFirstDataSet();
+  if (!freeDataSet(0)){ _D(DebugPrintln("BOOT: unable to free 1st data set", DEBUG_LEVEL_1);) }
   currentDataSet = availableDataSet[0];
-
   #ifdef ACCELEROMETER
   //need to set this here because getting position needs various time
   currentDataSet->accThresCnt1 = get_accel_excnt1_ULP();
@@ -90,16 +87,16 @@ void setup() {
      DebugPrintln("accel threshold 2 count: " + String(currentDataSet->accThresCnt2), DEBUG_LEVEL_2);)
   #endif
 
+  #ifdef HEIDI_CONFIG_TEST
+  doTests(currentDataSet);
+  #endif
+
   /*setupSystemDateTime opens / checks GPS*/
   if (!setupSystemBootTime(&bootTime, timeOut)) {
     heidiConfig->bootNumber = REFETCH_SYS_TIME;
     if(GPSalert()){ gotoSleep(SLEEP_DUR_ALERT); } else { gotoSleep(SLEEP_DUR_NOTIME); }
   }
   _D( DebugPrintln("System boot time: " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1); PRINT_CYCLE_STATUS )
-
-  #ifdef HEIDI_CONFIG_TEST
-  doTests(currentDataSet);
-  #endif
 
   if(!GPSalert()){ checkCycle(); }
   // test alerts: comment in next line
@@ -151,9 +148,10 @@ void loop()
 
 
 void finalizeDataSet(t_SendData* currentDataSet){
+  currentDataSet->animalID = animalID();
   #ifdef TEMP_SENSOR
-  currentDataSet->temperature = (int16_t)(measureTemperature()*100.0);
-  _D(DebugPrintln("Temperature: " + String(((float)currentDataSet->temperature / 100)) + "C", DEBUG_LEVEL_1);)
+  currentDataSet->temperature = (int8_t)round(measureTemperature());
+  _D(DebugPrintln("Temperature: " + String(currentDataSet->temperature) + " C", DEBUG_LEVEL_1);)
   #endif
   #ifndef ACCELEROMETER
     #ifdef TRACK_HEIDI_STATE
@@ -242,19 +240,24 @@ void transmitData(t_SendData* currentDataSet){
   if(openGSM()){
     if (GSMsetup()){
       if (GSMopenHTTPconnection(HEIDI_SERVER_PUSH_URL)){
-        int dataSets = packUpDataSets();
-        _D(DebugPrintln("data sets to send: " + String(dataSets), DEBUG_LEVEL_2);)
-        while (setsSent < dataSets){
-          int nextBd = setsSent + MAX_DATA_SETS_PER_LINE;
-          if (nextBd > dataSets) { nextBd = dataSets; }
-          sendLine = generateMulti64SendLine(availableDataSet, setsSent, nextBd - 1);
-          if(GSMsendLine(sendLine)){
-            initDataSets(availableDataSet, setsSent, nextBd - 1);
-            _D(cnt += setsSent);
-          } else {
-            setError(availableDataSet, setsSent, nextBd - 1, E_GSM_TRANSMISSION_FAILED);
+        int buffersize = (MAX_DATA_SETS_PER_SEND_LINE * sizeof(t_SendData));
+        t_SendData* buffer = (t_SendData*)malloc(buffersize);
+        if (buffer != NULL){
+          setsSent = MAX_DATA_SETS_PER_SEND_LINE;
+          while (setsSent > 0){
+            setsSent = getNextnDataSets(MAX_DATA_SETS_PER_SEND_LINE, buffer, buffersize);
+            if(setsSent > 0){
+              sendLine = generateMulti64SendLine(buffer, setsSent);
+              if(GSMsendLine(sendLine)){
+                eraseDataSets(buffer, setsSent);
+                _D(cnt += setsSent;)
+              } else {
+                setErrorToDataSets(buffer, setsSent, E_GSM_TRANSMISSION_FAILED);
+                break; //something to do: try next data... we need to remember which data was already tried
+              }
+            }
           }
-          setsSent = nextBd;
+          free(buffer);
         }
         _D(DebugPrintln("GSM: " + String(cnt) + " data sets sent successfully", DEBUG_LEVEL_1);)
         sendLine = "ID=" + _herdeID(); //get settings
@@ -481,39 +484,39 @@ void setupWatchDog(uint32_t timeOutMs){
   }
 }
 
-
 #ifdef HEIDI_CONFIG_TEST
 //extern uint8_t bootTimeTable[MAX_CYCLES_PER_DAY][3];
 
 void doTests(t_SendData* currentDataSet){
+  return;
+
   //disable watchdog
-  /*
   if (watchd != NULL) {
     esp_timer_stop(watchd);
     esp_timer_delete(watchd);
     watchd = NULL;
   }
-  */
   //testGeoFencing();
-  //testData();
+  #ifdef TEST_DATA
+  testData();
+  #endif
   #ifdef TEST_RTC
   testRTC(currentDataSet, &bootTime);
   #endif
-  #ifdef GSM_MODULE
-  //if (volt >= GSM_MINIMUM_VOLTAGE){ GSMCheckSignalStrength(); }
+  #ifdef TEST_GSM
+  testGSM();
   #endif
-  #ifdef GPS_MODULE
-  //testGPS();
+  #ifdef TEST_GPS
+  testGPS();
   #endif
   #ifdef TEMP_SENSOR
   //_D(DebugPrintln("Temperature: " + String(MeasureTemperature()), DEBUG_LEVEL_1);)
   #endif
   #ifdef TEST_ACC
-  TEST_ACC_MACRO
+  //TEST_ACC_MACRO
   #endif
   #ifdef TEST_LORA
   TestLoRa();
-  //uxTaskGetStackHighWaterMark(taskHandle)
   #endif
   /*
    * now just testing code...
@@ -539,7 +542,6 @@ void doTests(t_SendData* currentDataSet){
   if(isFixPointCycle()) {_D(DebugPrintln("Fixpoint", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1);) }
   _D(DebugPrintln("setup_size = " + String(sizeof(_t_ConfigData)), DEBUG_LEVEL_1);)
 #endif
-  checkGPSposition(currentDataSet, timeOut, powerOnReset); //closes GPS
   gotoSleep(30000);
 }
 

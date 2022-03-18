@@ -47,6 +47,7 @@
  *                         if the ublox-protocol won't work - maybe you got a fake module (as it happened to me) -
  *                         to find it out, enable DEBUG_SERIAL_GPS in heidi-debug.h and have a look on the boot prints
  *                         of the module. If you find something like "IC=AT6558-5N..." and "SW=URANUS4..." - bingo!
+ * USE_OLED              - use SSD1306 OLED display - just for testing purposes
  * DEFAULT_BOOT_CYCLES   - boot cycles until transferring data (if there is no setup stored in flash)
  * DEFAULT_CYCLE_DURATION- in minutes (if there is no setup stored in flash)
  * MAX_AWAKE_TIME_POWER  - extended measuring time after power up or in case of bad GPS-conditions (minutes)
@@ -69,10 +70,11 @@
 //#define USE_GPS_ALERT
 //#define SEND_ALERT_SMS
 //#define PRE_MEASURE_HANDLING
-#define DEFAULT_BOOT_CYCLES         4         // ..until transferring data
-#define DEFAULT_CYCLE_DURATION      15        // 15 minutes
-#define MAX_AWAKE_TIME_POWER        5         //  5 minutes
+#define DEFAULT_BOOT_CYCLES         10        // ..until transferring data
+#define DEFAULT_CYCLE_DURATION      6         // 15 minutes
+#define MAX_AWAKE_TIME_POWER        3         //  5 minutes
 #define MAX_AWAKE_TIME_TIMER        2         //  2 minutes
+#define DEFAULT_DIST_ALERT_THRES    100      // meters
 #endif
 #ifdef HEIDI_CONFIG_2
 #define LORA_V1_3_OLED
@@ -95,19 +97,34 @@
 //#define SAVE_AOP_DATA
 #define DEFAULT_BOOT_CYCLES         12        // ..until transferring data
 #define DEFAULT_CYCLE_DURATION      15        // 15 minutes
-#define MAX_AWAKE_TIME_POWER        5         //  5 minutes
+#define MAX_AWAKE_TIME_POWER        3         //  5 minutes
 #define MAX_AWAKE_TIME_TIMER        2         //  2 minutes
+#define DEFAULT_DIST_ALERT_THRES    100      // meters
 #endif
 #ifdef HEIDI_CONFIG_TEST
+
 #define USE_HEIDI_CONFIG_1_PINS
 #define LORA_V1_3_OLED
+#define HEIDI_GATEWAY
+#ifdef HEIDI_GATEWAY
+  //#define GSM_MODULE
+  #define GPS_MODULE
+  #define USE_CASIC_GPS
+  #define TEMP_SENSOR
+  //#define USE_LORA
+  #define DEFAULT_BOOT_CYCLES         12       // ..until transferring data
+  #define DEFAULT_CYCLE_DURATION      15       // 5 minutes
+  #define MAX_AWAKE_TIME_POWER        3        // 0 = infinite
+  #define MAX_AWAKE_TIME_TIMER        2        // 0 = infinite
+  #define DEFAULT_DIST_ALERT_THRES    100      // meters
+#else
 //#define GSM_MODULE
 #define GPS_MODULE
 //#define USE_CASIC_GPS
 #define COMMON_SERIAL
 //#define TEMP_SENSOR
 //#define CHECK_BATTERY
-//#define USE_LORA
+#define USE_LORA
 //#define USE_NO_MEASURES
 //#define USE_NO_POSITION
 //#define USE_VOLTAGE_MEAS_PIN
@@ -123,12 +140,28 @@
 //#define USE_RTC_FAST_MEM
 //#define SAVE_AOP_DATA
 //#define USE_AOP_STATUS
-#define DEFAULT_BOOT_CYCLES         4        // ..until transferring data
-#define DEFAULT_CYCLE_DURATION      5        // 5 minutes
-#define MAX_AWAKE_TIME_POWER        5        // 0 = infinite
+#endif
+#define DEFAULT_BOOT_CYCLES         10       // ..until transferring data
+#define DEFAULT_CYCLE_DURATION      6        // 5 minutes
+#define MAX_AWAKE_TIME_POWER        3        // 0 = infinite
 #define MAX_AWAKE_TIME_TIMER        2        // 0 = infinite
+#define DEFAULT_DIST_ALERT_THRES    100      // meters
 //#undef DEBUG_LEVEL
 //#define DEBUG_LEVEL 3
+#endif
+/*
+ * test defines
+ */
+#ifdef HEIDI_CONFIG_TEST
+//#define DEBUG_SERIAL_GPS
+//#define MEAS_ACQUIRNG_TIME
+//#define TRACK_HEIDI_STATE
+//#define TEST_ON_BOOT
+//#define TEST_RTC
+//#define TEST_DATA
+//#define TEST_GSM
+//#define TEST_ACC
+//#define TEST_LORA
 #endif
 
 /*
@@ -146,20 +179,23 @@
 #define HEIDI_ANIMAL        1
 #endif
 #ifdef HEIDI_CONFIG_TEST
-#define HEIDI_GATEWAY
-#define HEIDI_HERDE         3
+#define HEIDI_HERDE         2
 #ifdef HEIDI_GATEWAY
-#define HEIDI_ANIMAL        1
+#define HEIDI_ANIMAL        HEIDI_GATEWAY_ADDRESS
 #else
 #define HEIDI_ANIMAL        4
-#define USE_OLED
 #endif
 #endif
 
 /*
  * system defines
  */
-#define HEIDI_MAX_CLIENTS 32
+#define HEIDI_MAX_CLIENTS  32   //currently not more than 32 are supported because they are represented in a uint32_t bitmap
+#define HEIDI_GATEWAY_ADDRESS 1 //address 0 = not set = empty data set
+#define HEIDI_FIRST_CLIENT 2
+#define MAX_DATA_SETS_PER_SEND_LINE 96
+
+
 /*
  * timing defines
  */

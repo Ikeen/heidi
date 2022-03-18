@@ -33,7 +33,6 @@
  * consider GSM-module max buffer (in case of SIM800L 312kByte) 1 data set will be encoded to an about
  * 64 byte base64 string (including overhead).
  */
-#define MAX_DATA_SETS_PER_LINE 96
 
 bool openGSM();
 void closeGSM();
@@ -64,13 +63,15 @@ bool   GSMwriteDown(const String payload);
 bool GSMsetCFUN(uint32_t timeOutMS);
 bool GSMwaitPIN(uint32_t timeOutMS);
 
-void testGSM(void);
 
 int  _responseGetIntKeyWord(int position, String keyWord, int errValue = -1);
 int  _responseGetInt(int position, int errValue = -1);
 int  _responseGetInt(int position, String response, int errValue);
 
+#ifdef TEST_GSM
+void testGSM(void);
 _D(void   GSMCheckSignalStrength();)
+#endif
 
 #endif /*GSM_MODULE*/
 #endif /* HEIDI_GSM_H_ */
