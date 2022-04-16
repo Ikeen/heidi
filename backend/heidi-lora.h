@@ -48,14 +48,20 @@
  */
 #define LORA_BANDWIDTH   500E3 //250E3 // BW/2 ~ +3-4 dB SNR
 #define LORA_SPERADING_F 9     //spreading factor7..12 -> +1 ~ +2.5 dB SNR
-#define LORA_TX_POWER    14    //18
+#define LORA_TX_POWER    18    //14
 #define LORA_PREAMB_LEN  6     //preamble length
 #define LORA_CR_DENOMNTR 5     //code rate denominator 5..8 -> 4/5 .. 4/8
 
 #define LORA_ACK_SPREAD_F  9
-#define LORA_ACK_TX_PWR   18
+#define LORA_ACK_TX_PWR    20  //18
 #define LORA_ACK_PREA_LEN  6
 #define LORA_ACK_CR_DEN    8
+
+#define LORA_MIN_TRANS_RSSI -122 //-110
+#define LORA_MIN_TRANS_SNR   -10 // 0
+#define LORA_NO_RSSI -1024
+#define LORA_NO_SNR  -1024
+
 /*
  * some specifications:
  * we use: BW=500kHz, SF=9, CR=4/5, preamble = 6, no CRC
@@ -68,10 +74,14 @@
  * for our setup we got:
  *
  *   1.. 3 bytes = 18.7 ms  (acknowledge  1 byte id = 63[ack] / 62[nack])
- *   4.. 8 bytes = 23.8 ms  (acknowledge  1 byte id = 63[ack] / 62[nack])
- *   9..12 bytes = 28.9 ms  (acknowledge  1 byte id = 63[ack] / 62[nack])
+ *   4.. 8 bytes = 23.8 ms
+ *   9..12 bytes = 28.9 ms
+ *  13..17 bytes = 34.0 ms
  *  18..21 bytes = 39.2 ms
- *  33..37 bytes = 59.7 ms  (1 data set + 3 bytes EEC-length + id = 0xb1 + package number no)
+ *  22..26 bytes = 44.3 ms
+ *  27..30 bytes = 49.4 ms
+ *  31..35 bytes = 54.5 ms
+ *  36..40 bytes = 59.7 ms  (1 data set + 3 bytes EEC-length + id = 0xb1 + package number no)
  *  69..73 bytes = 100.6 ms (2 data sets + 8 bytes EEC-length + id = 0xb5 + 1st package number no)
  *
  */
@@ -79,11 +89,15 @@
 /*
  * ACK package length = 3, byte1 = pkg-id, byte2 = animal-id, byte3 = ack/nack
  */
-#define LORA_ACK_OFFSET_TIME_MS  15
+#define LORA_ACK_OFFSET_TIME_MS  30
 #define LORA_ACK_PKG_DURATION_MS 30
 #define LORA_ACK_TIMEOUT_MS  (LORA_ACK_OFFSET_TIME_MS +  LORA_ACK_PKG_DURATION_MS) //package on air time + 30 ms
-#define LORA_MAX_REPEATS       3
-#define LORA_MAx_PACKAGE_NO    254
+#define LORA_DTA_OFFSET_TIME_MS  15
+#define LORA_DTA_PKG_DURATION_MS 70 //consider DATA_SET_LEN!!!!
+#define LORA_DTA_TIMEOUT_MS  (LORA_DTA_OFFSET_TIME_MS +  LORA_DTA_PKG_DURATION_MS) //package on air time + 30 ms
+#define LORA_MAX_TRIES         2
+#define LORA_MAX_PKG_LOSS      2
+#define LORA_MAX_PACKAGE_NO    254
 #define LORA_NO_PACKAGE_NO     0xff
 #define LORA_ECC_LENGTH        3      //"guardian bytes", Max corrected bytes ECC_LENGTH/2
 /*
@@ -153,14 +167,15 @@ typedef enum _loraPackageID_t {
 #define LORA_PKG_GEN_CALL_LEN 9
 #define LORA_PKG_GEN_ANSW_LEN 5
 #define LORA_PKG_ACK_LEN (3 + 1) //round up to 4
-#define LORA_PKG_ONE_SET_LEN 37
 #define LORA_PKG_DATA_REQ_LEN 4
 #define LORA_PKG_DATA_RDY_LEN 5
 #define LORA_PKG_CONFIG_LEN (CONF_DATA_C_PAYLOAD_SIZE + LORA_ECC_LENGTH + 1) //+1 = ID
+#define LORA_PKG_ONE_SET_LEN (DATA_SET_LEN + LORA_ECC_LENGTH + 2) //+2 = ID and pgkNo
 #define LORA_BRDCST_MAX_LEN LORA_PKG_CONFIG_LEN
 #define LORA_CLIENT_RECEIVE_PKG_MAX_LEN LORA_BRDCST_MAX_LEN
 
-#define LORA_MIN_TRANS_RSSI -110
+
+#define LORA_MAX_PKGS_PER_TRANSMISSION 8
 #define LORA_GEN_CALL_INTERVAL 100
 
 #define LORA_ACK  1
@@ -171,23 +186,30 @@ void closeLoraTask(void);
 
 bool SetupLoRa(void);
 void CloseLoRa(void);
+bool endLoraTask(void);
 bool loraWaitForACK(int* rssi = NULL);
 bool loraSendACK(uint8_t recID, bool ack);
 #ifdef HEIDI_GATEWAY
 void loraGatewayTask(void *pvParameters);
 bool loraDoGeneralCall(void);
-int loraGeneralCall(void);
-int  loraRequestData(uint8_t animalID, uint8_t maxSets, int minRSSI = -255);
+int  loraGeneralCall(void);
+int  loraRequestData(uint8_t animalID, uint8_t maxSets, int minRSSI = LORA_NO_RSSI, float minSNR = LORA_NO_SNR);
+void loraLoadData(void);
+void loraLoadDataSets(uint8_t clientID, int dataSets);
+bool loraBroadcastSettings(void);
 #else
+int  loraSendDataSets(int setsToSend);
 void loraClientTask(void *pvParameters);
 bool loraDataReady(uint8_t dataSetCount);
 void loraAnswerGenCall(uint8_t* recBuffer);
+bool loraDecodeConfigData(uint8_t* data);
+bool loraSendData(t_SendData* data, uint8_t pkgNo, int maxTries);
 #endif
-int  loraWaitForDataPackage(loraPackageID_t pkgID, uint8_t *buffer, int bufferSize, int tmOutMs, int *rssi = NULL);
+int  loraWaitForDataPackage(loraPackageID_t pkgID, uint8_t *buffer, int bufferSize, int tmOutMs, int *rssi = NULL, float *snr = NULL);
 bool loraSendPackage(uint8_t *buffer, int size);
 
 #ifdef HEIDI_CONFIG_TEST
-bool TestLoRa(void);
+void TestLoRa(int maxTestDurationMS);
 #ifdef HEIDI_GATEWAY
 void loraTestGatewayTask(void *pvParameters);
 void loraTestRequestData(void);

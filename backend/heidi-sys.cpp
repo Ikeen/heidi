@@ -219,11 +219,11 @@ bool isInCycle(void){
   while(cnt < MAX_CYCLES_PER_DAY){
     if (bootTimeTable[cnt][2] == CYCLE_NOT_SET) { cnt++; continue; } //should never happen
     bool upperwrap = false;
-    int upperborder = (bootTimeTable[cnt][1] * 3600) + (bootTimeTable[cnt][0] * 60) + _cyleMaxDiff_s(bootTimeTable[cnt][1]);
+    int upperborder = (bootTimeTable[cnt][1] * 3600) + (bootTimeTable[cnt][0] * 60) - HEIDI_EARLIER_WAKEUP_S + _cyleMaxDiff_s(bootTimeTable[cnt][1]);
     upperborder *= S_TO_mS_FACTOR;
     if (upperborder > MS_PER_DAY) { upperwrap = true; upperborder -= MS_PER_DAY; }
     bool lowerwrap = false;
-    int lowerborder = (bootTimeTable[cnt][1] * 3600) + (bootTimeTable[cnt][0] * 60) - _cyleMaxDiff_s(bootTimeTable[cnt][1]);
+    int lowerborder = (bootTimeTable[cnt][1] * 3600) + (bootTimeTable[cnt][0] * 60) - HEIDI_EARLIER_WAKEUP_S - _cyleMaxDiff_s(bootTimeTable[cnt][1]);
     lowerborder *= S_TO_mS_FACTOR;
     if (lowerborder > MS_PER_DAY) { lowerwrap = true; lowerborder += MS_PER_DAY; }
     nextBootTableEntry = cnt;
@@ -255,6 +255,7 @@ bool isInCycle(void){
     expBootTime.tm_hour = bootTimeTable[currentBootTableEntry][1];
     expBootTime.tm_min  = bootTimeTable[currentBootTableEntry][0];
     expBootTime.tm_sec  = 0;
+
   } else {
     nextBootTableEntry = cnt;
     if (nextBootTableEntry >= MAX_CYCLES_PER_DAY) { nextBootTableEntry = 0; }
@@ -264,7 +265,18 @@ bool isInCycle(void){
     expBootTime.tm_min  = bootTimeTable[nextBootTableEntry][0];
     expBootTime.tm_sec  = 0;
   }
-  expectedBootTimeMs  = expBootTime.tm_hour * 3600 + expBootTime.tm_min * 60;
+  #if (HEIDI_EARLIER_WAKEUP_S > 0)
+  expBootTime.tm_sec = 60 - HEIDI_EARLIER_WAKEUP_S;
+  expBootTime.tm_min--;
+  if(expBootTime.tm_min < 0){
+    expBootTime.tm_min += 60;
+    expBootTime.tm_hour--;
+    if(expBootTime.tm_hour < 0){
+      expBootTime.tm_hour += 24;
+    }
+  }
+  #endif
+  expectedBootTimeMs  = expBootTime.tm_hour * 3600 + expBootTime.tm_min * 60 + expBootTime.tm_sec;
   expectedBootTimeMs *= S_TO_mS_FACTOR;
   if (!calcCurrentTimeDiff()) { return false; };
   _D(
@@ -301,6 +313,11 @@ int  getNextBootMS(){
   return result;
 }
 
+void setToOverNextBoot(void){
+  nextBootTableEntry++;
+  if(nextBootTableEntry >= bootTableLength()) { nextBootTableEntry = 0; }
+}
+
 /*
  * returns the millisecond time difference to the next cycle in table,
  * counted from the current boot time
@@ -309,7 +326,7 @@ int  timeToNextBootMS(){
   int result;
   if (GPSalert()){
     _DD(DebugPrintln("timeToNextBoot = ALERT Boot time: ", DEBUG_LEVEL_3);)
-    result = SLEEP_DUR_ALERT;
+    return SLEEP_DUR_ALERT;
   } else {
     result = getNextBootMS();
     if ((result == NO_TIME_MS) || (bootTimeStampMs == NO_TIME_MS)) { return getCycleTimeMS(); }
@@ -317,7 +334,7 @@ int  timeToNextBootMS(){
     if (result < 0) { result += MS_PER_DAY; }
   }
   _DD(DebugPrintln("timeToNextBoot (seconds): " + String(lround( result / 1000)), DEBUG_LEVEL_3);)
-  return result;
+  return (result - HEIDI_EARLIER_WAKEUP_MS);
 }
 /*
  * returns true if the current cycle is one for data transmission
@@ -394,7 +411,7 @@ bool calcCurrentTimeDiff(){
 }
 
 void pause(uint32_t ms){
-  uint32_t ticks = pdMS_TO_TICKS(ms) + 0.5;
+  uint32_t ticks = (pdMS_TO_TICKS(ms) + 0.5);
   if(ticks == 0) { ticks = 1; }
   vTaskDelay(ticks);
 }
@@ -716,3 +733,26 @@ float mkFloat(uint32_t val){
   *py = val;
   return y;
 }
+
+#ifdef HEIDI_CONFIG_TEST
+void testCycles(bool powerOnReset){
+  if(powerOnReset){
+    for(int i=0; i<bootTableLength(); i++){
+      _D(DebugPrintln("Table entry " + String (i) + ", " + LenTwo(String(bootTimeTable[i][1]))
+          + ":" + LenTwo(String(bootTimeTable[i][0])) + ", 0x"
+          + LenTwo(String(bootTimeTable[i][2], HEX)), DEBUG_LEVEL_1);)
+      pause(20);
+    }
+  }
+  _D(DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); )
+  _D(DebugPrintln("Boot Number: " + String(heidiConfig->bootNumber), DEBUG_LEVEL_1);)
+  if((heidiConfig->bootNumber >= 0) && (heidiConfig->bootNumber < bootTableLength())){
+    _D(DebugPrintln("Cycle: " + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][1]))
+        + ":" + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][0])) + ", 0x"
+        + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][2], HEX)), DEBUG_LEVEL_1);)
+     _D(DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); )
+  }
+  if(isTransmissionCycle()) { _D(DebugPrintln("Would transmit", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1);) }
+  if(isFixPointCycle()) {_D(DebugPrintln("Fixpoint", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1);) }
+}
+#endif

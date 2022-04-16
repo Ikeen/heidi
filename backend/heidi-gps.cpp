@@ -136,7 +136,7 @@ bool GPSGetPosition(t_SendData* DataSet, float sufficient_pDOP, int maxWorse, in
           _DD(DebugPrintln("GPS AOPstatus: " + String(gpsData.data->navAOPstatus.status), DEBUG_LEVEL_3);)
         }
         #endif
-        #endif //USE_CASIC_GPS
+        #endif //#ifndef USE_CASIC_GPS
       }
       RESET_GPS_DATA;
     }
@@ -946,31 +946,47 @@ if(powerOnReset){
 #endif //DEBUG_SERIAL_GPS
 
 #ifdef TEST_GPS
-void testGPS(){
+void testGPS(int timeout){
+  _D(
   int startMs = millis();
-  while ((SerialGPS.available() == 0) && ((millis() - startMs) < 60000)) { pause(10); }
-  if (GPSprocessData(2000)){
-    if (gpsData.type == GPS_DT_NAV_PVT) { if ((GPS_GOT_2D_FIX) || (GPS_GOT_3D_FIX)) {
-      _D(DebugPrint("Latitude= ", DEBUG_LEVEL_1));
-      _D(DebugPrint(GPS_GET_LAT, 6, DEBUG_LEVEL_1));
-      _D(DebugPrint(" Longitude= ", DEBUG_LEVEL_1));
-      _D(DebugPrint(GPS_GET_LON, 6, DEBUG_LEVEL_1));
-      _D(DebugPrint(" Altitude= ", DEBUG_LEVEL_1));
-      _D(DebugPrintln(GPS_GET_ALT, 6, DEBUG_LEVEL_1));
-      _D(DebugPrint("Satellites= ", DEBUG_LEVEL_1));
-      _D(DebugPrint(GPS_GET_SAT, DEBUG_LEVEL_1));
-      _D(DebugPrint(" HDOP= ", DEBUG_LEVEL_1));
-      _D(DebugPrint((int)(GPS_GET_PDOP/10), DEBUG_LEVEL_1));
-      #ifdef GPS_GET_ACC
-      _D(DebugPrint(" ACC= ", DEBUG_LEVEL_1));
-      _D(DebugPrint(String(GPS_GET_ACC), DEBUG_LEVEL_1));
-      #endif
-      _D(DebugPrintln("", DEBUG_LEVEL_1));
-    }}
+  DebugPrintln("test GPS", DEBUG_LEVEL_1);
+  if (!openGPS()) {
+	DebugPrintln("could not open GPS", DEBUG_LEVEL_1);
+    return;
   }
-  if(!SerialGPS.available()){
+  GPSEphermerisDataStatus();
+  while ((millis() - startMs) < timeout){
+    while ((SerialGPS.available() == 0) && ((millis() - startMs) < timeout)) { pause(10); }
+    if (GPSprocessData(2000)){
+      if (gpsData.type == GPS_DT_NAV_PVT) {
+        if ((GPS_GOT_2D_FIX) || (GPS_GOT_3D_FIX)) {
+          DebugPrint("Latitude= ", DEBUG_LEVEL_1);
+          DebugPrint(GPS_GET_LAT, 6, DEBUG_LEVEL_1);
+          DebugPrint(" Longitude= ", DEBUG_LEVEL_1);
+          DebugPrint(GPS_GET_LON, 6, DEBUG_LEVEL_1);
+          DebugPrint(" Altitude= ", DEBUG_LEVEL_1);
+          DebugPrintln(GPS_GET_ALT, 6, DEBUG_LEVEL_1);
+          DebugPrint("Satellites= ", DEBUG_LEVEL_1);
+          DebugPrint(GPS_GET_SAT, DEBUG_LEVEL_1);
+          DebugPrint(" HDOP= ", DEBUG_LEVEL_1);
+          DebugPrint(GPS_GET_PDOP, 2, DEBUG_LEVEL_1);
+          #ifdef GPS_GET_ACC
+          DebugPrint(" ACC= ", DEBUG_LEVEL_1);
+          DebugPrint(String(GPS_GET_ACC), DEBUG_LEVEL_1);
+           #endif
+          DebugPrintln("", DEBUG_LEVEL_1);
+        } else {
+          DebugPrint("Satellites= ", DEBUG_LEVEL_1);
+          DebugPrintln(GPS_GET_SAT, DEBUG_LEVEL_1);
+        }
+      }
+    }
+  }
+ if(!SerialGPS.available()){
     _D(DebugPrintln("Could not fetch GPS", DEBUG_LEVEL_1));
   }
+  closeGPS();
+  )
 }
 #endif
 

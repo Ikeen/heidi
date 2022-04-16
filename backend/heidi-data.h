@@ -87,24 +87,6 @@ typedef __attribute__((__packed__)) struct {
   //total size: 32 Bytes;
 }t_SendData;
 
-typedef enum _dtAcc_t {
-  DATA_NO_ACCESS,
-  DATA_PRIMARY_ACCESS,
-  DATA_ACCESS
-}dtAcc_t;
-
-#ifdef SAVE_AOP_DATA
-  typedef __attribute__((__packed__)) struct _t_aopData{
-    uint8_t svId;
-    uint8_t data[59];
-  }t_aopData;
-  #define AOP_DATA_SET_LEN 60
-  #define AOP_DATA_SETS    32
-  #define AOP_DATA_LEN (AOP_DATA_SET_LEN * AOP_DATA_SETS)
-#else
-  #define AOP_DATA_LEN 0
-#endif
-
 #define DATA_SET_LEN     32 //must be a multiple of 4
 static_assert(sizeof(t_SendData) == DATA_SET_LEN, "wrong DATA_SET_LEN");
 
@@ -123,6 +105,25 @@ static_assert(sizeof(t_SendData) == DATA_SET_LEN, "wrong DATA_SET_LEN");
 #define DATA_SET_FAST_MEM_SPACE (DATA_SET_LEN * FAST_MEM_DATA_SETS)
 #define DATA_SET_SLOW_MEM_SPACE (DATA_SET_LEN * SLOW_MEM_DATA_SETS)
 #define MAX_DATA_SETS    (FAST_MEM_DATA_SETS + SLOW_MEM_DATA_SETS)
+
+typedef enum _dtAcc_t {
+  DATA_NO_ACCESS,
+  DATA_PRIMARY_ACCESS,
+  DATA_ACCESS
+}dtAcc_t;
+
+#ifdef SAVE_AOP_DATA
+  typedef __attribute__((__packed__)) struct _t_aopData{
+    uint8_t svId;
+    uint8_t data[59];
+  }t_aopData;
+  #define AOP_DATA_SET_LEN 60
+  #define AOP_DATA_SETS    32
+  #define AOP_DATA_LEN (AOP_DATA_SET_LEN * AOP_DATA_SETS)
+#else
+  #define AOP_DATA_LEN 0
+#endif
+
 
 typedef __attribute__((__packed__)) struct _t_FenceData{
   int32_t  latitude;
@@ -174,6 +175,7 @@ void     initDataSets(t_SendData** sets, int first, int last);
 bool     isEmptyDataSet(t_SendData* DataSet);
 void     copyDataSet(t_SendData* _from, t_SendData* _to);
 int      findDataSet(t_SendData* _which);
+int      findFreeDataSet(int from);
 bool     addDataSet(t_SendData* _new);
 int      addDataSets(t_SendData* buffer, int cnt);
 bool     eraseDataSet(t_SendData* _which);

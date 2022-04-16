@@ -30,6 +30,10 @@ typedef enum {
 #  define _DD(x)
 #endif
 #if (DEBUG_LEVEL > 0)
+//#define DEBUG_SERIAL_GPS
+#define MEAS_ACQUIRNG_TIME
+//#define TRACK_HEIDI_STATE
+
 void setupDebug(int startMS, bool powerOnReset);
 void debugHeidiState(bool powerOnReset);
 void checkWakeUpReason();
@@ -66,16 +70,6 @@ void _PrintHeidiAccParams(int dLevel);
       if (getState(POWER_SAVE_1)) {DebugPrintln("POWER_SAVE_1 = true", DEBUG_LEVEL_2);} else {DebugPrintln("POWER_SAVE_1 = false", DEBUG_LEVEL_3);} \
     )
 
-#define TEST_ACC_MACRO \
-  _D(DebugPrintln("accel measurement count: " + String(get_accel_meas_cnt_ULP()), DEBUG_LEVEL_2); \
-     DebugPrintln("transmission result x: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2); \
-     DebugPrintln("transmission result y: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2); \
-     DebugPrintln("transmission result z: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_2); \
-     set_accel_excnt1_ULP(0); \
-     set_accel_excnt2_ULP(0); \
-     delay(10000); \
-     gotoSleep(30000); \
-   )
 
 #define PRINT_ALERT_STATUS \
   _DD( \

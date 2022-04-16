@@ -22,6 +22,7 @@
 
 int  running_measures = 0;
 bool MEASenabled   = false;
+bool VOLTenabled   = false;
 bool CTLenabled    = false;
 
 #ifdef COMMON_SERIAL
@@ -37,10 +38,6 @@ static bool uart2Open = false;
 #endif
 
 
-#ifdef TEMP_SENSOR
-OneWire oneWire(TEMP_SENSOR_PIN);
-DallasTemperature tempSensor(&oneWire);
-#endif
 
 bool enableControls(void){
   bool success = true;
@@ -98,10 +95,11 @@ void disableControls(bool force){
     #endif
     #endif
     #ifdef CHECK_BATTERY
-    #ifdef USE_VOLTAGE_MEAS_PIN
+    #ifdef USE_VOLT_MEAS_EN_PIN
     pinMode(VOLT_ENABLE_PIN,OUTPUT);
     digitalWrite(VOLT_ENABLE_PIN, MEASURES_OFF);
     pinMode(VOLT_ENABLE_PIN,INPUT);
+    VOLTenabled = false;
     #endif
     #endif
     _D(DebugPrintln("Close measures", DEBUG_LEVEL_2));
@@ -197,7 +195,7 @@ bool openUart(uint8_t uartNo, uint32_t baud){
     if(!uart1Open){
       heidiSerial1.begin(baud, SERIAL_8N1, UART1_RXD, UART1_TXD, false);
       heidiSerial1.setRxBufferSize(UART_RX_BUFFER_SIZE);
-      pinMode(UART1_RXD, INPUT_PULLDOWN);
+      pinMode(UART1_RXD, INPUT);
       pinMode(UART1_TXD, OUTPUT);
       uart1Open = true;
     } else {
@@ -210,7 +208,7 @@ bool openUart(uint8_t uartNo, uint32_t baud){
 #ifndef COMMON_SERIAL
   if (uartNo == UART2){
     if(!uart2Open){
-      heidiSerial2.begin(baud, SERIAL_8N1, UART1_RXD, UART1_TXD, false);
+      heidiSerial2.begin(baud, SERIAL_8N1, UART2_RXD, UART2_TXD, false);
       heidiSerial2.setRxBufferSize(UART_RX_BUFFER_SIZE);
       pinMode(UART2_RXD, INPUT_PULLDOWN);
       pinMode(UART2_TXD, OUTPUT);
@@ -232,30 +230,73 @@ bool openUart(uint8_t uartNo, uint32_t baud){
 float measureTemperature(){
   float temp;
   int start = millis();
-  tempSensor.begin();
-  _D(DebugPrintln("measure temperature", DEBUG_LEVEL_2);)
-  for(int i=0; i<500; i++){
-    tempSensor.requestTemperaturesByIndex(0);
-    temp = tempSensor.getTempCByIndex(0);
-    if(temp != NO_TEMPERATURE) { break; }
-    if(millis() - start > MAX_MEAS_TIME) { temp = NO_TEMPERATURE; break; }
+  if((!VOLTenabled) && (!GSMenabled)){
+    OneWire oneWire(TEMP_SENSOR_PIN);
+    DallasTemperature tempSensor(&oneWire);
+    tempSensor.begin();
+    _D(DebugPrintln("measure temperature", DEBUG_LEVEL_2);)
+    for(int i=0; i<500; i++){
+      tempSensor.requestTemperaturesByIndex(0);
+      temp = tempSensor.getTempCByIndex(0);
+      if(temp != NO_TEMPERATURE) { break; }
+      if(millis() - start > MAX_MEAS_TIME) { temp = NO_TEMPERATURE; break; }
+    }
+    return temp;
+  } else {
+    _D(
+      if(VOLTenabled){DebugPrintln("voltage measuring enabled - cannot measure temperature", DEBUG_LEVEL_1);}
+      if(GSMenabled){DebugPrintln("GSM enabled - cannot measure temperature", DEBUG_LEVEL_1);}
+    )
+    return NO_TEMPERATURE;
   }
-  return temp;
 }
+#ifndef NO_TESTS
+void testTemp(void){
+  for(int i = 0; i<100; i++){
+    _D(DebugPrintln("Temperature: " + String(measureTemperature()), DEBUG_LEVEL_1);)
+    pause(100);
+  }
+}
+#endif
+
 #endif
 
 int MeasureVoltage(uint8_t pin){
   int analog_value = 0;
-  #ifdef USE_VOLTAGE_MEAS_PIN
+  #ifdef USE_VOLT_MEAS_EN_PIN
   VoltOn();
   #endif
   for(int i=0; i<1000; i++){ analog_value += analogRead(pin); }
-  #ifdef USE_VOLTAGE_MEAS_PIN
+  #ifdef USE_VOLT_MEAS_EN_PIN
   VoltOff();
   #endif
   analog_value /= 1000;
   return(analog_value);
 }
+
+#ifdef TEST_VOLT
+void testVolt(void){
+  VoltOn();
+  for(int j=0; j<1200; j++){
+    int analog_value = 0;
+    for(int i=0; i<1000; i++){ analog_value += analogRead(BATTERY_MEASURE_PIN); }
+    analog_value /= 1000;
+    #ifdef ANALOG_MEASURE_OFFSET
+    #ifdef ANALOG_MEASURE_DIVIDER
+    _D(DebugPrintln("test VOLT: pin value: " + String(analog_value) + " , volt: " + String((float(analog_value - ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2), DEBUG_LEVEL_1);)
+    #else
+    _D(DebugPrintln("test VOLT: pin value: " + String(analog_value), DEBUG_LEVEL_1);)
+    #endif
+    #else
+    _D(DebugPrintln("test VOLT: pin value: " + String(analog_value), DEBUG_LEVEL_1);)
+    #endif
+    pause(500);
+  }
+  VoltOff();
+}
+
+#endif
+
 
 bool enableMeasures(){
   if (!CTLenabled){
@@ -309,8 +350,9 @@ void disableMeasures(){
   if (running_measures < 0) { running_measures = 0; }
 }
 
-#ifdef USE_VOLTAGE_MEAS_PIN
+#ifdef USE_VOLT_MEAS_EN_PIN
 void VoltOn(){
+  VOLTenabled = true;
   pinMode(VOLT_ENABLE_PIN,OUTPUT);
   digitalWrite(VOLT_ENABLE_PIN, MEASURES_ON);
   _D(DebugPrintln("Voltage measuring on", DEBUG_LEVEL_2));
@@ -318,7 +360,9 @@ void VoltOn(){
 void VoltOff(){
   pinMode(VOLT_ENABLE_PIN,OUTPUT);
   digitalWrite(VOLT_ENABLE_PIN, MEASURES_OFF);
+  pinMode(VOLT_ENABLE_PIN,INPUT);
   _D(DebugPrintln("Voltage measuring off", DEBUG_LEVEL_2));
+  VOLTenabled = false;
 }
 #endif
 #ifdef GSM_MODULE
@@ -345,10 +389,10 @@ void GSMOn(){
   }
   digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
   #endif
-  //_DD(DebugPrintln("GSM Voltage on", DEBUG_LEVEL_3));
+  _DD(DebugPrintln("GSM Voltage on", DEBUG_LEVEL_3));
   pause(100); //setup voltage time
   digitalWrite(GSM_RST, HIGH);
-  //_DD(DebugPrintln("GSM Reset released", DEBUG_LEVEL_3));
+  _DD(DebugPrintln("GSM Reset released", DEBUG_LEVEL_3));
 }
 void GSMOff(){
   #ifdef I2C_SWITCH
@@ -362,7 +406,7 @@ void GSMOff(){
   pinMode(GSM_ENABLE_PIN,OUTPUT);
   digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
   #endif
-  //_DD(DebugPrintln("GSM Voltage off", DEBUG_LEVEL_3));
+  _DD(DebugPrintln("GSM Voltage off", DEBUG_LEVEL_3));
 }
 #endif
 void LED_off(){

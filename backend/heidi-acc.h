@@ -161,7 +161,6 @@ typedef enum {
   ADXL345_RANGE_2_G = 0b00   ///< +/- 2g (default value)
 } range_t;
 
-
 bool    init_ADXL345(void);
 bool    wake_config_ADXL345(void);
 bool    sleep_ADXL345(void);
@@ -332,7 +331,11 @@ MOVE, SUB, ADD, RSH, LSH, OR, AND, NOP
 extern bool CTLenabled;
 
 void init_accel_ULP(uint32_t intervall_us);
-void init_accel_data_ULP(uint32_t intervall_us);
+void init_accel_data_ULP(uint32_t intervall_us, uint8_t cycleLenMinute);
+#ifdef TEST_ACC
+void testAcc(bool poweOnReset);
+#endif
+
 /* get / set measure count value */
 uint16_t get_accel_meas_cnt_ULP();
 void set_accel_meas_cnt_ULP(uint16_t val);

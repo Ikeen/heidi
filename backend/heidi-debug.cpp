@@ -82,16 +82,22 @@ void _PrintDataSet(t_SendData* DataSet, int dLevel){
 void _PrintShortSummary(int dLevel){
   for(int i=0; i<allDataSets; i++){
     t_SendData* DataSet = availableDataSet[i];
-    if (!isEmptyDataSet(availableDataSet[i])){
+    if ((!isEmptyDataSet(availableDataSet[i])) || (i == 0)){
       _PrintShortSet(availableDataSet[i], i, dLevel);
     }
   }
 }
 void _PrintShortSet(t_SendData* DataSet, int n, int dLevel){
-  DebugPrint("Data set " + String(n) + ": [" + LenTwo(String(DataSet->temperature)) + "] ", dLevel); //temperature = data set ID [0x01 .. 0x60] in test data
+  DebugPrint("Data set ", dLevel);
+  if (n >= 0) { DebugPrint(String(n), dLevel); }
+  #ifdef HEIDI_CONFIG_TEST
+  DebugPrint(": [" + LenTwo(String(DataSet->temperature)) + "] ", dLevel); //temperature = data set ID [0x01 .. 0x60] in test data
+  #else
+  DebugPrint("Data set " + String(n) + ": ", dLevel);
+  #endif
   DebugPrint(LenTwo(String(dosYear(DataSet->date))) + "-" + LenTwo(String(dosMonth(DataSet->date))) + "-" + LenTwo(String(dosDay(DataSet->date))) + " ", dLevel);
   DebugPrint(LenTwo(String(dosHour(DataSet->time))) + ":" + LenTwo(String(dosMinute(DataSet->time))) + ":" + LenTwo(String(dosSecond(DataSet->time))), dLevel);
-  DebugPrintln("; " + String(DataSet->errCode, HEX), dLevel);
+  DebugPrintln(", client: " + LenTwo(String(DataSet->animalID)), dLevel);
 }
 
 void _PrintFence(int dLevel){

@@ -520,7 +520,7 @@ void init_accel_ULP(uint32_t intervall_us) {
   RTC_SLOW_MEM[IIC_STATUS + IIC_REQUESTED] = 0;
   RTC_SLOW_MEM[IIC_STATUS + IIC_LOCKED]    = 0;
 
-  init_accel_data_ULP(intervall_us);
+  init_accel_data_ULP(intervall_us, _currentCyleLen_m());
 
   size_t size = sizeof(ulp_accel) / sizeof(ulp_insn_t);
   _D(DebugPrintln("ULP code length: " + String(sizeof(ulp_accel) / sizeof(ulp_insn_t)), DEBUG_LEVEL_1); pause(50);)
@@ -533,10 +533,10 @@ void init_accel_ULP(uint32_t intervall_us) {
   ulp_run(0);
 
 }
-void init_accel_data_ULP(uint32_t intervall_us){
+void init_accel_data_ULP(uint32_t intervall_us, uint8_t cycleLenMinute){
   //initialize measurement cycle variables for ULP
   if (getULPLock()) {
-    uint16_t interim_ticks = (uint16_t)((uint32_t)(_currentCyleLen_m() * 60000) / (intervall_us / 1000) / 4);
+    uint16_t interim_ticks = (uint16_t)((uint32_t)(cycleLenMinute * 60000) / (intervall_us / 1000) / 4);
     set_accel_exthr1_ULP(heidiConfig->c.accThres1); //set threshold 1 to current value
     set_accel_exthr2_ULP(heidiConfig->c.accThres2); //set threshold 2 to current value
     set_accel_excnt1_ULP(0);   //set threshold 1 exceeding counter to zero
@@ -552,6 +552,27 @@ void init_accel_data_ULP(uint32_t intervall_us){
   }
   freeULP();
 }
+#ifdef TEST_ACC
+void testAcc(bool poweOnReset){
+  if(poweOnReset){
+    wake_config_ADXL345();
+    init_accel_ULP(ULP_INTERVALL_US);
+    DebugPrintln("ACC: init ULP", DEBUG_LEVEL_1);
+  } else {
+    DebugPrintln("ACC: measurement count: " + String(get_accel_meas_cnt_ULP()), DEBUG_LEVEL_1);
+    DebugPrintln("ACC: transmission result x: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_1);
+    DebugPrintln("ACC: transmission result y: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_1);
+    DebugPrintln("ACC: transmission result z: " + String((uint8_t)RTC_SLOW_MEM[ACCEL_X_VALUES+I2C_TRNS_RES]), DEBUG_LEVEL_1);
+    for(int i=0; i<4; i++){
+      DebugPrintln("ACC: cnt1/" + String(i+1) + " :" + String(get_accel_interrim_ct_ULP(1,i)), DEBUG_LEVEL_1);
+      DebugPrintln("ACC: cnt2/" + String(i+1) + " :" + String(get_accel_interrim_ct_ULP(2,i)), DEBUG_LEVEL_1);
+    }
+    init_accel_data_ULP(ULP_INTERVALL_US, 1);
+  }
+  DebugPrintln("ACC: sleep 58 seconds for measuring", DEBUG_LEVEL_1);
+  pause(58000);
+}
+#endif
 
 /* get / set measure count value */
 uint16_t get_accel_meas_cnt_ULP(){  return (uint16_t)RTC_SLOW_MEM[ACCEL_DATA_HEADER+ACCEL_MEAS_CNT]; }

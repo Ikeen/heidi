@@ -224,14 +224,14 @@ int findDataSet(t_SendData* _which){
   if(found){ return i; }
   return DATA_SET_NOT_FOUND;
 }
-int findFreeDataSet(void){
-  int i = 0;
-  while (i < allDataSets){
-    if(isEmptyDataSet(availableDataSet[i])){return i;}
-    i++;
+
+int findFreeDataSet(int from){
+  for(int i = from; i < allDataSets; i++){
+    if(isEmptyDataSet(availableDataSet[i])){ return i; }
   }
   return DATA_SET_NOT_FOUND;
 }
+
 /*
  * erase a data set in the RTC data set storage, identified by its copy
  *   - _which points to a copy of the data set
@@ -249,6 +249,7 @@ bool eraseDataSet(t_SendData* _which){
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
   return rc;
 }
+
 /*
  * erase a data sets in the RTC data set storage, identified by its copies in buffer
  *   - buffer points to an array of the data sets
@@ -308,10 +309,10 @@ int addDataSets(t_SendData* buffer, int cnt){
  * Parameter: start position of packing
  */
 int packUpDataSets(){
-  int k = 0;
+  int k = 1;
   dtAcc_t dtAcc;
   if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){_D(DebugPrintln("packUpDataSets: no data access ", DEBUG_LEVEL_1);) return 0; }
-  for(int i=0; i<allDataSets; i++){
+  for(int i=1; i<allDataSets; i++){ //data set 0 is always the current set
     if(!isEmptyDataSet(availableDataSet[i]) && (k < i) && isEmptyDataSet(availableDataSet[k])){
       copyDataSet(availableDataSet[i], availableDataSet[k]);
       initDataSet(availableDataSet[i]);
@@ -344,14 +345,17 @@ int getNextnDataSets(int n, t_SendData* buffer, int size, t_SendData* lastSet){
       if(lastSetNo == DATA_SET_NOT_FOUND) { lastSetNo = availSets; }
     }
   }
-  int copiedSets = n;
-  int k = 0;
-  if(copiedSets > lastSetNo) { copiedSets = lastSetNo; }
-  if(size >= (copiedSets * sizeof(t_SendData))){
-    for(int i=0; i < copiedSets; i++){
+  int copySets = n;
+  int copiedSets = 0;
+  if(copySets > lastSetNo) { copySets = lastSetNo; }
+  if(size >= (copySets * sizeof(t_SendData))){
+    for(int i=0; i < copySets; i++){
+      if (!isEmptyDataSet(availableDataSet[lastSetNo-i-1])){ //maybe set 0 is ready, maybe not
         copyDataSet(availableDataSet[lastSetNo-i-1], &buffer[i]);
+        copiedSets++;
+      }
     }
-  } else {copiedSets = 0; _D(DebugPrintln("packUpDataSets: buffer too small ", DEBUG_LEVEL_1);)}
+  } _D( else { DebugPrintln("packUpDataSets: buffer too small ", DEBUG_LEVEL_1);} )
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
   return copiedSets;
 }
@@ -381,9 +385,9 @@ bool freeDataSet(int _which){
   dtAcc_t dtAcc;
   if((_which < 0) || (_which >= allDataSets)){ return false; }
   if(isEmptyDataSet(availableDataSet[_which])) { return true; }
-  if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){_D(DebugPrintln("freeFirstDataSet: no data access ", DEBUG_LEVEL_1);) return false; }
-  int firstfree = findFreeDataSet();
-  if(firstfree == DATA_SET_NOT_FOUND) {firstfree = allDataSets - 1;} //last one need to be trashed
+  if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){ return false; }
+  int firstfree = findFreeDataSet(_which + 1);
+  if(firstfree == DATA_SET_NOT_FOUND) {firstfree = allDataSets - 1; } //last one need to be trashed
   for(int i=(firstfree - 1); i >= _which; i--){
     if(!isEmptyDataSet(availableDataSet[i])){
       copyDataSet(availableDataSet[i], availableDataSet[i+1]);
@@ -866,6 +870,7 @@ void testData(){
     if(setsSent > 0){
       for(int i=0; i<setsSent; i++){ _PrintShortSet(&buffer[i], i, DEBUG_LEVEL_3); }
     }
+    eraseDataSets(buffer, setsSent);
   }
   free(buffer);
 }
@@ -1002,7 +1007,12 @@ t_SendData TestDataSets[TEST_DATA_COUNT] = {
 /* 96 */ { 0x030a55fa, 0x00cb9746, 0x0138, 0x543e, 0x151d, 0x0f8e, 0x60, 0x04, 0x0800, 0x06, 0x40, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000 }
   };
 void loadTestData(void){
-  for(int i=0; i<TEST_DATA_COUNT; i++){ if(i<allDataSets) { copyDataSet(&TestDataSets[i], availableDataSet[i]); } else { break; } }
+  for(int i=0; i<TEST_DATA_COUNT; i++){
+    if(i<allDataSets) {
+      copyDataSet(&TestDataSets[i], availableDataSet[i]);
+      availableDataSet[i]->animalID = animalID();
+    } else { break; }
+  }
 }
 t_SendData* getTestData(int _which){
   if((_which >= 0) && (_which < TEST_DATA_COUNT)) {return &TestDataSets[_which];}

@@ -59,8 +59,12 @@
 #define MEASURES_ENABLE_PIN   GPIO_NUM_25
 #endif
 
-#ifdef USE_VOLTAGE_MEAS_PIN
+#ifdef USE_VOLT_MEAS_EN_PIN
+#ifdef USE_HEIDI_CONFIG_3_PINS
+#define VOLT_ENABLE_PIN       GPIO_NUM_22
+#else
 #define VOLT_ENABLE_PIN       GPIO_NUM_21
+#endif
 #endif
 
 #define MEASURES_ON   LOW
@@ -85,24 +89,42 @@
 #define ANALOG_MEASURE_DIVIDER 650
 #endif
 
+#ifdef HEIDI_CONFIG_3
+#define ANALOG_MEASURE_OFFSET  35
+#define ANALOG_MEASURE_DIVIDER 597
+
+#endif
+
 #ifdef HEIDI_CONFIG_TEST
-#define ANALOG_MEASURE_OFFSET  303
-#define ANALOG_MEASURE_DIVIDER 659
+#define ANALOG_MEASURE_OFFSET  35
+#define ANALOG_MEASURE_DIVIDER 597
 
 //#define ANALOG_MEASURE_OFFSET  315
 //#define ANALOG_MEASURE_DIVIDER 633
 #endif
 
+#ifdef ANALOG_MEASURE_DIVIDER
+#if ANALOG_MEASURE_DIVIDER == 0
+#error "divider set to zero!"
+#endif
+#endif
 /*
  * Temperature measuring
  */
 
+#ifdef USE_HEIDI_CONFIG_3_PINS
+#define TEMP_SENSOR_PIN        GPIO_NUM_21
+#else
 #define TEMP_SENSOR_PIN        GPIO_NUM_22
+#endif
 #define NO_TEMPERATURE        -127 //sent by sensor
 #define TEMPERATURE_NOT_SET   -128 //(0xff)
 
 #ifdef TEMP_SENSOR
 float measureTemperature(void);
+#ifndef NO_TESTS
+void testTemp(void);
+#endif
 #endif
 
 bool enableControls(void);
@@ -126,6 +148,9 @@ void setGPIOInput(gpio_num_t which);
 void setGPIOInputHigh(gpio_num_t which);
 
 int MeasureVoltage(uint8_t pin);
+#ifdef TEST_VOLT
+void testVolt(void);
+#endif
 #ifdef USE_ULP
 bool getULPLock(void);
 void freeULP(void);

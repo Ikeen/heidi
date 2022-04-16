@@ -611,7 +611,9 @@ gpsDataType_t GPSgetPackageType(uint8_t cls, uint8_t id, uint16_t len);
 bool GPSmsgNeedAck(gpsDataType_t type);
 #if (DEBUG_LEVEL > 0 )
 void _PrintDataGPS(void);
-void testGPS(void);
+#ifndef NO_TESTS
+void testGPS(int timeout);
+#endif
 #endif
 #ifdef USE_CASIC_GPS
 void GPSrawWriteString(String message);

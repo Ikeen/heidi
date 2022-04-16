@@ -43,6 +43,7 @@ esp_sleep_wakeup_cause_t getWakeUpReason(void);
 bool isInCycle(void);
 int  getNextBootMS(void);
 int  timeToNextBootMS(void);
+void setToOverNextBoot(void);
 int  prevBootCycleNo(void);
 bool doDataTransmission(void);
 bool isTransmissionCycle(void);
@@ -86,5 +87,9 @@ String   intString4(uint16_t val);
 
 double mkDouble(uint32_t val1, uint32_t val2);
 float mkFloat(uint32_t val);
+
+#ifdef HEIDI_CONFIG_TEST
+void testCycles(bool powerOnReset);
+#endif
 
 #endif /* HEIDI_SYS_H_ */

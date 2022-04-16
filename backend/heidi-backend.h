@@ -38,6 +38,9 @@ void   checkGPSalert(t_SendData* currentDataSet);
 void   checkGPSposition(t_SendData* currentDataSet, int timeOut, bool force);
 double checkBattery(void);
 void   checkCycle(void);
+#ifdef ACCELEROMETER
+void   checkAccData(t_SendData* currDataSet);
+#endif
 
 void restartCycling();
 void gotoSleep(int32_t mseconds);

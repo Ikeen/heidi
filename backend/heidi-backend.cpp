@@ -29,6 +29,7 @@ HardwareSerial HeidiDBSerial(1);
 void setup() {
   t_SendData* currentDataSet;
   int  startMS = millis();
+  int  gotTimeStamp = 0;
   timeOut = MAX_AWAKE_TIME_TIMER_MSEC;
   setCpuFrequencyMhz(80); //save power
   //never change the following 3 lines in their position of code!
@@ -54,7 +55,7 @@ void setup() {
   #ifndef USE_NO_MEASURES
   enableControls();
   /*check battery status and goto sleep, if too low (disables measuring and controls too)*/
-  #ifdef USE_VOLTAGE_MEAS_PIN
+  #ifdef USE_VOLT_MEAS_EN_PIN
   /* best is to check battery before enabling measures...*/
   volt = checkBattery();
   enableMeasures();
@@ -69,26 +70,21 @@ void setup() {
   if(!powerOnReset){ handlePreMeasuring(); }
   #endif
 
-  #ifdef USE_LORA
-  //setupLoraTask();
-  #endif
-
   //prepare free data set
   if (!freeDataSet(0)){ _D(DebugPrintln("BOOT: unable to free 1st data set", DEBUG_LEVEL_1);) }
   currentDataSet = availableDataSet[0];
-  #ifdef ACCELEROMETER
-  //need to set this here because getting position needs various time
-  currentDataSet->accThresCnt1 = get_accel_excnt1_ULP();
-  currentDataSet->accThCnt1Spr = get_accel_ct_spreading(1);
-  currentDataSet->accThresCnt2 = get_accel_excnt2_ULP();
-  currentDataSet->accThCnt2Spr = get_accel_ct_spreading(2);
-  init_accel_data_ULP(ULP_INTERVALL_US);
-  _D(DebugPrintln("accel threshold 1 count: " + String(currentDataSet->accThresCnt1), DEBUG_LEVEL_2);
-     DebugPrintln("accel threshold 2 count: " + String(currentDataSet->accThresCnt2), DEBUG_LEVEL_2);)
+  #ifdef HEIDI_CONFIG_TEST
+  #ifndef NO_TESTS
+  doTests(currentDataSet);
+  #endif
   #endif
 
-  #ifdef HEIDI_CONFIG_TEST
-  doTests(currentDataSet);
+  #ifdef ACCELEROMETER
+  checkAccData(currentDataSet);
+  #endif
+
+  #ifdef USE_LORA
+  if(heidiConfig->bootNumber >= FIRST_REGULAR_CYCLE){ setupLoraTask(); }
   #endif
 
   /*setupSystemDateTime opens / checks GPS*/
@@ -97,6 +93,7 @@ void setup() {
     if(GPSalert()){ gotoSleep(SLEEP_DUR_ALERT); } else { gotoSleep(SLEEP_DUR_NOTIME); }
   }
   _D( DebugPrintln("System boot time: " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1); PRINT_CYCLE_STATUS )
+  gotTimeStamp = millis();
 
   if(!GPSalert()){ checkCycle(); }
   // test alerts: comment in next line
@@ -125,17 +122,21 @@ void setup() {
   #endif
   #endif
 
+  finalizeHeidiStatus(powerOnReset);
   #ifdef USE_LORA
   closeLoraTask();
   #endif
-
-  finalizeHeidiStatus(powerOnReset);
 
   _DD(DebugPrintln("Last diff: " + String(heidiConfig->lastTimeDiffMs) + " / current diff : " + String(currentTimeDiffMs), DEBUG_LEVEL_3);)
   _D(DebugPrintln("SLEEP: heidi state: 0x" + String(heidiConfig->status, HEX) ,DEBUG_LEVEL_1);)
   if (heidiConfig->lastTimeDiffMs > 5000) { heidiConfig->lastTimeDiffMs = 0; }
   int diffTimeFinalMs = heidiConfig->lastTimeDiffMs + currentTimeDiffMs;
   heidiConfig->lastTimeDiffMs = diffTimeFinalMs;
+
+  if((millis() - gotTimeStamp) > timeToNextBootMS()) {
+    _DD(DebugPrintln("Goto over next cycle ", DEBUG_LEVEL_3);)
+    setToOverNextBoot();
+  }
   gotoSleep(timeToNextBootMS() + diffTimeFinalMs - millis());
 }
 
@@ -148,7 +149,6 @@ void loop()
 
 
 void finalizeDataSet(t_SendData* currentDataSet){
-  currentDataSet->animalID = animalID();
   #ifdef TEMP_SENSOR
   currentDataSet->temperature = (int8_t)round(measureTemperature());
   _D(DebugPrintln("Temperature: " + String(currentDataSet->temperature) + " C", DEBUG_LEVEL_1);)
@@ -173,8 +173,9 @@ void finalizeDataSet(t_SendData* currentDataSet){
     currentDataSet->accThresCnt2 = heidiConfig->status;
     DebugPrintln("set accThresCnt2 to heidi status: 0x" + String(currentDataSet->accThresCnt2, HEX), DEBUG_LEVEL_2);
     #endif
-    _DD(_PrintDataSet(currentDataSet, DEBUG_LEVEL_3);)
   )
+  currentDataSet->animalID = animalID(); //needs to be the last value set
+  _DD(_PrintDataSet(currentDataSet, DEBUG_LEVEL_3);)
 }
 /*
  *  finalizes the status of Heidi before going to sleep
@@ -385,7 +386,18 @@ double checkBattery(void){
   #endif
   return val;
 }
-
+#ifdef ACCELEROMETER
+void checkAccData(t_SendData* currDataSet){
+  //need to set this here because getting position needs various time
+  currDataSet->accThresCnt1 = get_accel_excnt1_ULP();
+  currDataSet->accThCnt1Spr = get_accel_ct_spreading(1);
+  currDataSet->accThresCnt2 = get_accel_excnt2_ULP();
+  currDataSet->accThCnt2Spr = get_accel_ct_spreading(2);
+  init_accel_data_ULP(ULP_INTERVALL_US, _currentCyleLen_m());
+  _D(DebugPrintln("accel. threshold 1 count: " + String(currDataSet->accThresCnt1), DEBUG_LEVEL_2);
+     DebugPrintln("accel. threshold 2 count: " + String(currDataSet->accThresCnt2), DEBUG_LEVEL_2);)
+}
+#endif
 
 void setupData(bool powerOnReset){
   initBootTimeMS();
@@ -430,9 +442,13 @@ bool setupSystemBootTime(tm* bootTime, int timeOut){
 
 void gotoSleep(int32_t mseconds){
   if (watchd != NULL) { esp_timer_delete(watchd); }
+
   #ifndef USE_NO_MEASURES
   disableControls(true);
   disableGPIOs();
+  #endif
+  #ifdef USE_LORA
+  closeLoraTask(); //if the cycle was not ended regular, we need to do this here. Doing it twice is no problem.
   #endif
   #ifdef USE_RTC_FAST_MEM
   RTCfastMemWrite();
@@ -440,7 +456,6 @@ void gotoSleep(int32_t mseconds){
 
   int32_t sleeptime = mseconds;
   _DD(DebugPrintln("Sleep requested for : " + String(uint32_t(sleeptime/1000)) + " seconds", DEBUG_LEVEL_3);)
-  if (sleeptime > MAX_SLEEP_TIME_MS) { sleeptime = MAX_SLEEP_TIME_MS; }
   #ifdef PRE_MEASURE_HANDLING
   if (sleeptime < (PRE_CYCLE_TIME + MIN_SLEEP_TIME_MS)){
     clrState(PRE_MEAS_STATE);
@@ -496,7 +511,16 @@ void doTests(t_SendData* currentDataSet){
     esp_timer_delete(watchd);
     watchd = NULL;
   }
+  #ifndef HEIDI_GATEWAY
+  //if(powerOnReset){
+    //prepare data
+    loadTestData();
+  //}
+  #endif
   //testGeoFencing();
+  #ifdef TEST_CYCLES
+  testCycles(powerOnReset);
+  #endif
   #ifdef TEST_DATA
   testData();
   #endif
@@ -507,42 +531,33 @@ void doTests(t_SendData* currentDataSet){
   testGSM();
   #endif
   #ifdef TEST_GPS
-  testGPS();
+  testGPS(powerOnReset ? 180000 : 60000);
   #endif
-  #ifdef TEMP_SENSOR
-  //_D(DebugPrintln("Temperature: " + String(MeasureTemperature()), DEBUG_LEVEL_1);)
+  #ifdef TEST_TEMP
+  testTemp();
+  #endif
+  #ifdef TEST_VOLT
+  testVolt();
   #endif
   #ifdef TEST_ACC
-  //TEST_ACC_MACRO
+  testAcc(powerOnReset);
   #endif
   #ifdef TEST_LORA
-  TestLoRa();
+  TestLoRa(90000);
   #endif
   /*
    * now just testing code...
    */
 #if 0
-  if(powerOnReset){
-    for(int i=0; i<bootTableLength(); i++){
-      _D(DebugPrintln("Table entry " + String (i) + ", " + LenTwo(String(bootTimeTable[i][1]))
-          + ":" + LenTwo(String(bootTimeTable[i][0])) + ", 0x"
-          + LenTwo(String(bootTimeTable[i][2], HEX)), DEBUG_LEVEL_1);)
-      pause(20);
-    }
-  }
-  _D(DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); )
-  _D(DebugPrintln("Boot Number: " + String(heidiConfig->bootNumber), DEBUG_LEVEL_1);)
-  if((heidiConfig->bootNumber >= 0) && (heidiConfig->bootNumber < bootTableLength())){
-    _D(DebugPrintln("Cycle: " + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][1]))
-        + ":" + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][0])) + ", 0x"
-        + LenTwo(String(bootTimeTable[heidiConfig->bootNumber][2], HEX)), DEBUG_LEVEL_1);)
-     _D(DebugPrintln("", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1); )
-  }
-  if(isTransmissionCycle()) { _D(DebugPrintln("Would transmit", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1);) }
-  if(isFixPointCycle()) {_D(DebugPrintln("Fixpoint", DEBUG_LEVEL_1); DebugPrintln("", DEBUG_LEVEL_1);) }
   _D(DebugPrintln("setup_size = " + String(sizeof(_t_ConfigData)), DEBUG_LEVEL_1);)
 #endif
-  gotoSleep(30000);
+  //return;
+//#ifdef HEIDI_GATEWAY
+//  init_accel_ULP(ULP_INTERVALL_US);
+//  gotoSleep(120000);
+//#else
+  gotoSleep(1000);
+//#endif
 }
 
 #endif
