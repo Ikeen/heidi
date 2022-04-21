@@ -7,13 +7,13 @@
 #include <Arduino.h>
 #include "heidi-debug.h"
 
-#if (DEBUG_LEVEL > 0)
-
 #include "heidi-acc.h"
 #include "heidi-sys.h"
 #include "heidi-fence.h"
 #include "heidi-data.h"
 #include <esp32/ulp.h>
+
+#if (DEBUG_LEVEL > 0)
 
 static bool dbgInUse;
 
@@ -26,16 +26,54 @@ void DebugPrintln(int number, int level){ if (level <= DEBUG_LEVEL){ if(dbgGetSe
 void DebugPrint(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ if(dbgGetSem()) {Serial.print(number); dbgFreeSem(); }}}
 void DebugPrintln(unsigned int number, int level){ if (level <= DEBUG_LEVEL){ if(dbgGetSem()) {Serial.println(number); dbgFreeSem(); }}}
 
+#endif
+
 void setupDebug(int startMS, bool powerOnReset){
   Serial.begin(115200);
+  if(powerOnReset){
+    Serial.println("build date: " + String(__DATE__));
+    Serial.print("hardware  :");
+    #ifdef GPS_MODULE
+    Serial.print(" GPS");
+    #endif
+    #ifdef GSM_MODULE
+    Serial.print(" GSM");
+    #endif
+    #ifdef TEMP_SENSOR
+    Serial.print(" TMP");
+    #endif
+    #ifdef ACCELEROMETER
+    Serial.print(" ACC");
+    #endif
+    #ifdef USE_LORA
+    Serial.print(" LOR");
+    #endif
+    #ifdef USE_OLED
+    Serial.print(" OLD");
+    #endif
+    Serial.println("");
+    #if (HEIDI_SW_BRAND > 0)
+    Serial.println("software  : V" + String(HEIDI_SW_BRAND));
+    #else
+    Serial.println("software  : TEST");
+    #endif
+    Serial.println("tracker   : " + _herdeID()+ "." + _animalID());
+    pause(100);
+  }
+#if (DEBUG_LEVEL == 0)
+}
+#else
   dbgInUse = false;
   //if(powerOnReset) { pause(3000); }
-  DebugPrintln("build date: " + String(__DATE__), DEBUG_LEVEL_1); DebugPrintln("Enter Main Loop. " + String(startMS), DEBUG_LEVEL_1); pause(50);
   checkWakeUpReason();
   #if (MAX_AWAKE_TIME_POWER_MSEC == 0) || (MAX_AWAKE_TIME_TIMER_MSEC == 0)
   DebugPrintln("!!!! timeouts disabled !!!!!", DEBUG_LEVEL_1);
   #endif
+  DebugPrintln("Enter main loop after " + String(startMS) + " ms", DEBUG_LEVEL_1);
 }
+#endif
+#if (DEBUG_LEVEL > 0)
+
 bool dbgGetSem(){
   int t = millis();
   while(dbgInUse && (millis()-t <= 10)){ pause(10); }

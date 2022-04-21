@@ -325,7 +325,7 @@ bool enableMeasures(){
     _D(DebugPrintln("Measures on", DEBUG_LEVEL_2));
     MEASenabled = true;
   }
-  _D( else {DebugPrintln("Increment measures to " + String(running_measures + 1), DEBUG_LEVEL_2);})
+  _DD( else {DebugPrintln("Increment measures to " + String(running_measures + 1), DEBUG_LEVEL_3);})
   running_measures++;
   return true;
 }
@@ -346,7 +346,7 @@ void disableMeasures(){
     _D(DebugPrintln("Measures off", DEBUG_LEVEL_2);)
     MEASenabled = false;
   }
-  _D( else {DebugPrintln("Decrement measures to " + String(running_measures), DEBUG_LEVEL_2);})
+  _DD( else {DebugPrintln("Decrement measures to " + String(running_measures), DEBUG_LEVEL_3);})
   if (running_measures < 0) { running_measures = 0; }
 }
 
@@ -417,11 +417,11 @@ void LED_off(){
 bool getULPLock(void){
   set_ULP_request(1);
   //wait a short time - maybe ULP was just on the way to lock...
-  pause(1);
+  pause(10);
   int i = 0;
   while(ULPisLocked()){ //ULP may be running, wait until lock is released
-    pause(1); i++;
-    if(i >= 20){ set_ULP_request(0); _D(DebugPrintln("Can't get ULP lock.", DEBUG_LEVEL_1);) return false; }
+    pause(10); i++;
+    if(i >= 10){ set_ULP_request(0); _D(DebugPrintln("Can't get ULP lock.", DEBUG_LEVEL_1);) return false; }
   }
   if (i>0) { _DD(DebugPrintln("Got ULP lock after " + String(i) + " wait-loops.", DEBUG_LEVEL_3);) }
   //ULP just checks the request, no need to set LOCK here

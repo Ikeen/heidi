@@ -61,11 +61,12 @@
  */
 
 #define HEIDI_CONFIG_3
-//#define HEIDI_GATEWAY
+#define HEIDI_GATEWAY
 
 
 //------------------------ heidi V1 ------------------------------------
 #ifdef HEIDI_CONFIG_1
+#define HEIDI_SW_BRAND              1
 //#define LORA_V1_1_OLED
 #define HEIDI_HERDE                 1
 #define USE_HEIDI_CONFIG_1_PINS
@@ -89,6 +90,7 @@
 #endif
 //------------------------ heidi V2 ------------------------------------
 #ifdef HEIDI_CONFIG_2
+#define HEIDI_SW_BRAND              2
 #define LORA_V1_3_OLED
 #define USE_HEIDI_CONFIG_2_PINS
 #define HEIDI_HERDE                 1
@@ -116,6 +118,7 @@
 #endif
 //------------------------ heidi V3 ------------------------------------
 #ifdef HEIDI_CONFIG_3
+#define HEIDI_SW_BRAND              3
 #define LORA_V1_3_OLED
 #define USE_HEIDI_CONFIG_3_PINS
 #define HEIDI_HERDE                 1
@@ -144,7 +147,8 @@
 //------------------------ heidi test configuration ------------------------------------
 
 #ifdef HEIDI_CONFIG_TEST
-#define HEIDI_HERDE                   3
+#define HEIDI_SW_BRAND              0
+#define HEIDI_HERDE                 3
 #ifdef HEIDI_GATEWAY
   #define USE_HEIDI_CONFIG_3_PINS
   #define LORA_V1_3_OLED
@@ -206,7 +210,7 @@
 //#define TEST_DATA
 //#define TEST_GSM
 //#define TEST_GPS
-#define TEST_ACC
+//#define TEST_ACC
 //#define TEST_LORA
 //#define TEST_TEMP
 //#define TEST_VOLT
@@ -244,7 +248,7 @@
 #ifdef HEIDI_GATEWAY
 #define HEIDI_ANIMAL        HEIDI_GATEWAY_ADDRESS
 #else
-#define HEIDI_ANIMAL        HEIDI_FIRST_CLIENT + 2
+#define HEIDI_ANIMAL        HEIDI_FIRST_CLIENT
 #endif
 
 
@@ -304,11 +308,13 @@
 #ifdef HEIDI_CONFIG_TEST
 #define DEFALUT_ACCELERATION_THRESHOLD_1    50
 #define DEFALUT_ACCELERATION_THRESHOLD_2   150
-#define DEFALUT_ACCEL_THRES_MAX_COUNT    10000 /* never ever do an alert */
+#define DEFALUT_ACCEL_THRES_MAX_COUNT_1   16000 /* never ever do an alert */
+#define DEFALUT_ACCEL_THRES_MAX_COUNT_2   16000 /* never ever do an alert */
 #else
-#define DEFALUT_ACCELERATION_THRESHOLD_1  1000
-#define DEFALUT_ACCELERATION_THRESHOLD_2  3000
-#define DEFALUT_ACCEL_THRES_MAX_COUNT    10000 /* never ever do an alert */
+#define DEFALUT_ACCELERATION_THRESHOLD_1  100
+#define DEFALUT_ACCELERATION_THRESHOLD_2  250
+#define DEFALUT_ACCEL_THRES_MAX_COUNT_1   16000 /* never ever do an alert */
+#define DEFALUT_ACCEL_THRES_MAX_COUNT_2   16000 /* never ever do an alert */
 #endif
 
 #define GSM_POWER_SAVE_1_VOLTAGE    3.6   //double transmission time

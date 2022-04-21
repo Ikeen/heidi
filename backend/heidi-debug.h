@@ -33,8 +33,9 @@ typedef enum {
 //#define DEBUG_SERIAL_GPS
 #define MEAS_ACQUIRNG_TIME
 //#define TRACK_HEIDI_STATE
-
+#endif
 void setupDebug(int startMS, bool powerOnReset);
+#if (DEBUG_LEVEL > 0)
 void debugHeidiState(bool powerOnReset);
 void checkWakeUpReason();
 void DebugPrint(String text, int level);

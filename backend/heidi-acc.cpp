@@ -185,11 +185,11 @@ void init_accel_ULP(uint32_t intervall_us) {
   //check if iic is available / or configuration is accessed by main cpu
   I_MOVI(R3,IIC_STATUS),           //load data structure offset
   I_LD(R0,R3,IIC_REQUESTED),       //load request value
-  M_BL(1,1),                       //access requested by main CPU?
-  I_HALT(),                        //then end preocedure and halt ULP until
-  M_LABEL(1),
-  I_MOVI(R0,1),                    // set R0 to true
-  I_ST(R0,R3,IIC_LOCKED),          // store it to IIC_LOCKED
+  M_BL(1,1),                       //access requested by main CPU? (IIC_REQUESTED < 1? then -> LABEL(1))
+  I_HALT(),                        //yes, so end procedure and halt ULP until next time slot
+  M_LABEL(1),                      //no request (IIC_REQUESTED == 0)
+  I_MOVI(R0,1),                    //set R0 to true
+  I_ST(R0,R3,IIC_LOCKED),          //store it to IIC_LOCKED
 
 #ifdef ULP_LED_BLINK
   //LED flashing in debug mode for check "ULP is running"

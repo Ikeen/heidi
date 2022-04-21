@@ -34,7 +34,7 @@ void setup() {
   setCpuFrequencyMhz(80); //save power
   //never change the following 3 lines in their position of code!
   powerOnReset = wasPowerOnReset(); //add validation of setup data
-  _D(setupDebug(startMS, powerOnReset);)
+  setupDebug(startMS, powerOnReset);
   setupData(powerOnReset); //the first thing we have to do before accessing any config data!!
 
   if (sysWasbrownOut()) { setState(RESET_INITS); doSleepRTCon(MAX_SLEEP_TIME_MS); }
@@ -239,6 +239,9 @@ void transmitData(t_SendData* currentDataSet){
   String sendLine = "";
   _D(DebugPrintln("GPRS send data", DEBUG_LEVEL_2); int cnt = 0;)
   _DD(_PrintShortSummary(DEBUG_LEVEL_3));
+  #ifdef USE_ULP
+  getULPLock(); //GSM antenna activity generates fake measures on ADXL345
+  #endif
   if(openGSM()){
     if (GSMsetup()){
       if (GSMopenHTTPconnection(HEIDI_SERVER_PUSH_URL)){
@@ -279,6 +282,9 @@ void transmitData(t_SendData* currentDataSet){
     }
     closeGSM();
   }
+  #ifdef USE_ULP
+  freeULP();
+  #endif
   packUpDataSets();
   _D(DebugPrintln("GPRS send done: " + (String((int)(millis()/1000)) + " s"), DEBUG_LEVEL_2);)
 }

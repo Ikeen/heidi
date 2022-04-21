@@ -45,9 +45,9 @@ void initConfig(bool reset){
     heidiConfig->c.distAlertThres  = DEFAULT_DIST_ALERT_THRES;
     heidiConfig->status            = (NEW_FENCE | RESET_INITS);
     heidiConfig->c.accThres1       = DEFALUT_ACCELERATION_THRESHOLD_1;
-    heidiConfig->c.accAlertThres1  = DEFALUT_ACCEL_THRES_MAX_COUNT;
+    heidiConfig->c.accAlertThres1  = DEFALUT_ACCEL_THRES_MAX_COUNT_1;
     heidiConfig->c.accThres2       = DEFALUT_ACCELERATION_THRESHOLD_2;
-    heidiConfig->c.accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT;
+    heidiConfig->c.accAlertThres2  = DEFALUT_ACCEL_THRES_MAX_COUNT_2;
     heidiConfig->c.accNightFactor  = 100;  //equals to 1
     heidiConfig->gpsStatus       = 0;
     #ifdef HEIDI_GATEWAY
@@ -140,10 +140,10 @@ void initRTCData(bool reset){
     set_accel_avrerage_ULP(0);
     set_accel_excnt1_ULP(0);
     set_accel_exthr1_ULP(DEFALUT_ACCELERATION_THRESHOLD_1);
-    set_accel_wake1_ULP(DEFALUT_ACCEL_THRES_MAX_COUNT);
+    set_accel_wake1_ULP(DEFALUT_ACCEL_THRES_MAX_COUNT_1);
     set_accel_excnt2_ULP(0);
     set_accel_exthr2_ULP(DEFALUT_ACCELERATION_THRESHOLD_2);
-    set_accel_wake2_ULP(DEFALUT_ACCEL_THRES_MAX_COUNT);
+    set_accel_wake2_ULP(DEFALUT_ACCEL_THRES_MAX_COUNT_2);
     set_ULP_request(0);
     set_ULP_lock(0);
   }

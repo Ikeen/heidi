@@ -50,19 +50,19 @@ void loraGatewayTask(void *pvParameters) {
         if ((heidiConfig->clientsNeedConf != 0) || !isFixPointCycle()){ loraBroadcastSettings(); }
         if((heidiConfig->clients == 0)){
           for(int i=0; i<100; i++){
-            if (!endLoraTask()) { break; }
+            if (endLoraTask()) { break; }
             pause(10);
           }
         }
       }
-      if (!endLoraTask()) { break; }
+      if (endLoraTask()) { break; }
     }
     CloseLoRa();
   } else { _D(DebugPrintln("LORA: device not available ",   DEBUG_LEVEL_1);) }
   _D(DebugPrintln("LORA: end task ",   DEBUG_LEVEL_1);)
   loraTaskWaterMark = uxTaskGetStackHighWaterMark(NULL);
   LoRaTaskHandle = NULL;
-  vTaskDelete(NULL);
+  vTaskDelete(NULL); //NULL = delete calling task
 }
 #else
 /*
@@ -71,7 +71,7 @@ void loraGatewayTask(void *pvParameters) {
 void loraClientTask(void *pvParameters) {
   uint8_t recBuffer[LORA_CLIENT_RECEIVE_PKG_MAX_LEN];
   if (SetupLoRa()){
-    DebugPrintln("LORA: listen for requests",   DEBUG_LEVEL_2);
+    _D(DebugPrintln("LORA: listen for requests",   DEBUG_LEVEL_2);)
     while(!endLoraTask()){
       int recLen = loraWaitForDataPackage(LORA_PKG_ID_ALL_PKG, recBuffer, LORA_CLIENT_RECEIVE_PKG_MAX_LEN, 500);
       if(recLen <= 2) { continue; } //there should be more
@@ -108,7 +108,7 @@ void loraClientTask(void *pvParameters) {
   _D(DebugPrintln("LORA: end task ", DEBUG_LEVEL_1);)
   loraTaskWaterMark = uxTaskGetStackHighWaterMark(NULL);
   LoRaTaskHandle = NULL;
-  vTaskDelete(NULL);
+  vTaskDelete(NULL); //NULL = delete calling task
 }
 #endif
 
@@ -299,13 +299,18 @@ int loraWaitForDataPackage(loraPackageID_t pkgID, uint8_t *buffer, int bufferSiz
         uint8_t readPgkID = LoRa.read();
         if((readPgkID == pkgID) || (pkgID == LORA_PKG_ID_ALL_PKG)){
           int i = 0;
-          buffer[i++] = readPgkID;
-          while((i<bufferSize) && (LoRa.available() > 0)){
-            buffer[i++] = LoRa.read();
+          if((readPgkID != LORA_PKG_ID_ONE_SET) && (readPgkID != LORA_PKG_ID_TWO_SET)){ //data packages from other clients
+            buffer[i++] = readPgkID;
+            while((i<bufferSize) && (LoRa.available() > 0)){
+              buffer[i++] = LoRa.read();
+            }
           }
           //_DD(DebugPrintln("LORA got package [" + String(pkgID, HEX) + "] length " + String(i) + "; " + hexString2(buffer[0]) + ", " + hexString2(buffer[1]), DEBUG_LEVEL_1); )
           if (LoRa.available()>0){
-            _D(DebugPrintln("LORA package [" + String(pkgID, HEX) + "] length " +String(LoRa.available()) + " exceeds buffer size " + String(bufferSize), DEBUG_LEVEL_1); )
+            _D(
+                if((readPgkID != LORA_PKG_ID_ONE_SET) && (readPgkID != LORA_PKG_ID_TWO_SET))
+                {DebugPrintln("LORA package [" + String(readPgkID, HEX) + "] length " +String(LoRa.available() + i) + " exceeds buffer size " + String(bufferSize), DEBUG_LEVEL_1); }
+              )
             while (LoRa.available()>0) { LoRa.read(); }
           }
           #ifndef HEIDI_GATEWAY
@@ -537,7 +542,11 @@ int loraSendDataSets(int setsToSend){
       }
       free(buffer);
     }
-    _D(DebugPrintln("LORA: " + String(sccusessfullySent) + " packages sent successfully", DEBUG_LEVEL_2);)
+    _D(
+      DebugPrint("LORA: " + String(sccusessfullySent) + " package", DEBUG_LEVEL_2);
+      if(sccusessfullySent != 1){  DebugPrint("s", DEBUG_LEVEL_2); }
+      DebugPrintln(" sent successfully", DEBUG_LEVEL_2);
+     )
   }_D( else {DebugPrintln("LORA: send data ready message failed", DEBUG_LEVEL_1);} )
   return sccusessfullySent;
 }
@@ -605,11 +614,19 @@ bool loraDecodeConfigData(uint8_t* data){
     return false;
   }
   setSettingsFromBuffer(buffer, CONF_DATA_C_PAYLOAD_SIZE, &confBuffer);
-  if(clientConfigCRC(&confBuffer) != clientConfigCRC(&heidiConfig->c)){
-    _DD(DebugPrintln("LORA: set new config.", DEBUG_LEVEL_3);)
-    return setSettingsFromBuffer(buffer, CONF_DATA_C_PAYLOAD_SIZE, &heidiConfig->c);
+  uint16_t newCRC = clientConfigCRC(&confBuffer);
+  uint16_t oldCRC = clientConfigCRC(&heidiConfig->c);
+  if(newCRC != oldCRC){
+    _DD(DebugPrintln("LORA: set new config.[0x" + String(oldCRC, HEX) + " -> 0x" + String(newCRC, HEX) + "]", DEBUG_LEVEL_3);)
+    if(setSettingsFromBuffer(buffer, CONF_DATA_C_PAYLOAD_SIZE, &heidiConfig->c)){
+      _D(DebugPrintln("LORA: new config data successfully set.", DEBUG_LEVEL_2);)
+      return true;
+    } else {
+      _D(DebugPrintln("LORA: set new config data failed.", DEBUG_LEVEL_1);)
+      return false;
+    }
   }
-  _DD(DebugPrintln("LORA: config keeps the same.", DEBUG_LEVEL_3);)
+  _D(DebugPrintln("LORA: config keeps the same.", DEBUG_LEVEL_2);)
   return false;
 }
 
