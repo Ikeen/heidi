@@ -299,7 +299,10 @@ int loraWaitForDataPackage(loraPackageID_t pkgID, uint8_t *buffer, int bufferSiz
         uint8_t readPgkID = LoRa.read();
         if((readPgkID == pkgID) || (pkgID == LORA_PKG_ID_ALL_PKG)){
           int i = 0;
-          if((readPgkID != LORA_PKG_ID_ONE_SET) && (readPgkID != LORA_PKG_ID_TWO_SET)){ //data packages from other clients
+          #ifndef HEIDI_GATEWAY //if we are client, we don't need to load data sets
+          if((readPgkID != LORA_PKG_ID_ONE_SET) && (readPgkID != LORA_PKG_ID_TWO_SET))
+          #endif
+          {
             buffer[i++] = readPgkID;
             while((i<bufferSize) && (LoRa.available() > 0)){
               buffer[i++] = LoRa.read();
@@ -521,7 +524,7 @@ void loraLoadDataSets(uint8_t clientID, int dataSets){
 int loraSendDataSets(int setsToSend){
   if ( setsToSend <= 0) { return 0; }
   int sccusessfullySent = 0;
-  //_D(int t = millis();)
+  _D(int t = millis();) //oggo
   _DD(DebugPrintln("LORA: " + String(setsToSend) + " data sets ready to send.", DEBUG_LEVEL_3);)
   if(loraDataReady(setsToSend)) {
     _DD(DebugPrintln("LORA: start sending", DEBUG_LEVEL_3);)
@@ -532,8 +535,8 @@ int loraSendDataSets(int setsToSend){
       int failCnt = 0;
       for(int m = 0; m < setsToSend; m++){
         if(loraSendData(&buffer[m], m, LORA_MAX_TRIES)){
-          //_D(DebugPrint("LORA: package sent successfully [" + String(millis()-t) + " ms]: ", DEBUG_LEVEL_3);)
-          //_D(_PrintShortSet(&buffer[m], m, DEBUG_LEVEL_3);)
+          _D(DebugPrint("LORA: package sent successfully [" + String(millis()-t) + " ms]: ", DEBUG_LEVEL_2);) //oggo
+          _D(_PrintShortSet(&buffer[m], m, DEBUG_LEVEL_2);) //oggo
           eraseDataSet(&buffer[m]);
           failCnt = 0;
           sccusessfullySent++;
