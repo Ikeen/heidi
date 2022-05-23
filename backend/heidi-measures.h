@@ -85,22 +85,31 @@
 #endif
 
 #ifdef HEIDI_CONFIG_2
-#define ANALOG_MEASURE_OFFSET  302
-#define ANALOG_MEASURE_DIVIDER 650
+#define ANALOG_MEASURE_OFFSET  -138
+#define ANALOG_MEASURE_DIVIDER 621
 #endif
 
 #ifdef HEIDI_CONFIG_3
+#if HEIDI_HERDE == 1
+#if HEIDI_ANIMAL == 1
 #define ANALOG_MEASURE_OFFSET  35
 #define ANALOG_MEASURE_DIVIDER 597
-
+#endif
+#if HEIDI_ANIMAL == 3
+#define ANALOG_MEASURE_OFFSET  -55
+#define ANALOG_MEASURE_DIVIDER 612
+#endif
+#endif
 #endif
 
 #ifdef HEIDI_CONFIG_TEST
-#define ANALOG_MEASURE_OFFSET  35
-#define ANALOG_MEASURE_DIVIDER 597
-
-//#define ANALOG_MEASURE_OFFSET  315
-//#define ANALOG_MEASURE_DIVIDER 633
+#if HEIDI_ANIMAL == 3
+#define ANALOG_MEASURE_OFFSET   64
+#define ANALOG_MEASURE_DIVIDER 590
+#else
+#define ANALOG_MEASURE_OFFSET  -138
+#define ANALOG_MEASURE_DIVIDER 621
+#endif
 #endif
 
 #ifdef ANALOG_MEASURE_DIVIDER
@@ -108,6 +117,9 @@
 #error "divider set to zero!"
 #endif
 #endif
+
+#define CALCULATE_VOLTAGE(x) (float(x - (ANALOG_MEASURE_OFFSET)) / ANALOG_MEASURE_DIVIDER)
+
 /*
  * Temperature measuring
  */

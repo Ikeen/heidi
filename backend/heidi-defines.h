@@ -56,7 +56,9 @@
  * MAX_AWAKE_TIME_POWER    - extended measuring time after power up or in case of bad GPS-conditions (minutes)
  *                           On powering up from scratch, GPS-module has no orbit-data (ephemeris-data). We need to give
  *                           up-time for downloading it.
- * MAX_AWAKE_TIME_TIMER    - usual maximum up-time (minutes)
+ * MAX_AWAKE_TIME_TIMER    - maximum up-time (minutes)
+ * CHANGE_HERDE_ID_TO      - transmit another herd ID than defined (only for testing purposes) Needs a number , e.g.:
+ *                           #define CHANGE_HERDE_ID_TO 2
  *
  */
 
@@ -125,6 +127,8 @@
 #ifdef HEIDI_GATEWAY
 #define GSM_MODULE
 #define SEND_ALERT_SMS
+#else
+#define USE_CASIC_GPS
 #endif
 #define GPS_MODULE
 #define COMMON_SERIAL
@@ -148,37 +152,37 @@
 
 #ifdef HEIDI_CONFIG_TEST
 #define HEIDI_SW_BRAND              0
-#define HEIDI_HERDE                 3
+#define HEIDI_HERDE                 1
 #ifdef HEIDI_GATEWAY
-  #define USE_HEIDI_CONFIG_3_PINS
-  #define LORA_V1_3_OLED
+  #define CHANGE_HERDE_ID_TO        2
+  #define USE_HEIDI_CONFIG_2_PINS
+  //#define LORA_V1_3_OLED
   #define GSM_MODULE
   #define GPS_MODULE
   //#define USE_CASIC_GPS
   //#define USE_NO_MEASURES
-  #define USE_NO_POSITION
+  //#define USE_NO_POSITION
+  #define CHECK_BATTERY
   #define TEMP_SENSOR
   #define COMMON_SERIAL
   #define USE_LORA
-
   #define USE_VOLT_MEAS_EN_PIN
   #define I2C_BUS
   #define ACCELEROMETER
   //#define ULP_LED_BLINK
   #define USE_ULP
   #define USE_RTC_FAST_MEM
-
 #else
-  #define USE_HEIDI_CONFIG_2_PINS
+  #define USE_HEIDI_CONFIG_3_PINS
   #define LORA_V1_1_OLED
   #define GPS_MODULE
-  //#define USE_CASIC_GPS
+  #define USE_CASIC_GPS
   #define COMMON_SERIAL
   #define TEMP_SENSOR
   //#define CHECK_BATTERY
   #define USE_LORA
-  #define USE_NO_MEASURES
-  #define USE_NO_POSITION
+  //#define USE_NO_MEASURES
+  //#define USE_NO_POSITION
   #define USE_VOLT_MEAS_EN_PIN
   #define I2C_BUS
   //#define I2C_SWITCH
@@ -248,9 +252,14 @@
 #ifdef HEIDI_GATEWAY
 #define HEIDI_ANIMAL        HEIDI_GATEWAY_ADDRESS
 #else
-#define HEIDI_ANIMAL        HEIDI_FIRST_CLIENT
+#define HEIDI_ANIMAL        HEIDI_FIRST_CLIENT+1
 #endif
 
+
+/*
+ * data defines
+ */
+#define MIN_FREE_SETS_FOR_REQUEST  100
 
 /*
  * timing defines
@@ -318,9 +327,9 @@
 #endif
 
 #define GSM_POWER_SAVE_1_VOLTAGE    3.6   //double transmission time
-#define GSM_POWER_SAVE_2_VOLTAGE    3.5   //no more transmissions
-#define GSM_POWER_SAVE_3_VOLTAGE    3.4   //do nothing just deep sleep
-#define GSM_POWER_SAVE_4_VOLTAGE    3.3   //do nothing deep sleep for 1 hour
+#define GSM_POWER_SAVE_2_VOLTAGE    3.4   //no more transmissions
+#define GSM_POWER_SAVE_3_VOLTAGE    3.3   //do nothing just deep sleep
+#define GSM_POWER_SAVE_4_VOLTAGE    3.2   //do nothing deep sleep for 1 hour
 
 typedef enum _heidiStatus_t {
   PRE_MEAS_STATE      = 0x00000001,
@@ -524,13 +533,20 @@ typedef enum _heidiStatus_t {
 #error "USE_NO_POSITION for tests only"
 #endif
 
+#ifdef CHANGE_HERDE_ID_TO
+#error "CHANGE_HERDE_ID_TO for tests only"
+#endif
+#endif //#ifndef HEIDI_CONFIG_TEST
+
 #ifndef HEIDI_GATEWAY
 #ifdef GSM_MODULE
 #error "Clients usually have no GSM module"
 #endif
+#ifdef CHANGE_HERDE_ID_TO
+#error "that makes no sense for clients"
+#endif
 #endif
 
-#endif //#ifndef HEIDI_CONFIG_TEST
 
 #ifndef HEIDI_ANIMAL
 #error "Please set a default value."
@@ -560,6 +576,10 @@ typedef enum _heidiStatus_t {
 #ifdef USE_AOP_STATUS
 #error "CASIC does not support AOP "
 #endif
+#endif
+
+#ifdef TEST_VOLT
+#undef CHECK_BATTERY
 #endif
 
 extern bool GPSenabled;

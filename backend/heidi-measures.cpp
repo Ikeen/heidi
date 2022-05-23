@@ -271,6 +271,7 @@ int MeasureVoltage(uint8_t pin){
   VoltOff();
   #endif
   analog_value /= 1000;
+  _DD(if(analog_value > 4000){analog_value = 0;})//floating pin
   return(analog_value);
 }
 
@@ -283,7 +284,7 @@ void testVolt(void){
     analog_value /= 1000;
     #ifdef ANALOG_MEASURE_OFFSET
     #ifdef ANALOG_MEASURE_DIVIDER
-    _D(DebugPrintln("test VOLT: pin value: " + String(analog_value) + " , volt: " + String((float(analog_value - ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER), 2), DEBUG_LEVEL_1);)
+    _D(DebugPrintln("test VOLT: pin value: " + String(analog_value) + " , volt: " + String(CALCULATE_VOLTAGE(analog_value), 2), DEBUG_LEVEL_1);)
     #else
     _D(DebugPrintln("test VOLT: pin value: " + String(analog_value), DEBUG_LEVEL_1);)
     #endif

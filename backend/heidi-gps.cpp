@@ -308,6 +308,7 @@ bool GPSsetupUART(int newBaudRate){
   uint32_t oldBaudRate = GPS_DEFAULT_BAUD;
   //we start with default
   setGPSserialBaudRate(GPS_DEFAULT_BAUD, true);
+
   #ifdef USE_CASIC_GPS
   //CASIC devices ignores setting of protoMask to switch off txt messages
   GPSrawWriteString("$PCAS03,0,0,0,0,0,0,0,0*02");
@@ -791,6 +792,7 @@ void GPSrawWriteMessage(uint8_t* message, int len){
 #endif
 
 void setGPSserialBaudRate(uint32_t rate, bool initialSetup){
+  _DD(DebugPrintln("GPS: set UART to " + String(rate) + " baud." , DEBUG_LEVEL_3);)
   if (!openUart(GPS_UART_NO, rate)){_D(DebugPrintln("GPS: could not open UART", DEBUG_LEVEL_1);) return; }
   if (initialSetup){
     #ifdef DEBUG_SERIAL_GPS

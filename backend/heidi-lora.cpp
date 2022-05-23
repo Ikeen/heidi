@@ -463,7 +463,7 @@ void loraLoadData(void){
   uint8_t lastClientTriggerd = heidiConfig->lastClientTrig;
   _D(int t = millis();)
   _D( DebugPrintln("LORA: load data...", DEBUG_LEVEL_1);)
-  while(!endLoraTask()){
+  while((!endLoraTask()) && (freeDataSets() >= MIN_FREE_SETS_FOR_REQUEST)){
     lastClientTriggerd++;
     if(lastClientTriggerd >= HEIDI_MAX_CLIENTS) { lastClientTriggerd = 0; }
     if(((heidiConfig->clients >> lastClientTriggerd) & 0x01) == 0x01){

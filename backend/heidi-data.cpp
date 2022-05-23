@@ -306,18 +306,28 @@ int addDataSets(t_SendData* buffer, int cnt){
 
 /*
  * packUpDataSets removes free data sets between used ones and returns count of used data sets
- * Parameter: start position of packing
  */
 int packUpDataSets(){
   int k = 1;
   dtAcc_t dtAcc;
   if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){_D(DebugPrintln("packUpDataSets: no data access ", DEBUG_LEVEL_1);) return 0; }
-  for(int i=1; i<allDataSets; i++){ //data set 0 is always the current set
+  for(int i=1; i<allDataSets; i++){ //data set 0 is always the current set, we don't touch it
     if(!isEmptyDataSet(availableDataSet[i]) && (k < i) && isEmptyDataSet(availableDataSet[k])){
       copyDataSet(availableDataSet[i], availableDataSet[k]);
       initDataSet(availableDataSet[i]);
     }
     if(!isEmptyDataSet(availableDataSet[k])){ k++; }
+  }
+  if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
+  return k;
+}
+
+int freeDataSets(void){
+  int k = 0;
+  dtAcc_t dtAcc;
+  if((dtAcc = getDataSetAccess()) == DATA_NO_ACCESS){_D(DebugPrintln("countFreeDataSets: no data access ", DEBUG_LEVEL_1);) return 0; }
+  for(int i=1; i<allDataSets; i++){ //data set 0 is always the current set, we don't touch it
+    if(isEmptyDataSet(availableDataSet[i])){ k++; }
   }
   if(dtAcc == DATA_PRIMARY_ACCESS){ freeDataSetAccess(); }
   return k;
@@ -471,7 +481,11 @@ String generateMulti64SendLine(t_SendData* sets, int cnt){
       // and than count-3 16 bit values - always 16 bit - but values in data structure aren't always 16 bit
       uint8_t hexbuffer[64];
       hexbuffer[0] = HEX_BUFFER_DATA_VALUES + 1; //count of data values + animal id
+      #ifdef CHANGE_HERDE_ID_TO
+      hexbuffer[1] = CHANGE_HERDE_ID_TO;
+      #else
       hexbuffer[1] = herdeID();
+      #endif
       hexbuffer[2] = sets[i].animalID;
       _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  0, sets[i].latitude); //1
       _copyInt32toBuffer(hexbuffer,HEX_BUFFER_OFFSET  +  4, sets[i].longitude); //2

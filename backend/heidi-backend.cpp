@@ -346,11 +346,11 @@ void checkCycle(void){
 }
 
 double checkBattery(void){
-  double val;
+  float val;
   int   _dval;
   /**** check voltage does not need any inits ****/
   _dval = MeasureVoltage(BATTERY_MEASURE_PIN);
-  val = (double)(_dval + ANALOG_MEASURE_OFFSET) / ANALOG_MEASURE_DIVIDER;
+  val = CALCULATE_VOLTAGE(_dval);
   _D(DebugPrintln("Battery: " + String(val, 2) + "V [" + String(_dval) + "]", DEBUG_LEVEL_1);)
   #ifdef CHECK_BATTERY
   if (val <= GSM_POWER_SAVE_3_VOLTAGE){

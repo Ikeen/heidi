@@ -17,7 +17,7 @@ typedef enum {
   DEBUG_LEVEL_3
 };
 
-#define DEBUG_LEVEL 0 //0 (no prints) .. 3 (all prints)
+#define DEBUG_LEVEL 1 //0 (no prints) .. 3 (all prints)
 
 #if (DEBUG_LEVEL > 0 )
 #  define _D(x) x
@@ -31,7 +31,7 @@ typedef enum {
 #endif
 #if (DEBUG_LEVEL > 0)
 //#define DEBUG_SERIAL_GPS
-#define MEAS_ACQUIRNG_TIME
+//#define MEAS_ACQUIRNG_TIME
 //#define TRACK_HEIDI_STATE
 #endif
 void setupDebug(int startMS, bool powerOnReset);
