@@ -266,7 +266,11 @@ void transmitData(t_SendData* currentDataSet){
           free(buffer);
         }
         _D(DebugPrintln("GSM: " + String(cnt) + " data sets sent successfully", DEBUG_LEVEL_1);)
+        #ifdef CHANGE_HERDE_ID_TO
+        sendLine = "ID=" + intString4(CHANGE_HERDE_ID_TO); //get settings
+        #else
         sendLine = "ID=" + _herdeID(); //get settings
+        #endif
         if(GSMsendLine(sendLine)){
           String httpResponse = GSMGetLastResponse();
           if (    !setFenceFromHTTPresponse(httpResponse)

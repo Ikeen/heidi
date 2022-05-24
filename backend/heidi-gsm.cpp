@@ -498,7 +498,12 @@ int _responseGetInt(int position, String response, int errValue){
 #ifdef TEST_GSM
 _D(
 void testGSM(void){
+  #ifdef CHANGE_HERDE_ID_TO
+  String Sendline = "ID=" + intString4(CHANGE_HERDE_ID_TO);
+  #else
   String Sendline = "ID=" + _herdeID();
+  #endif
+
   disableMeasures();
   if(openGSM()){
 	if (GSMsetup()){
