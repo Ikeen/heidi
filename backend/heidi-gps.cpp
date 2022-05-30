@@ -978,8 +978,8 @@ void testGPS(int timeout){
            #endif
           DebugPrintln("", DEBUG_LEVEL_1);
         } else {
-          DebugPrint("Satellites= ", DEBUG_LEVEL_1);
-          DebugPrintln(GPS_GET_SAT, DEBUG_LEVEL_1);
+          //DebugPrint("Satellites= ", DEBUG_LEVEL_1);
+          //DebugPrintln(GPS_GET_SAT, DEBUG_LEVEL_1);
         }
       }
     }

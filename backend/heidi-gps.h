@@ -37,7 +37,7 @@
 #define GPS_TIM_VALID gpsData.data->CASnavTimeUTC.valid >= GPS_DATE_TIME_VALID_CASIC
 #define GPS_IS_NAV_DATA gpsData.type == GPS_DT_CASIC_NAV_PV
 #define GPS_IS_DOP_DATA gpsData.type == GPS_DT_CASIC_NAV_DOP
-#define GPS_GOT_2D_FIX gpsData.data->CASnavPV.posValid == GPS_FIX_TYPE_CASIC_2D
+#define GPS_GOT_2D_FIX gpsData.data->CASnavPV.posValid >= GPS_FIX_TYPE_CASIC_FAST
 #define GPS_GOT_3D_FIX gpsData.data->CASnavPV.posValid >= GPS_FIX_TYPE_CASIC_3D
 #define GPS_MSG_ACK_T CACK_ACK_NACK_t
 #define GPS_MSG_ACK   CASack

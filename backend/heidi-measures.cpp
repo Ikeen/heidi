@@ -235,11 +235,12 @@ float measureTemperature(){
     DallasTemperature tempSensor(&oneWire);
     tempSensor.begin();
     _D(DebugPrintln("measure temperature", DEBUG_LEVEL_2);)
-    for(int i=0; i<500; i++){
+    for(int i=0; i<200; i++){
       tempSensor.requestTemperaturesByIndex(0);
       temp = tempSensor.getTempCByIndex(0);
       if(temp != NO_TEMPERATURE) { break; }
       if(millis() - start > MAX_MEAS_TIME) { temp = NO_TEMPERATURE; break; }
+      pause(10);
     }
     return temp;
   } else {
