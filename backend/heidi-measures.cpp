@@ -383,12 +383,14 @@ void GSMOn(){
   freeIIC();
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
+  /*
   for(int i=0; i<100; i++){
     digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
     delayMicroseconds(110-i);
     digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
     delayMicroseconds(10+i);
   }
+  */
   digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
   #endif
   _DD(DebugPrintln("GSM Voltage on", DEBUG_LEVEL_3));

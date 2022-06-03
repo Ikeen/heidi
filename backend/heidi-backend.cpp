@@ -35,7 +35,7 @@ void setup() {
   //never change the following 3 lines in their position of code!
   powerOnReset = wasPowerOnReset(); //add validation of setup data
   setupDebug(startMS, powerOnReset);
-  setupData(powerOnReset); //the first thing we have to do before accessing any config data!!
+  setupData(powerOnReset); //the first thing we have to do before accessing any configuration data!!
 
   if (sysWasbrownOut()) { setState(RESET_INITS); doSleepRTCon(MAX_SLEEP_TIME_MS); }
 
@@ -95,6 +95,8 @@ void setup() {
   _D( DebugPrintln("System boot time: " + DateString(&bootTime) + " " + TimeString(&bootTime), DEBUG_LEVEL_1); PRINT_CYCLE_STATUS )
   gotTimeStamp = millis();
 
+  /* do measuring */
+  currentDataSet->temperature = (int8_t)round(measureTemperature());
   if(!GPSalert()){ checkCycle(); }
   // test alerts: comment in next line
   //_D(clrState(NEW_FENCE); DebugPrintln("!!!!!! NEW FENCE off !!!!!", DEBUG_LEVEL_1);) //!!!!!!!!
@@ -150,7 +152,9 @@ void loop()
 
 void finalizeDataSet(t_SendData* currentDataSet){
   #ifdef TEMP_SENSOR
-  currentDataSet->temperature = (int8_t)round(measureTemperature());
+  if(currentDataSet->temperature <= NO_TEMPERATURE){ //2nd try
+    currentDataSet->temperature = (int8_t)round(measureTemperature());
+  }
   _D(DebugPrintln("Temperature: " + String(currentDataSet->temperature) + " C", DEBUG_LEVEL_1);)
   #endif
   #ifndef ACCELEROMETER
@@ -541,7 +545,7 @@ void doTests(t_SendData* currentDataSet){
   testGSM();
   #endif
   #ifdef TEST_GPS
-  testGPS(powerOnReset ? 180000 : 60000);
+  testGPS(powerOnReset ? 180000 : 3600000);
   #endif
   #ifdef TEST_TEMP
   testTemp();
