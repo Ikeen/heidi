@@ -127,8 +127,6 @@
 #ifdef HEIDI_GATEWAY
 #define GSM_MODULE
 #define SEND_ALERT_SMS
-#else
-#define USE_CASIC_GPS
 #endif
 #define GPS_MODULE
 #define COMMON_SERIAL
@@ -154,8 +152,8 @@
 #define HEIDI_SW_BRAND              0
 #define HEIDI_HERDE                 1
 #ifdef HEIDI_GATEWAY
-  #define CHANGE_HERDE_ID_TO        2
-  #define USE_HEIDI_CONFIG_2_PINS
+  //#define CHANGE_HERDE_ID_TO        2
+  #define USE_HEIDI_CONFIG_3_PINS
   //#define LORA_V1_3_OLED
   #define GSM_MODULE
   #define GPS_MODULE
@@ -212,7 +210,7 @@
 //#define TEST_RTC
 //#define TEST_CYCLES
 //#define TEST_DATA
-//#define TEST_GSM
+#define TEST_GSM
 //#define TEST_GPS
 //#define TEST_ACC
 //#define TEST_LORA

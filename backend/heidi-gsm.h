@@ -21,13 +21,18 @@
 #endif
 #define GSM_RST  GPIO_NUM_21
 //SIM800L max auto-bauding rate is 57600
-#define GSM_BAUD 57600
+#define GSM_BAUD 57600   // 5ms per data set
+//#define GSM_BAUD 19200   // 31ms per data set
+//#define GSM_BAUD 9600    // 62ms per data set
 /* you need to adjust READ_STRING_TIMEOUT if you intend to use smaller Baud-rates, consider at least 100 character times
  * as enough (56700 are about 5000 char/s = 100 char/20ms)
  * consider that Stream::readString() does not use timeout as over all timeout but as timeout on silence, so a 100 char
  * times timeout will not break a read of 5000 chars on block - if we wait for the first char previously, and we do so
  */
-#define READ_STRING_TIMEOUT 50
+#define READ_STRING_TIMEOUT 50  //GSM_BAUD 57600
+//#define READ_STRING_TIMEOUT 150 //GSM_BAUD 19200
+//#define READ_STRING_TIMEOUT 300 //GSM_BAUD 9600
+
 /*
  * consider time of transmission, because in case of failing transmission you need to repeat the whole line
  * consider GSM-module max buffer (in case of SIM800L 312kByte) 1 data set will be encoded to an about
@@ -38,7 +43,7 @@ bool openGSM();
 void closeGSM();
 
 bool GSMsetup();
-bool GSMsendLine(String line);
+bool GSMsendLine(const String line, const String url);
 bool GSMshutDown();
 int  GSMdoPost(String contentType, String payload, unsigned int clientWriteTimeoutMs, unsigned int serverReadTimeoutMs);
 bool GSMhandleAlerts(void);
@@ -52,9 +57,7 @@ int    GSMinitiateHTTP(String url);
 int    GSMterminateHTTP();
 bool   GSMsetupGPRS(const String apn, const String user, const String pwd);
 bool   GSMopenGPRS();
-int    GSMterminateGPRS();
-bool   GSMopenHTTPconnection(String url);
-bool   GSMcloseHTTPconnection(void);
+int    GSMcloseGPRS();
 String GSMGetLastResponse(void);
 bool   GSMsendCommand(const String command, const String okPhrase, int timeOutMs);
 bool   GSMsendCommand(const String command);
@@ -67,7 +70,7 @@ bool GSMwaitPIN(uint32_t timeOutMS);
 int  _responseGetIntKeyWord(int position, String keyWord, int errValue = -1);
 int  _responseGetInt(int position, int errValue = -1);
 int  _responseGetInt(int position, String response, int errValue);
-
+String _responseCleanUp(const String str);
 #ifdef TEST_GSM
 void testGSM(void);
 _D(void   GSMCheckSignalStrength();)

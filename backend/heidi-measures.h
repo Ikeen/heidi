@@ -149,7 +149,7 @@ void enableHoldPin(gpio_num_t which);
 void disableHoldPin(gpio_num_t which);
 void disableGPIOs(void);
 
-bool openUart(uint8_t uartNo, uint32_t baud);
+bool openUart(uint8_t uartNo, uint32_t baud, uint8_t inputType);
 
 void VoltOn(void);
 void VoltOff(void);

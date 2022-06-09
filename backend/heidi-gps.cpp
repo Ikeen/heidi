@@ -793,7 +793,7 @@ void GPSrawWriteMessage(uint8_t* message, int len){
 
 void setGPSserialBaudRate(uint32_t rate, bool initialSetup){
   _DD(DebugPrintln("GPS: set UART to " + String(rate) + " baud." , DEBUG_LEVEL_3);)
-  if (!openUart(GPS_UART_NO, rate)){_D(DebugPrintln("GPS: could not open UART", DEBUG_LEVEL_1);) return; }
+  if (!openUart(GPS_UART_NO, rate, INPUT)){_D(DebugPrintln("GPS: could not open UART", DEBUG_LEVEL_1);) return; }
   if (initialSetup){
     #ifdef DEBUG_SERIAL_GPS
     GPSprintBootData();

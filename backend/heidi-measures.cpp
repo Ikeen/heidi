@@ -189,18 +189,19 @@ void setGPIOInputHigh(gpio_num_t which){
   pinMode(GPIO_NUM_27, INPUT_PULLUP);
   #endif
 }
-bool openUart(uint8_t uartNo, uint32_t baud){
+bool openUart(uint8_t uartNo, uint32_t baud, uint8_t inputType){
   int t = millis();
   if (uartNo == UART1){
     if(!uart1Open){
       heidiSerial1.begin(baud, SERIAL_8N1, UART1_RXD, UART1_TXD, false);
       heidiSerial1.setRxBufferSize(UART_RX_BUFFER_SIZE);
-      pinMode(UART1_RXD, INPUT);
+      pinMode(UART1_RXD, inputType);
       pinMode(UART1_TXD, OUTPUT);
       uart1Open = true;
     } else {
       heidiSerial1.flush();
       heidiSerial1.updateBaudRate(baud);
+      pinMode(UART1_RXD, inputType);
     }
     heidiSerial1.flush();
     return true;
@@ -210,12 +211,13 @@ bool openUart(uint8_t uartNo, uint32_t baud){
     if(!uart2Open){
       heidiSerial2.begin(baud, SERIAL_8N1, UART2_RXD, UART2_TXD, false);
       heidiSerial2.setRxBufferSize(UART_RX_BUFFER_SIZE);
-      pinMode(UART2_RXD, INPUT_PULLDOWN);
+      pinMode(UART1_RXD, inputType);
       pinMode(UART2_TXD, OUTPUT);
       uart1Open = true;
     } else {
       heidiSerial2.flush();
       heidiSerial2.updateBaudRate(baud);
+      pinMode(UART1_RXD, inputType);
     }
     heidiSerial2.flush();
     return true;
@@ -253,9 +255,9 @@ float measureTemperature(){
 }
 #ifndef NO_TESTS
 void testTemp(void){
-  for(int i = 0; i<100; i++){
+  for(int i = 0; i<600; i++){
     _D(DebugPrintln("Temperature: " + String(measureTemperature()), DEBUG_LEVEL_1);)
-    pause(100);
+    pause(500);
   }
 }
 #endif
@@ -383,12 +385,14 @@ void GSMOn(){
   freeIIC();
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
+  /*
   for(int i=0; i<100; i++){
     digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
     delayMicroseconds(110-i);
     digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
     delayMicroseconds(10+i);
   }
+  */
   digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
   #endif
   _DD(DebugPrintln("GSM Voltage on", DEBUG_LEVEL_3));

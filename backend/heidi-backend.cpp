@@ -244,7 +244,7 @@ void transmitData(t_SendData* currentDataSet){
   #endif
   if(openGSM()){
     if (GSMsetup()){
-      if (GSMopenHTTPconnection(HEIDI_SERVER_PUSH_URL)){
+      if (GSMopenGPRS()){
         int buffersize = (MAX_DATA_SETS_PER_SEND_LINE * sizeof(t_SendData));
         t_SendData* buffer = (t_SendData*)malloc(buffersize);
         memset(buffer, 0, buffersize);
@@ -254,7 +254,7 @@ void transmitData(t_SendData* currentDataSet){
             setsSent = getNextnDataSets(MAX_DATA_SETS_PER_SEND_LINE, buffer, buffersize, &buffer[setsSent-1]);
             if(setsSent > 0){
               sendLine = generateMulti64SendLine(buffer, setsSent);
-              if(GSMsendLine(sendLine)){
+              if(GSMsendLine(sendLine, HEIDI_SERVER_PUSH_URL)){
                 eraseDataSets(buffer, setsSent);
                 _D(cnt += setsSent;)
               } else {
@@ -271,7 +271,7 @@ void transmitData(t_SendData* currentDataSet){
         #else
         sendLine = "ID=" + _herdeID(); //get settings
         #endif
-        if(GSMsendLine(sendLine)){
+        if(GSMsendLine(sendLine, HEIDI_SERVER_PUSH_URL)){
           String httpResponse = GSMGetLastResponse();
           if (    !setFenceFromHTTPresponse(httpResponse)
                || !setSettingsFromHTTPresponse(httpResponse)
@@ -280,12 +280,12 @@ void transmitData(t_SendData* currentDataSet){
           }
           clrState(RESET_INITS);
         } _D( else {_D(DebugPrintln("GSM: config data transmission failed", DEBUG_LEVEL_1);)})
-        GSMcloseHTTPconnection();
-      }
+        GSMcloseGPRS();
+      } _D( else {_D(DebugPrintln("GSM: open GPRS failed", DEBUG_LEVEL_1);)})
       GSMshutDown();
-    }
+    } _D( else {_D(DebugPrintln("GSM: setup GSM failed", DEBUG_LEVEL_1);)})
     closeGSM();
-  }
+  } _D( else {_D(DebugPrintln("GSM: open GSM failed", DEBUG_LEVEL_1);)})
   #ifdef USE_ULP
   freeULP();
   #endif
@@ -566,7 +566,7 @@ void doTests(t_SendData* currentDataSet){
 //  init_accel_ULP(ULP_INTERVALL_US);
 //  gotoSleep(120000);
 //#else
-  gotoSleep(1000);
+  gotoSleep(3600000);
 //#endif
 }
 

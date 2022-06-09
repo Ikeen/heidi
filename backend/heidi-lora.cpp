@@ -64,7 +64,7 @@ void loraGatewayTask(void *pvParameters) {
   LoRaTaskHandle = NULL;
   vTaskDelete(NULL); //NULL = delete calling task
 }
-#else
+#else //HEIDI_GATEWAY
 /*
  * LoRa Client task just listens and acts if there was something
  */
