@@ -228,7 +228,20 @@ bool setBootTimeFromGPSTime(tm* bootTime, int timeOut)
           GPStime.tm_hour = GPS_GET_HR;
           GPStime.tm_min  = GPS_GET_MI;
           GPStime.tm_sec  = GPS_GET_SE;
-          mktime(&GPStime);
+          struct tm systm;
+          systm.tm_year = GPStime.tm_year - 1900;
+          systm.tm_mon  = GPStime.tm_mon;
+          systm.tm_mday = GPStime.tm_mday;
+          systm.tm_hour = GPStime.tm_hour;
+          systm.tm_min  = GPStime.tm_min;
+          systm.tm_sec  = GPStime.tm_sec;
+          time_t tt = mktime(&systm);
+          struct timeval now = { .tv_sec = tt };
+          settimeofday(&now, NULL);
+          _DD(
+            time_t syst = time(0);
+            DebugPrintln("The local date and time is: " +  String(ctime(&syst)), DEBUG_LEVEL_3);
+          )
           setBootTimeFromCurrentTime(&GPStime, bootTime);
           rmError(E_COULD_NOT_FETCH_GPS_TIME);
           _DD(DebugPrintln("GPS time: " + String(GPStime.tm_year) + "-" + LenTwo(String(GPStime.tm_mon + 1)) + "-" + LenTwo(String(GPStime.tm_mday))
@@ -237,6 +250,11 @@ bool setBootTimeFromGPSTime(tm* bootTime, int timeOut)
           return true;
         }
 	    }
+      #ifndef USE_CASIC_GPS
+      _DD(else{
+        DebugPrintln("GPS date time status: 0x0" +  String(gpsData.data->navPVT.valid, HEX), DEBUG_LEVEL_3);
+      })
+      #endif
     }
     #ifdef DEBUG_SERIAL_GPS
     else {_DD(DebugPrint(".", DEBUG_LEVEL_3);) }

@@ -535,20 +535,19 @@ void init_accel_ULP(uint32_t intervall_us) {
 }
 void init_accel_data_ULP(uint32_t intervall_us, uint8_t cycleLenMinute){
   //initialize measurement cycle variables for ULP
-  if (getULPLock()) {
-    uint16_t interim_ticks = (uint16_t)((uint32_t)(cycleLenMinute * 60000) / (intervall_us / 1000) / 4);
-    set_accel_exthr1_ULP(heidiConfig->c.accThres1); //set threshold 1 to current value
-    set_accel_exthr2_ULP(heidiConfig->c.accThres2); //set threshold 2 to current value
-    set_accel_excnt1_ULP(0);   //set threshold 1 exceeding counter to zero
-    set_accel_excnt2_ULP(0);   //set threshold 1 exceeding counter to zero
-    set_accel_wake1_ULP(_getAccThresCnt(heidiConfig->c.accAlertThres1)); //set wake (alert) threshold 1 to current value
-    set_accel_wake2_ULP(_getAccThresCnt(heidiConfig->c.accAlertThres2)); //set wake (alert) threshold 2 to current value
-    set_accel_meas_cnt_ULP(0); //set measurement counter to zero
-    for (int i=0; i<3; i++){
-      set_accel_interrim_ct1_ULP(i,0);
-      set_accel_interrim_ct2_ULP(i,0);
-      set_accel_interrim_thr_ULP(i,interim_ticks*(i+1));
-    }
+  getULPLock(); //if we do not get the lock - we nevertheless give a try
+  uint16_t interim_ticks = (uint16_t)((uint32_t)(cycleLenMinute * 60000) / (intervall_us / 1000) / 4);
+  set_accel_exthr1_ULP(heidiConfig->c.accThres1); //set threshold 1 to current value
+  set_accel_exthr2_ULP(heidiConfig->c.accThres2); //set threshold 2 to current value
+  set_accel_excnt1_ULP(0);   //set threshold 1 exceeding counter to zero
+  set_accel_excnt2_ULP(0);   //set threshold 1 exceeding counter to zero
+  set_accel_wake1_ULP(_getAccThresCnt(heidiConfig->c.accAlertThres1)); //set wake (alert) threshold 1 to current value
+  set_accel_wake2_ULP(_getAccThresCnt(heidiConfig->c.accAlertThres2)); //set wake (alert) threshold 2 to current value
+  set_accel_meas_cnt_ULP(0); //set measurement counter to zero
+  for (int i=0; i<3; i++){
+    set_accel_interrim_ct1_ULP(i,0);
+    set_accel_interrim_ct2_ULP(i,0);
+    set_accel_interrim_thr_ULP(i,interim_ticks*(i+1));
   }
   freeULP();
 }
@@ -567,10 +566,7 @@ void testAcc(bool poweOnReset){
       DebugPrintln("ACC: cnt1/" + String(i+1) + " :" + String(get_accel_interrim_ct_ULP(1,i)), DEBUG_LEVEL_1);
       DebugPrintln("ACC: cnt2/" + String(i+1) + " :" + String(get_accel_interrim_ct_ULP(2,i)), DEBUG_LEVEL_1);
     }
-    init_accel_data_ULP(ULP_INTERVALL_US, 1);
   }
-  DebugPrintln("ACC: sleep 58 seconds for measuring", DEBUG_LEVEL_1);
-  pause(58000);
 }
 #endif
 

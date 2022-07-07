@@ -89,6 +89,8 @@ bool GSMsetup()
   // wait for modem
   if (!GSMwaitForModem(WAIT_FOR_MODEM_TIMEOUT)) { _D(DebugPrintln("GSM: Wait for modem failed", DEBUG_LEVEL_1)); return false; }
   _D(DebugPrintln("Modem OK", DEBUG_LEVEL_2));
+  //wait for SIM
+  pause(2000);
   //unlock SIM
   if(!GSMsimUnlock(HEIDI_SIM_PIN)) { _D(DebugPrintln("GSM: SIM unlock failed", DEBUG_LEVEL_1));  return false; };
   _D(DebugPrintln("SIM unlock OK", DEBUG_LEVEL_2));
@@ -336,7 +338,7 @@ bool GSMopenGPRS(){
       int j=ATresponse.indexOf('\"', i+1);
       DebugPrintln("SIM800L : IP - " + ATresponse.substring(i+1,j), DEBUG_LEVEL_3);
   )
-  pause(5000); //a little setup time
+  pause(2000); //a little setup time
   GPRSopen = true;
   _DD(DebugPrintln("GSM  : GPRS opened", DEBUG_LEVEL_3);)
   return true;
@@ -528,9 +530,8 @@ void testGSM(void){
           setSettingsFromHTTPresponse(GSMGetLastResponse());
           setTelNoFromHTTPresponse(GSMGetLastResponse());
         }
-        pause(1000);
         Sendline = "TST=TestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTestTest";
-        for(int i=0; i<20; i++){
+        for(int i=0; i<10; i++){
             if(GSMsendLine(Sendline, HEIDI_SERVER_PUSH_URL)){
               String response = GSMGetLastResponse();
               if (response.substring(3)  != Sendline.substring(4)){
@@ -540,7 +541,7 @@ void testGSM(void){
                 DebugPrintln("************ !! *********************", DEBUG_LEVEL_1);
               }
           }
-          pause(1000);
+          pause(5000);
         }
         GSMcloseGPRS();
       } _D( else {_D(DebugPrintln("GSM: open GPRS failed", DEBUG_LEVEL_1);)})

@@ -43,6 +43,10 @@ void setup() {
   //setupFlashData(powerOnReset);
   setupCycleTable();
 
+  _DD(
+    time_t syst = time(0);
+    DebugPrintln("The local date and time is: " +  String(ctime(&syst)), DEBUG_LEVEL_3);
+  )
   _D(debugHeidiState(powerOnReset);)
   if(heidiConfig->bootNumber <= REFETCH_SYS_TIME) { timeOut = MAX_AWAKE_TIME_POWER_MSEC; }
   #ifdef GPS_MODULE
@@ -80,7 +84,11 @@ void setup() {
   #endif
 
   #ifdef ACCELEROMETER
-  checkAccData(currentDataSet);
+  if (checkAccData(currentDataSet) == 0){
+    init_accel_ULP(ULP_INTERVALL_US); //something went wrong - reinitialize ULP
+  } else {
+    init_accel_data_ULP(ULP_INTERVALL_US, _currentCyleLen_m());
+  }
   #endif
 
   #ifdef USE_LORA
@@ -96,7 +104,9 @@ void setup() {
   gotTimeStamp = millis();
 
   /* do measuring */
+  #ifdef TEMP_SENSOR
   currentDataSet->temperature = (int8_t)round(measureTemperature());
+  #endif
   if(!GPSalert()){ checkCycle(); }
   // test alerts: comment in next line
   //_D(clrState(NEW_FENCE); DebugPrintln("!!!!!! NEW FENCE off !!!!!", DEBUG_LEVEL_1);) //!!!!!!!!
@@ -401,15 +411,20 @@ double checkBattery(void){
   return val;
 }
 #ifdef ACCELEROMETER
-void checkAccData(t_SendData* currDataSet){
+/*
+ * reads the data from ULP acceleration measurement
+ *   *t_SendData: pointer to data set where to store
+ *   returns the amount of measurement loops (if zero - something is wrong)
+ */
+int checkAccData(t_SendData* currDataSet){
   //need to set this here because getting position needs various time
   currDataSet->accThresCnt1 = get_accel_excnt1_ULP();
   currDataSet->accThCnt1Spr = get_accel_ct_spreading(1);
   currDataSet->accThresCnt2 = get_accel_excnt2_ULP();
   currDataSet->accThCnt2Spr = get_accel_ct_spreading(2);
-  init_accel_data_ULP(ULP_INTERVALL_US, _currentCyleLen_m());
   _D(DebugPrintln("accel. threshold 1 count: " + String(currDataSet->accThresCnt1), DEBUG_LEVEL_2);
      DebugPrintln("accel. threshold 2 count: " + String(currDataSet->accThresCnt2), DEBUG_LEVEL_2);)
+  return(get_accel_meas_cnt_ULP());
 }
 #endif
 
@@ -431,6 +446,7 @@ void restartCycling(){
 }
 
 bool setupSystemBootTime(tm* bootTime, int timeOut){
+  bool noGPSTime = true;
   #ifdef GPS_MODULE
   _D(DebugPrintln("Get current time from GPS", DEBUG_LEVEL_1);)
   if (!openGPS()) {
@@ -441,16 +457,18 @@ bool setupSystemBootTime(tm* bootTime, int timeOut){
     closeGPS();
     _D(DebugPrintln("Unable to get time from GPS", DEBUG_LEVEL_1);)
     if (heidiConfig->bootNumber <= REFETCH_SYS_TIME){ return false; }
-  }
-  #else
-  tm* sysTime;
-  time_t now;
-  time(&now);
-  sysTime = gmtime(&now);
-
-  setBootTimeFromCurrentTime(sysTime, bootTime);
+  } else { noGPSTime = false; }
   #endif
-  _D(DebugPrintln("Got Time after: " + String(millis() / 1000) + "s", DEBUG_LEVEL_2);)
+  if(noGPSTime){
+    tm* sysTime;
+    time_t now;
+    time(&now);
+    sysTime = gmtime(&now);
+    setBootTimeFromCurrentTime(sysTime, bootTime);
+    _D(DebugPrintln("Got Time from system time", DEBUG_LEVEL_2);)
+  } else {
+    _D(DebugPrintln("Got Time after: " + String(millis() / 1000) + "s", DEBUG_LEVEL_2);)
+  }
   return true;
 }
 
@@ -566,12 +584,12 @@ void doTests(t_SendData* currentDataSet){
   _D(DebugPrintln("setup_size = " + String(sizeof(_t_ConfigData)), DEBUG_LEVEL_1);)
 #endif
   //return;
-//#ifdef HEIDI_GATEWAY
-//  init_accel_ULP(ULP_INTERVALL_US);
-//  gotoSleep(120000);
-//#else
+#ifdef HEIDI_GATEWAY
+  init_accel_ULP(ULP_INTERVALL_US);
+  gotoSleep(60000);
+#else
   gotoSleep(3600000);
-//#endif
+#endif
 }
 
 #endif

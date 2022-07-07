@@ -59,11 +59,12 @@
  * MAX_AWAKE_TIME_TIMER    - maximum up-time (minutes)
  * CHANGE_HERDE_ID_TO      - transmit another herd ID than defined (only for testing purposes) Needs a number , e.g.:
  *                           #define CHANGE_HERDE_ID_TO 2
+ * NO_STEP_UP_CONV         - we use no step up converter - more strict voltage thresholds for power save - not good
  *
  */
 
 #define HEIDI_CONFIG_3
-#define HEIDI_GATEWAY
+//#define HEIDI_GATEWAY
 
 
 //------------------------ heidi V1 ------------------------------------
@@ -118,7 +119,7 @@
 #define MAX_AWAKE_TIME_TIMER        2         // minutes 0 = infinite
 #define DEFAULT_DIST_ALERT_THRES    100       // meters
 #endif
-//------------------------ heidi V3 ------------------------------------
+//----------------------- heidi V3 ------------------------------------
 #ifdef HEIDI_CONFIG_3
 #define HEIDI_SW_BRAND              3
 #define LORA_V1_3_OLED
@@ -140,7 +141,7 @@
 //#define USE_ACC_ALERT
 #define USE_LORA
 #define USE_RTC_FAST_MEM
-#define DEFAULT_BOOT_CYCLES         12        // cycles until transferring data
+#define DEFAULT_BOOT_CYCLES         4         // cycles until transferring data
 #define DEFAULT_CYCLE_DURATION      15        // minutes
 #define MAX_AWAKE_TIME_POWER        3         // minutes 0 = infinite
 #define MAX_AWAKE_TIME_TIMER        2         // minutes 0 = infinite
@@ -160,7 +161,7 @@
   //#define USE_CASIC_GPS
   //#define USE_NO_MEASURES
   //#define USE_NO_POSITION
-  #define CHECK_BATTERY
+  //#define CHECK_BATTERY
   #define TEMP_SENSOR
   #define COMMON_SERIAL
   #define USE_LORA
@@ -171,10 +172,10 @@
   #define USE_ULP
   #define USE_RTC_FAST_MEM
 #else
-  #define USE_HEIDI_CONFIG_3_PINS
+  #define USE_HEIDI_CONFIG_2_PINS
   #define LORA_V1_1_OLED
   #define GPS_MODULE
-  #define USE_CASIC_GPS
+  //#define USE_CASIC_GPS
   #define COMMON_SERIAL
   #define TEMP_SENSOR
   //#define CHECK_BATTERY
@@ -194,8 +195,8 @@
   //#define SAVE_AOP_DATA
   //#define USE_AOP_STATUS
 #endif
-#define DEFAULT_BOOT_CYCLES         10        // ..until transferring data
-#define DEFAULT_CYCLE_DURATION      6         // minutes
+#define DEFAULT_BOOT_CYCLES         3        // ..until transferring data
+#define DEFAULT_CYCLE_DURATION      10       // minutes
 #define MAX_AWAKE_TIME_POWER        3        // minutes 0 = infinite
 #define MAX_AWAKE_TIME_TIMER        2        // minutes 0 = infinite
 #define DEFAULT_DIST_ALERT_THRES    100      // meters
@@ -210,7 +211,7 @@
 //#define TEST_RTC
 //#define TEST_CYCLES
 //#define TEST_DATA
-#define TEST_GSM
+//#define TEST_GSM
 //#define TEST_GPS
 //#define TEST_ACC
 //#define TEST_LORA
@@ -250,7 +251,11 @@
 #ifdef HEIDI_GATEWAY
 #define HEIDI_ANIMAL        HEIDI_GATEWAY_ADDRESS
 #else
+#ifdef TEST_LORA
+#define HEIDI_ANIMAL        HEIDI_FIRST_CLIENT
+#else
 #define HEIDI_ANIMAL        HEIDI_FIRST_CLIENT+1
+#endif
 #endif
 
 
@@ -323,11 +328,17 @@
 #define DEFALUT_ACCEL_THRES_MAX_COUNT_1   16000 /* never ever do an alert */
 #define DEFALUT_ACCEL_THRES_MAX_COUNT_2   16000 /* never ever do an alert */
 #endif
-
+#ifdef NO_STEP_UP_CONV
+#define GSM_POWER_SAVE_1_VOLTAGE    3.8   //double transmission time
+#define GSM_POWER_SAVE_2_VOLTAGE    3.7   //no more transmissions
+#define GSM_POWER_SAVE_3_VOLTAGE    3.3   //do nothing just deep sleep
+#define GSM_POWER_SAVE_4_VOLTAGE    3.2   //do nothing deep sleep for 1 hour
+#else
 #define GSM_POWER_SAVE_1_VOLTAGE    3.6   //double transmission time
 #define GSM_POWER_SAVE_2_VOLTAGE    3.4   //no more transmissions
 #define GSM_POWER_SAVE_3_VOLTAGE    3.3   //do nothing just deep sleep
 #define GSM_POWER_SAVE_4_VOLTAGE    3.2   //do nothing deep sleep for 1 hour
+#endif
 
 typedef enum _heidiStatus_t {
   PRE_MEAS_STATE      = 0x00000001,

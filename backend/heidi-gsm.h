@@ -19,7 +19,11 @@
 #else
 #define GSM_UART_NO UART2
 #endif
+#ifdef USE_HEIDI_CONFIG_3_PINS
+#define GSM_RST  GPIO_NUM_22
+#else
 #define GSM_RST  GPIO_NUM_21
+#endif
 //SIM800L max auto-bauding rate is 57600
 #define GSM_BAUD 57600   // 5ms per data set
 //#define GSM_BAUD 19200   // 31ms per data set

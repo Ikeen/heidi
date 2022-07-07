@@ -252,9 +252,10 @@ typedef enum _gpsWaitMsgRc_t {
     GPS_DATE_TIME_NOT_VAGPSsendMessageLID   = 0x00,
     GPS_DATE_TIME_DATE_VALID  = 0x01,
     GPS_DATE_TIME_TIME_VALID  = 0x02,
-    GPS_DATE_TIME_VALID_CASIC = 0x03,
-    GPS_DATE_TIME_RESOLVED    = 0x04,
-    GPS_DATE_TIME_VALID       = 0x07
+    //GPS_DATE_TIME_VALID_CASIC = 0x03,
+    GPS_DATE_TIME_VALID       = 0x03,
+    GPS_DATE_TIME_RESOLVED    = 0x04
+    //GPS_DATE_TIME_VALID       = 0x07
   }gps_datetime_valid_t;
 
   typedef enum _gps_fix_type_t{

@@ -366,14 +366,15 @@ bool doDataTransmission(){
   result &= !getState(POWER_SAVE_2);
 
   if (result) { setError(E_TRANSMIT_REGULAR); } //!!!!!!!!!!!!!!!
-
+  #ifndef NO_STEP_UP_CONV
   result |= (GPSalert() && !getError(E_COULD_NOT_FETCH_GPS));
   /* ...but we definitely give a try if we have an alert, regardless power save state
    * On PRE_GPS_ALERT state we want to check for new fence data - that should work, because PRE_GPS_ALERT state could not be reached
    * without GPS data. But in case while stepping through alert states we cannot fetch position one time, it is senseless to send a
    * SMS without transferring current position data. Therefore:  && !getError(E_COULD_NOT_FETCH_GPS)
+   * without step up converter, it is completely senseless - it will definitely not work
    */
-
+  #endif
   if(GPSalert()) {
     setError(E_TRANSMIT_ALERT);  //!!!!!!!!!!!!!!!
     if(getError(E_COULD_NOT_FETCH_GPS)) { setError(E_TRANSMIT_ALERT_NO_GPS); } //!!!!!!!!!!!!!!!
@@ -395,6 +396,10 @@ int prevBootCycleNo(void){
 }
 
 bool calcCurrentTimeDiff(){
+  if (getError(E_COULD_NOT_FETCH_GPS_TIME)){
+    currentTimeDiffMs = 0;
+    return true;
+  }
   if ((expectedBootTimeMs == INVALID_TIME_VALUE) || (bootTimeStampMs == INVALID_TIME_VALUE)) {
     currentTimeDiffMs = 0;
 	  return false;
@@ -497,8 +502,12 @@ int16_t bootTableLength(void){
   return bootTableLenghtVal;
 }
 uint8_t _currentCyleLen_m(){ //minutes (max 60)
+  #ifdef TEST_ACC
+  return 1;
+  #else
   if (_night()) { return heidiConfig->c.nightSleepMin; }
   else { return heidiConfig->c.sleepMinutes; }
+  #endif
 }
 uint8_t  _currentCyleMaxDiff_s(){ //seconds (max 180 = 5% from 3600)
   if (_night()) { return heidiConfig->c.nightSleepMin * 3; } //(*60 / 20 -> *3)

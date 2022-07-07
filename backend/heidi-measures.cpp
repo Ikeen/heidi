@@ -49,7 +49,7 @@ bool enableControls(void){
         setError(E_IIC_ERROR);
       }
       #endif
-    } else { success = false; setError(E_IIC_ERROR);}
+    } //else { success = false; setError(E_IIC_ERROR);}
     #endif
     #ifdef I2C_SWITCH
     if (gotIIC()){
@@ -385,14 +385,12 @@ void GSMOn(){
   freeIIC();
   #else
   pinMode(GSM_ENABLE_PIN,OUTPUT);
-  /*
   for(int i=0; i<100; i++){
     digitalWrite(GSM_ENABLE_PIN, MEASURES_OFF);
     delayMicroseconds(110-i);
     digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
     delayMicroseconds(10+i);
   }
-  */
   digitalWrite(GSM_ENABLE_PIN, MEASURES_ON);
   #endif
   _DD(DebugPrintln("GSM Voltage on", DEBUG_LEVEL_3));
@@ -425,13 +423,24 @@ bool getULPLock(void){
   //wait a short time - maybe ULP was just on the way to lock...
   pause(10);
   int i = 0;
-  while(ULPisLocked()){ //ULP may be running, wait until lock is released
-    pause(10); i++;
-    if(i >= 10){ set_ULP_request(0); _D(DebugPrintln("Can't get ULP lock.", DEBUG_LEVEL_1);) return false; }
+  while(i < 10){
+    if (!ULPisLocked()) { return true; }
+    pause(10); i++; //ULP may be running, wait until lock is released
   }
-  if (i>0) { _DD(DebugPrintln("Got ULP lock after " + String(i) + " wait-loops.", DEBUG_LEVEL_3);) }
-  //ULP just checks the request, no need to set LOCK here
-  return true;
+  //something is wrong...
+  _D(DebugPrintln("Can't get ULP lock - restart ULP", DEBUG_LEVEL_1);)
+  init_accel_ULP(ULP_INTERVALL_US); // restart ULP
+  //and ones again
+  set_ULP_request(1);
+  pause(10);
+  i = 0;
+  while(i < 10){
+    if (!ULPisLocked()) { return true; }
+    pause(10); i++;
+  }
+  _D(DebugPrintln("Can't get ULP lock at all - giving up", DEBUG_LEVEL_1);)
+  set_ULP_request(0);
+  return false;
 }
 void freeULP(void){
   set_ULP_request(0);
@@ -440,7 +449,7 @@ void freeULP(void){
 #ifdef I2C_BUS
 bool getIIC(void){
   #ifdef USE_ULP
-  if (!getULPLock()) { return false; }
+  getULPLock(); //if we do not get the lock - we nevertheless go on
   #endif
   rtc_gpio_hold_dis(I2C_SCL);
   rtc_gpio_hold_dis(I2C_SDA);

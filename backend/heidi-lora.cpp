@@ -79,20 +79,20 @@ void loraClientTask(void *pvParameters) {
         case LORA_PKG_ID_GEN_CALL:{
           _D(
             uint32_t mask = _copyBufferToUInt32(recBuffer, 1);
-            DebugPrintln("LORA: got general call: 0x" + String(mask, HEX),   DEBUG_LEVEL_2);
+            DebugPrintln("LORA: got general call: 0x" + String(mask, HEX),   DEBUG_LEVEL_1);
           )
           if (recLen >= LORA_PKG_GEN_CALL_LEN) { loraAnswerGenCall(recBuffer); }
           break;
         }
         case LORA_PKG_ID_CONFIG:{
-          _D(DebugPrintln("LORA: got config", DEBUG_LEVEL_2);)
+          _D(DebugPrintln("LORA: got config", DEBUG_LEVEL_1);)
           if(loraDecodeConfigData(recBuffer)){
             _DD(_PrintHeidiConfig(DEBUG_LEVEL_3););
           }
           break;
         }
         case LORA_PKG_ID_DATA_REQ:{
-          _D(DebugPrintln("LORA: got data request", DEBUG_LEVEL_2);)
+          _D(DebugPrintln("LORA: got data request", DEBUG_LEVEL_1);)
           if (recBuffer[2] == recBuffer[3]){
             int maxSetsToSend = recBuffer[2];
             int setsToSend = packUpDataSets();
@@ -546,9 +546,9 @@ int loraSendDataSets(int setsToSend){
       free(buffer);
     }
     _D(
-      DebugPrint("LORA: " + String(sccusessfullySent) + " package", DEBUG_LEVEL_2);
-      if(sccusessfullySent != 1){  DebugPrint("s", DEBUG_LEVEL_2); }
-      DebugPrintln(" sent successfully", DEBUG_LEVEL_2);
+      DebugPrint("LORA: " + String(sccusessfullySent) + " package", DEBUG_LEVEL_1);
+      if(sccusessfullySent != 1){  DebugPrint("s", DEBUG_LEVEL_1); }
+      DebugPrintln(" sent successfully", DEBUG_LEVEL_1);
      )
   }_D( else {DebugPrintln("LORA: send data ready message failed", DEBUG_LEVEL_1);} )
   return sccusessfullySent;
