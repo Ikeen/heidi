@@ -42,7 +42,11 @@ https://archive.eclipse.org/eclipse/downloads/drops4/R-4.10-201812060815/ and in
 * comment out: `recipe.objcopy.partitions.bin.pattern={tools.gen_esp32part.cmd} -q "{build.path}/partitions.csv" "{build.path}/{build.project_name}.partitions.bin"`
 * insert: `recipe.objcopy.eep.pattern={tools.gen_esp32part.cmd} -q "{runtime.platform.path}/tools/partitions/{build.partitions}.csv" "{build.path}/{build.project_name}.partitions.bin"`
 * seach for: `runtime.tools.xtensa-esp32-elf-gcc.path =`
-* change it to: `runtime.tools.xtensa-esp32-elf-gcc.path = ~/.arduinocdt/packages/esp32/tools/xtensa-esp32-elf`
+* if found, change it to: `runtime.tools.xtensa-esp32-elf-gcc.path = ~/.arduinocdt/packages/esp32/tools/xtensa-esp32-elf`
+* seach for: `runtime.tools.xtensa-esp32-elf-gcc.path =`
+* if found, change it to: `runtime.tools.xtensa-esp32-elf-gcc.path = ~/.arduinocdt/packages/esp32/tools/xtensa-esp32-elf`
+* seach for: `runtime.tools.esptool.path =`
+* if found, change it to: `runtime.tools.esptool.path = ~/.arduinocdt/packages/esp32/tools/esptool`
 
 ## Change Java version
 * java version for Eclipse 2018 is 1.11
