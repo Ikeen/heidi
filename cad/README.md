@@ -2,12 +2,21 @@
 Some CAD- and 3D-printing hints
 
 ## Table of contents
-* [3D-printing](#3Dprinting)
-  * [Printing direction](#direction)
-  * [Dealing with ASA-filament](#dealing)
+* [CAD](#cad)
+* [3D-printing](#3d-printing)
+  * [Printing direction](#printing-direction)
+  * [Dealing with ASA-filament](#dealing-with-asa-filament)
   * [Warping](#warping)
   * [Solutions](#solutions)
   * [Notes](#notes)
+* [Schmitt-Trigger](#schmitt-trigger)
+  * [KiCad](#kicad)
+  * [Get a PCB](#get-a-pcb)
+  * [Electronic parts](#electronic-parts)
+  
+
+## CAD
+All CAD was done with [FreeCad](https://www.freecad.org/). All CAD project files are uploaded too (*.fcstd).
 
 ## 3D-printing
 For our purposes we decided to use 3D print for building up housings. This is flexible and cost efficient. For more reliability against weather and mechanical stress it would be better to use housings milled from the solid material. There are good offers for 3-axis CNC mills - maybe we will test this later on. (It seems we seriously need to talk to Santa regarding this. :-D )
@@ -26,3 +35,17 @@ some solutions to various problems
 
 ### Notes
 * There are slightly different sizes of GPS-antenna boards used. Currently GPSAntennaClip is for the bigger one (28mm edge length), GPSAntennaClip3 is for the smaller one (25mm edge length) 
+
+## Schmitt-Trigger
+As mentioned in the introducing README, the cut-off threshold of the battery protection circuits (2.4 volts) is too low and leads heidi into a dead lock if the voltage goes below 2.6 volts. Therefore we decided to create a own protection circuit, which cuts off at about 2.8 volts and brings heidi back to power at about 3.1 volts. That ensures, that the ESP32 works correctly (when empowered). (By the way: It's our first own PCB - it was a huge fun to research, learn to calculate a Schmitt-Trigger, to test, to explore new CAD-software...)
+
+Keep in mind: You nevertheless need a battery protection circuit. The Schmitt-Trigger will continously draw a small current too. We decided to use LiPo batteries with [included protection](https://www.trustfire.com/collections/batteries/).
+
+### KiCad
+The software we're using for schematics an PCB layout is [KiCad](https://www.kicad.org). You find the project files unter /SchmittTrigger. 
+
+### Get a PCB
+The PCB has just one layer and no throughplatings - even for the power connections, what saves costs. The gerber files, needed for ordering PCBs online, are in the zip file. We've ordered the PCB [here]( https://aisler.net) -  good price, quick service. 
+
+### Electronic parts
+Be sure to use a dual channel rail to rail operational amplifier with a minimum operation voltage of 2.7 volt. Keep an eye on its supply current - it should be less as possible. The P-channel FET is a power-FET, but maybe another will do too, because there are just a few milliamps to manage. 
