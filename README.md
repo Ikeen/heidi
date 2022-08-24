@@ -1,4 +1,7 @@
 # heidi
+
+![heidi logo](Kuhvernetzer.png?raw=true "Heidi")
+
 GPS tracking system for alpine pasture - or simply sheeps :-)
 
 ## Table of contents
